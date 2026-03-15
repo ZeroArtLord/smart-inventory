@@ -6,7 +6,11 @@ const App = {
     checklistPageSize: 50,
     checklistOffset: 0,
     currentChecklistCategory: 'ALL',
+    currentChecklistSearch: '',
+    checklistQuickReview: false,
     checklistProgress: new Set(),
+    selectedProductIds: new Set(),
+    sortState: {},
     comparisonEnabled: false,
     rateLimit: {
         count: 0,
@@ -75,16 +79,21 @@ const App = {
             ExcelHandler.exportToExcel();
         });
 
-        // Búsqueda
-        document.getElementById('searchProduct').addEventListener('input', () => {
-            this.filtrarDashboard();
-        });
-        
         // Actualizar categoría automática en formulario
         document.getElementById('productName').addEventListener('input', (e) => {
+            const categorySelect = document.getElementById('category');
+            if (!categorySelect) return;
+            if (categorySelect.dataset.manual === '1') return;
             const category = DB.getCategoryForName(e.target.value);
-            document.getElementById('category').value = category;
+            categorySelect.value = category;
         });
+
+        const categorySelect = document.getElementById('category');
+        if (categorySelect) {
+            categorySelect.addEventListener('change', () => {
+                categorySelect.dataset.manual = '1';
+            });
+        }
 
         // Formulario productos
         document.getElementById('addProductBtn').addEventListener('click', () => {
@@ -142,6 +151,14 @@ const App = {
         document.querySelectorAll('.filter-btn').forEach(btn => {
             btn.addEventListener('click', (e) => this.filtrarChecklist(e));
         });
+        
+        const checklistSearch = document.getElementById('checklistSearch');
+        if (checklistSearch) {
+            checklistSearch.addEventListener('input', (e) => {
+                this.currentChecklistSearch = e.target.value || '';
+                this.cargarChecklist(this.currentChecklistCategory);
+            });
+        }
         
         // Summary modal
         document.getElementById('openSummary').addEventListener('click', () => {
@@ -208,6 +225,15 @@ const App = {
             });
         }
 
+        const toggleQuickReview = document.getElementById('toggleQuickReview');
+        if (toggleQuickReview) {
+            toggleQuickReview.addEventListener('click', () => {
+                this.checklistQuickReview = !this.checklistQuickReview;
+                toggleQuickReview.classList.toggle('active', this.checklistQuickReview);
+                this.cargarChecklist(this.currentChecklistCategory);
+            });
+        }
+
         const toggleTheme = document.getElementById('toggleTheme');
         if (toggleTheme) {
             toggleTheme.addEventListener('click', () => {
@@ -235,6 +261,43 @@ const App = {
         if (productsSearch) {
             productsSearch.addEventListener('input', () => this.filtrarProductos());
         }
+
+        const resetDashboardFilters = document.getElementById('resetDashboardFilters');
+        if (resetDashboardFilters) {
+            resetDashboardFilters.addEventListener('click', () => this.resetFiltrosDashboard());
+        }
+
+        const resetProductsFilters = document.getElementById('resetProductsFilters');
+        if (resetProductsFilters) {
+            resetProductsFilters.addEventListener('click', () => this.resetFiltrosProductos());
+        }
+
+        const exportHistory = document.getElementById('exportHistory');
+        if (exportHistory) {
+            exportHistory.addEventListener('click', () => this.exportHistory());
+        }
+
+        const selectAll = document.getElementById('selectAllProducts');
+        if (selectAll) {
+            selectAll.addEventListener('change', (e) => this.toggleSelectAll(e.target.checked));
+        }
+
+        const bulkEditBtn = document.getElementById('bulkEditBtn');
+        if (bulkEditBtn) {
+            bulkEditBtn.addEventListener('click', () => this.openBulkEditModal());
+        }
+
+        const cancelBulkEdit = document.getElementById('cancelBulkEdit');
+        if (cancelBulkEdit) {
+            cancelBulkEdit.addEventListener('click', () => this.cerrarModal('bulkEditModal'));
+        }
+
+        const applyBulkEdit = document.getElementById('applyBulkEdit');
+        if (applyBulkEdit) {
+            applyBulkEdit.addEventListener('click', () => this.applyBulkEdit());
+        }
+
+        this.initSortableTables();
     },
 
     // Cambiar entre secciones
@@ -315,6 +378,11 @@ const App = {
             'fas fa-edit',
             () => this.editarProducto(productId)
         );
+        const dupBtn = this.crearBotonAccion(
+            'btn btn-secondary btn-sm',
+            'fas fa-copy',
+            () => this.duplicarProducto(productId)
+        );
         const deleteBtn = this.crearBotonAccion(
             'btn btn-danger btn-sm',
             'fas fa-trash',
@@ -322,6 +390,7 @@ const App = {
         );
         
         td.appendChild(editBtn);
+        td.appendChild(dupBtn);
         td.appendChild(deleteBtn);
         return td;
     },
@@ -354,6 +423,14 @@ const App = {
         const unit = DB.normalizeUnit(prod.unit);
         
         const fila = document.createElement('tr');
+        const selectTd = document.createElement('td');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'product-select';
+        checkbox.value = prod.id;
+        checkbox.checked = this.selectedProductIds.has(prod.id);
+        selectTd.appendChild(checkbox);
+        fila.appendChild(selectTd);
         fila.appendChild(this.crearCeldaTexto(prod.name));
         fila.appendChild(this.crearCeldaTexto(DB.formatQuantity(prod.currentStock, unit)));
         fila.appendChild(this.crearCeldaTexto(DB.formatQuantity(prod.minStock, unit)));
@@ -386,9 +463,7 @@ const App = {
     // Filtros del Dashboard
     filtrarDashboard: function() {
         const categoria = document.getElementById('dashboardCategoryFilter')?.value || 'ALL';
-        const searchLegacy = document.getElementById('searchProduct')?.value || '';
-        const searchNew = document.getElementById('dashboardSearch')?.value || '';
-        const texto = (searchNew || searchLegacy).toLowerCase().trim();
+        const texto = (document.getElementById('dashboardSearch')?.value || '').toLowerCase().trim();
         
         const productos = DB.getProducts().filter(p => {
             const cat = (p.category || 'OTROS');
@@ -415,6 +490,33 @@ const App = {
         this.cargarTablaProductosFiltrada(productos);
     },
 
+    resetFiltrosDashboard: function() {
+        const cat = document.getElementById('dashboardCategoryFilter');
+        const search = document.getElementById('dashboardSearch');
+        if (cat) cat.value = 'ALL';
+        if (search) search.value = '';
+        this.filtrarDashboard();
+    },
+
+    resetFiltrosProductos: function() {
+        const cat = document.getElementById('productsCategoryFilter');
+        const search = document.getElementById('productsSearch');
+        if (cat) cat.value = 'ALL';
+        if (search) search.value = '';
+        this.filtrarProductos();
+    },
+
+    exportHistory: function() {
+        const history = DB.getHistory();
+        const blob = new Blob([JSON.stringify(history, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `SmartInventory_Historial_${this.getTodayDate()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    },
+
     // Cargar tabla del dashboard filtrada
     cargarTablaDashboardFiltrada: function(productos) {
         const tbody = document.getElementById('productsTableBody');
@@ -425,6 +527,8 @@ const App = {
             const fila = this.crearFilaProductoDashboard(prod);
             tbody.appendChild(fila);
         });
+
+        this.applySortIfNeeded('productsTable');
     },
 
     // Cargar tabla de productos filtrada
@@ -437,12 +541,212 @@ const App = {
             const fila = this.crearFilaProductoLista(prod);
             tbody.appendChild(fila);
         });
+
+        this.attachProductSelectionEvents();
+        this.applySortIfNeeded('productsListTable');
+    },
+
+    attachProductSelectionEvents: function() {
+        const tbody = document.getElementById('productsListBody');
+        if (!tbody) return;
+        tbody.querySelectorAll('.product-select').forEach(cb => {
+            cb.addEventListener('change', () => {
+                if (cb.checked) {
+                    this.selectedProductIds.add(cb.value);
+                } else {
+                    this.selectedProductIds.delete(cb.value);
+                }
+                this.updateSelectAllCheckbox();
+                this.updateBulkButton();
+            });
+        });
+        this.updateSelectAllCheckbox();
+        this.updateBulkButton();
+    },
+
+    toggleSelectAll: function(checked) {
+        const tbody = document.getElementById('productsListBody');
+        if (!tbody) return;
+        tbody.querySelectorAll('.product-select').forEach(cb => {
+            cb.checked = checked;
+            if (checked) this.selectedProductIds.add(cb.value);
+            else this.selectedProductIds.delete(cb.value);
+        });
+        this.updateSelectAllCheckbox();
+        this.updateBulkButton();
+    },
+
+    updateSelectAllCheckbox: function() {
+        const selectAll = document.getElementById('selectAllProducts');
+        const tbody = document.getElementById('productsListBody');
+        if (!selectAll || !tbody) return;
+        const checkboxes = Array.from(tbody.querySelectorAll('.product-select'));
+        const total = checkboxes.length;
+        const checked = checkboxes.filter(cb => cb.checked).length;
+        selectAll.indeterminate = checked > 0 && checked < total;
+        selectAll.checked = total > 0 && checked === total;
+    },
+
+    updateBulkButton: function() {
+        const bulkActions = document.getElementById('bulkActions');
+        if (!bulkActions) return;
+        bulkActions.classList.toggle('hidden', this.selectedProductIds.size === 0);
+    },
+
+    openBulkEditModal: function() {
+        const count = this.selectedProductIds.size;
+        if (count === 0) return;
+        const label = document.getElementById('selectedCount');
+        if (label) label.textContent = `${count} productos seleccionados`;
+        document.getElementById('bulkEditModal').classList.add('active');
+    },
+
+    applyBulkEdit: function() {
+        if (!this.checkRateLimit()) return;
+        const unit = document.getElementById('bulkUnit')?.value || 'UND';
+        const category = document.getElementById('bulkCategory')?.value || '';
+        let updated = 0;
+        
+        this.selectedProductIds.forEach(id => {
+            const updateData = { unit };
+            if (category) updateData.category = category;
+            const result = DB.updateProduct(id, updateData);
+            if (result.success) updated++;
+        });
+        
+        this.selectedProductIds.clear();
+        this.cerrarModal('bulkEditModal');
+        this.actualizarDashboard();
+        this.cargarListaProductos();
+        this.cargarChecklist(this.currentChecklistCategory);
+        this.cargarSelectores();
+        this.updateBulkButton();
+        
+        this.showToast(`Edición masiva aplicada: ${updated} productos`, 'success');
+    },
+
+    duplicarProducto: function(productId) {
+        if (!this.checkRateLimit()) return;
+        const original = DB.getProductById(productId);
+        if (!original) return;
+        const name = this.getDuplicateName(original.name);
+        const copy = {
+            name,
+            currentStock: original.currentStock,
+            minStock: original.minStock,
+            maxStock: original.maxStock,
+            unit: original.unit,
+            category: original.category,
+            supplier: original.supplier || ''
+        };
+        const result = DB.addProduct(copy);
+        if (result.success) {
+            this.actualizarDashboard();
+            this.cargarListaProductos();
+            this.cargarChecklist(this.currentChecklistCategory);
+            this.cargarSelectores();
+            this.showToast('Producto duplicado', 'success');
+        } else {
+            this.showToast('No se pudo duplicar', 'error');
+        }
+    },
+
+    getDuplicateName: function(baseName) {
+        const products = DB.getProducts();
+        const base = `${baseName} (Copia)`;
+        let name = base;
+        let i = 2;
+        const exists = (n) => products.some(p => p.name.toLowerCase() === n.toLowerCase());
+        while (exists(name)) {
+            name = `${base} ${i}`;
+            i += 1;
+        }
+        return name;
+    },
+
+    initSortableTables: function() {
+        ['productsTable', 'productsListTable'].forEach(tableId => {
+            const table = document.getElementById(tableId);
+            if (!table) return;
+            table.querySelectorAll('th.sortable').forEach((th, index) => {
+                th.dataset.colIndex = th.cellIndex;
+                th.addEventListener('click', () => {
+                    const type = th.dataset.type || 'string';
+                    this.sortTable(tableId, th.cellIndex, type);
+                });
+            });
+        });
+    },
+
+    sortTable: function(tableId, colIndex, dataType, directionOverride = null) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+        const tbody = table.querySelector('tbody');
+        if (!tbody) return;
+        
+        const state = this.sortState[tableId] || { colIndex: -1, direction: 'asc' };
+        const direction = directionOverride || ((state.colIndex === colIndex && state.direction === 'asc') ? 'desc' : 'asc');
+        this.sortState[tableId] = { colIndex, direction };
+        
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        rows.sort((a, b) => {
+            const aText = (a.children[colIndex]?.textContent || '').trim();
+            const bText = (b.children[colIndex]?.textContent || '').trim();
+            let aVal = aText;
+            let bVal = bText;
+            
+            if (dataType === 'number') {
+                aVal = parseFloat(aText) || 0;
+                bVal = parseFloat(bText) || 0;
+            } else if (dataType === 'unit') {
+                aVal = parseFloat(aText) || 0;
+                bVal = parseFloat(bText) || 0;
+            } else {
+                aVal = aText.toLowerCase();
+                bVal = bText.toLowerCase();
+            }
+            
+            if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+        
+        rows.forEach(r => tbody.appendChild(r));
+        this.updateSortIndicators(tableId);
+    },
+
+    applySortIfNeeded: function(tableId) {
+        const state = this.sortState[tableId];
+        if (!state) return;
+        this.sortTable(tableId, state.colIndex, this.getSortType(tableId, state.colIndex), state.direction);
+    },
+
+    getSortType: function(tableId, colIndex) {
+        const table = document.getElementById(tableId);
+        const th = table ? Array.from(table.querySelectorAll('th.sortable')).find(t => t.cellIndex === colIndex) : null;
+        return th?.dataset.type || 'string';
+    },
+
+    updateSortIndicators: function(tableId) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+        const state = this.sortState[tableId];
+        table.querySelectorAll('th.sortable').forEach(th => {
+            const span = th.querySelector('.sort-indicator');
+            if (!span) return;
+            if (state && th.cellIndex === state.colIndex) {
+                span.textContent = state.direction === 'asc' ? '↑' : '↓';
+            } else {
+                span.textContent = '';
+            }
+        });
     },
 
     // Mostrar formulario de producto
     mostrarFormularioProducto: function(producto = null) {
         const container = document.getElementById('productFormContainer');
         const formTitle = document.getElementById('formTitle');
+        const categorySelect = document.getElementById('category');
         
         if (producto) {
             formTitle.textContent = 'Editar Producto';
@@ -452,12 +756,18 @@ const App = {
             document.getElementById('minStock').value = producto.minStock;
             document.getElementById('maxStock').value = producto.maxStock || 0;
             document.getElementById('unit').value = producto.unit || 'UND';
-            document.getElementById('category').value = producto.category || DB.getCategoryForName(producto.name);
+            if (categorySelect) {
+                categorySelect.value = producto.category || DB.getCategoryForName(producto.name);
+                categorySelect.dataset.manual = '1';
+            }
         } else {
             formTitle.textContent = 'Nuevo Producto';
             document.getElementById('productForm').reset();
             document.getElementById('productId').value = '';
-            document.getElementById('category').value = '';
+            if (categorySelect) {
+                categorySelect.value = DB.getCategoryForName(document.getElementById('productName').value);
+                categorySelect.dataset.manual = '0';
+            }
         }
         
         container.style.display = 'block';
@@ -477,7 +787,8 @@ const App = {
             currentStock: parseInt(document.getElementById('currentStock').value) || 0,
             minStock: parseInt(document.getElementById('minStock').value) || 0,
             maxStock: parseInt(document.getElementById('maxStock').value) || 0,
-            unit: document.getElementById('unit').value
+            unit: document.getElementById('unit').value,
+            category: document.getElementById('category').value
         };
         
         const validation = Calculator.validateInput(productData, 'product');
@@ -568,12 +879,22 @@ const App = {
             container.innerHTML = '';
         }
         this.currentChecklistCategory = category;
+        const searchText = this.currentChecklistSearch.toLowerCase().trim();
         
         const productos = DB.getProducts()
             .filter(p => {
                 if (category === 'ALL') return true;
                 const productCat = this.normalizeCategory(p.category || 'OTROS');
                 return productCat === this.normalizeCategory(category);
+            })
+            .filter(p => {
+                if (!searchText) return true;
+                return p.name.toLowerCase().includes(searchText);
+            })
+            .filter(p => {
+                if (!this.checklistQuickReview) return true;
+                const status = DB.getProductStatus(p);
+                return status.status !== 'good';
             })
             .sort((a, b) => a.name.localeCompare(b.name));
         
@@ -686,6 +1007,10 @@ const App = {
             input.addEventListener('input', (e) => this.debouncedSaveChecklist(e));
             input.addEventListener('blur', (e) => this.saveChecklistImmediately(e));
             input.addEventListener('input', () => this.updateRecommendationWarningForInput(input));
+            if (input.dataset.field === 'stock') {
+                // Actualiza sugerencias en tiempo real al cambiar stock
+                input.addEventListener('input', (e) => this.actualizarSugerenciaPorStock(e.target));
+            }
         });
     },
     
@@ -880,6 +1205,50 @@ const App = {
             if (warn) warn.classList.remove('show');
         }
     },
+
+    // Recalcular sugerencias cuando cambia el stock (sin guardar)
+    actualizarSugerenciaPorStock: function(stockInput) {
+        const row = stockInput.dataset.row;
+        if (row === undefined) return;
+        
+        const inputs = document.querySelectorAll(`.checklist-inputs input[data-row="${row}"]`);
+        if (!inputs || inputs.length === 0) return;
+        
+        const productId = inputs[0].dataset.productId;
+        const product = DB.getProductById(productId);
+        if (!product) return;
+        
+        const nuevoStock = parseFloat(stockInput.value) || 0;
+        const unidad = DB.normalizeUnit(product.unit);
+        const tmpProduct = { ...product, currentStock: nuevoStock };
+        
+        const autoRecommend = DB.getSeasonalRecommendation ? 
+            DB.getSeasonalRecommendation(tmpProduct) : 
+            DB.calculateAutoRecommendation(tmpProduct);
+        
+        const buyInput = Array.from(inputs).find(i => i.dataset.field === 'buy');
+        const orderInput = Array.from(inputs).find(i => i.dataset.field === 'order');
+        
+        if (buyInput) {
+            buyInput.dataset.recommend = autoRecommend;
+            buyInput.placeholder = `Sugerido: ${autoRecommend} ${unidad}`;
+        }
+        if (orderInput) {
+            orderInput.dataset.recommend = autoRecommend;
+            orderInput.placeholder = `Sugerido: ${autoRecommend} ${unidad}`;
+        }
+        
+        const card = document.querySelector(`.checklist-card[data-row="${row}"]`);
+        if (card) {
+            const hint = card.querySelector('.rec-hint');
+            if (hint) {
+                hint.textContent = `SUGERIDO: ${DB.formatQuantity(autoRecommend, unidad)}`;
+                hint.dataset.recommend = autoRecommend;
+            }
+        }
+        
+        this.updateRecommendationWarningForInput(stockInput);
+    },
     
     setChecklistValue: function(inputs, field, value) {
         const input = Array.from(inputs).find(i => i.dataset.field === field);
@@ -891,6 +1260,7 @@ const App = {
         const btn = e.target.closest('.filter-btn');
         btn.classList.add('active');
         const category = btn.dataset.category;
+        this.checklistOffset = 0;
         this.cargarChecklist(category);
     },
     
@@ -1280,7 +1650,7 @@ const App = {
             }
             if (e.ctrlKey && e.key.toLowerCase() === 'f') {
                 e.preventDefault();
-                const search = document.getElementById('searchProduct');
+                const search = document.getElementById('dashboardSearch');
                 if (search) search.focus();
             }
             if (e.key === 'F5') {

@@ -72,6 +72,9 @@
                     <button id="toggleComparison" class="btn btn-secondary">
                         <i class="fas fa-chart-simple"></i> Comparar semana anterior
                     </button>
+                    <button id="toggleQuickReview" class="btn btn-secondary">
+                        <i class="fas fa-triangle-exclamation"></i> Revisión rápida
+                    </button>
                     <button id="openSummary" class="btn btn-primary">
                         <i class="fas fa-chart-pie"></i> Ver Resumen del Día
                     </button>
@@ -105,6 +108,13 @@
                 <button class="filter-btn" data-category="LIMPIEZA">Limpieza</button>
                 <button class="filter-btn" data-category="LICORES">Licores</button>
                 <button class="filter-btn" data-category="CHARCUTERIA">Charcutería</button>
+            </div>
+
+            <div class="checklist-search">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="checklistSearch" placeholder="Buscar en checklist...">
+                </div>
             </div>
             
             <div id="checklistContainer" class="checklist-container">
@@ -176,14 +186,6 @@
                 </div>
             </div>
 
-            <!-- Buscador -->
-            <div class="search-container">
-                <div class="search-box">
-                    <i class="fas fa-search"></i>
-                    <input type="text" id="searchProduct" placeholder="Buscar producto...">
-                </div>
-            </div>
-
             <!-- Filtros Dashboard -->
             <div class="dashboard-filters">
                 <div class="filters-row">
@@ -207,6 +209,11 @@
                         <label>Buscar:</label>
                         <input type="text" id="dashboardSearch" placeholder="Buscar producto..." class="search-input">
                     </div>
+                    <div class="filter-group">
+                        <button id="resetDashboardFilters" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-undo"></i> Resetear filtros
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -215,15 +222,15 @@
                 <table id="productsTable">
                     <thead>
                         <tr>
-                            <th>Producto</th>
-                            <th>Existencia</th>
-                            <th>Mínimo</th>
-                            <th>Máximo</th>
-                            <th>Unidad</th>
-                            <th>Consumo Promedio</th>
-                            <th>Recomendación</th>
-                            <th>Estado</th>
-                            <th>Categoría</th>
+                            <th class="sortable" data-type="string">Producto <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Existencia <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Mínimo <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Máximo <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Unidad <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Consumo Promedio <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Recomendación <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Estado <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Categoría <span class="sort-indicator"></span></th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -260,6 +267,12 @@
                 </button>
             </div>
 
+            <div class="bulk-actions hidden" id="bulkActions">
+                <button id="bulkEditBtn" class="btn btn-primary">
+                    <i class="fas fa-edit"></i> Editar seleccionados
+                </button>
+            </div>
+
             <!-- Filtros Productos -->
             <div class="products-filters">
                 <div class="filters-row">
@@ -282,6 +295,11 @@
                     <div class="filter-group">
                         <label>Buscar:</label>
                         <input type="text" id="productsSearch" placeholder="Buscar producto..." class="search-input">
+                    </div>
+                    <div class="filter-group">
+                        <button id="resetProductsFilters" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-undo"></i> Resetear filtros
+                        </button>
                     </div>
                 </div>
             </div>
@@ -320,8 +338,20 @@
                             </datalist>
                         </div>
                         <div class="form-group">
-                            <label for="category">Categoría (automática)</label>
-                            <input type="text" id="category" readonly>
+                            <label for="category">Categoría</label>
+                            <select id="category">
+                                <option value="VIVERES">Víveres</option>
+                                <option value="CARNES">Carnes</option>
+                                <option value="CERVEZAS">Cervezas</option>
+                                <option value="REFRESCOS">Refrescos</option>
+                                <option value="HORTALIZAS">Hortalizas</option>
+                                <option value="POSTRES">Postres</option>
+                                <option value="DESECHABLES">Desechables</option>
+                                <option value="LIMPIEZA">Limpieza</option>
+                                <option value="LICORES">Licores</option>
+                                <option value="CHARCUTERIA">Charcutería</option>
+                                <option value="OTROS">Otros</option>
+                            </select>
                         </div>
                     </div>
                     <div class="form-actions">
@@ -336,13 +366,14 @@
                 <table id="productsListTable">
                     <thead>
                         <tr>
-                            <th>Producto</th>
-                            <th>Existencia</th>
-                            <th>Mínimo</th>
-                            <th>Máximo</th>
-                            <th>Unidad</th>
-                            <th>Categoría</th>
-                            <th>Estado</th>
+                            <th><input type="checkbox" id="selectAllProducts"></th>
+                            <th class="sortable" data-type="string">Producto <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Existencia <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Mínimo <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Máximo <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Unidad <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Categoría <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Estado <span class="sort-indicator"></span></th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -409,6 +440,11 @@
                     <select id="historyProduct">
                         <option value="">Seleccionar producto...</option>
                     </select>
+                </div>
+                <div class="action-buttons">
+                    <button id="exportHistory" class="btn btn-secondary">
+                        <i class="fas fa-file-export"></i> Exportar Historial
+                    </button>
                 </div>
             </div>
 
@@ -519,6 +555,48 @@
                 <button id="executeOrders" class="btn btn-primary">Ya Pedí</button>
                 <button id="exportDailyReport" class="btn btn-secondary">Exportar</button>
                 <button id="closeSummaryModal" class="btn btn-danger">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal edición masiva -->
+    <div id="bulkEditModal" class="modal">
+        <div class="modal-content">
+            <h3><i class="fas fa-layer-group"></i> Edición masiva</h3>
+            <p id="selectedCount">0 productos seleccionados</p>
+            
+            <div class="form-group">
+                <label>Cambiar unidad a:</label>
+                <select id="bulkUnit">
+                    <option value="UND">UND - Unidades</option>
+                    <option value="CAJA">CAJA - Cajas</option>
+                    <option value="LT">LT - Litros</option>
+                    <option value="KG">KG - Kilos</option>
+                    <option value="BULTOS">BULTOS - Bultos</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Cambiar categoría a (opcional):</label>
+                <select id="bulkCategory">
+                    <option value="">-- Sin cambios --</option>
+                    <option value="VIVERES">Víveres</option>
+                    <option value="CARNES">Carnes</option>
+                    <option value="CERVEZAS">Cervezas</option>
+                    <option value="REFRESCOS">Refrescos</option>
+                    <option value="HORTALIZAS">Hortalizas</option>
+                    <option value="POSTRES">Postres</option>
+                    <option value="DESECHABLES">Desechables</option>
+                    <option value="LIMPIEZA">Limpieza</option>
+                    <option value="LICORES">Licores</option>
+                    <option value="CHARCUTERIA">Charcutería</option>
+                    <option value="OTROS">Otros</option>
+                </select>
+            </div>
+            
+            <div class="modal-actions">
+                <button id="applyBulkEdit" class="btn btn-success">Aplicar cambios</button>
+                <button id="cancelBulkEdit" class="btn btn-secondary">Cancelar</button>
             </div>
         </div>
     </div>
