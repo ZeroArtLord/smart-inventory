@@ -76,8 +76,8 @@ const App = {
         });
 
         // Búsqueda
-        document.getElementById('searchProduct').addEventListener('input', (e) => {
-            this.buscarProductos(e.target.value);
+        document.getElementById('searchProduct').addEventListener('input', () => {
+            this.filtrarDashboard();
         });
         
         // Actualizar categoría automática en formulario
@@ -207,6 +207,34 @@ const App = {
                 this.cargarChecklist(this.currentChecklistCategory);
             });
         }
+
+        const toggleTheme = document.getElementById('toggleTheme');
+        if (toggleTheme) {
+            toggleTheme.addEventListener('click', () => {
+                const enabled = !document.body.classList.contains('night-mode');
+                this.setNightMode(enabled);
+            });
+        }
+
+        // Dashboard filters
+        const dashboardCat = document.getElementById('dashboardCategoryFilter');
+        const dashboardSearch = document.getElementById('dashboardSearch');
+        if (dashboardCat) {
+            dashboardCat.addEventListener('change', () => this.filtrarDashboard());
+        }
+        if (dashboardSearch) {
+            dashboardSearch.addEventListener('input', () => this.filtrarDashboard());
+        }
+
+        // Products filters
+        const productsCat = document.getElementById('productsCategoryFilter');
+        const productsSearch = document.getElementById('productsSearch');
+        if (productsCat) {
+            productsCat.addEventListener('change', () => this.filtrarProductos());
+        }
+        if (productsSearch) {
+            productsSearch.addEventListener('input', () => this.filtrarProductos());
+        }
     },
 
     // Cambiar entre secciones
@@ -224,9 +252,15 @@ const App = {
         
         document.getElementById('navMenu').classList.remove('active');
         
-        if (seccion === 'dashboard') this.actualizarDashboard();
+        if (seccion === 'dashboard') {
+            this.actualizarDashboard();
+            this.filtrarDashboard();
+        }
         if (seccion === 'checklist') this.cargarChecklist(this.currentChecklistCategory);
-        if (seccion === 'products') this.cargarListaProductos();
+        if (seccion === 'products') {
+            this.cargarListaProductos();
+            this.filtrarProductos();
+        }
         if (seccion === 'history') this.cargarSelectores();
     },
 
@@ -334,8 +368,57 @@ const App = {
 
     // Cargar tabla del dashboard
     cargarTablaDashboard: function() {
-        const productos = DB.getProducts();
+        this.filtrarDashboard();
+    },
+
+    // Buscar productos
+    buscarProductos: function(texto) {
+        const search = document.getElementById('dashboardSearch');
+        if (search) search.value = texto || '';
+        this.filtrarDashboard();
+    },
+
+    // Cargar lista de productos (sección productos)
+    cargarListaProductos: function() {
+        this.filtrarProductos();
+    },
+
+    // Filtros del Dashboard
+    filtrarDashboard: function() {
+        const categoria = document.getElementById('dashboardCategoryFilter')?.value || 'ALL';
+        const searchLegacy = document.getElementById('searchProduct')?.value || '';
+        const searchNew = document.getElementById('dashboardSearch')?.value || '';
+        const texto = (searchNew || searchLegacy).toLowerCase().trim();
+        
+        const productos = DB.getProducts().filter(p => {
+            const cat = (p.category || 'OTROS');
+            if (categoria !== 'ALL' && this.normalizeCategory(cat) !== this.normalizeCategory(categoria)) return false;
+            if (texto && !p.name.toLowerCase().includes(texto)) return false;
+            return true;
+        });
+        
+        this.cargarTablaDashboardFiltrada(productos);
+    },
+
+    // Filtros de Productos
+    filtrarProductos: function() {
+        const categoria = document.getElementById('productsCategoryFilter')?.value || 'ALL';
+        const texto = (document.getElementById('productsSearch')?.value || '').toLowerCase().trim();
+        
+        const productos = DB.getProducts().filter(p => {
+            const cat = (p.category || 'OTROS');
+            if (categoria !== 'ALL' && this.normalizeCategory(cat) !== this.normalizeCategory(categoria)) return false;
+            if (texto && !p.name.toLowerCase().includes(texto)) return false;
+            return true;
+        });
+        
+        this.cargarTablaProductosFiltrada(productos);
+    },
+
+    // Cargar tabla del dashboard filtrada
+    cargarTablaDashboardFiltrada: function(productos) {
         const tbody = document.getElementById('productsTableBody');
+        if (!tbody) return;
         tbody.innerHTML = '';
         
         productos.forEach(prod => {
@@ -344,28 +427,10 @@ const App = {
         });
     },
 
-    // Buscar productos
-    buscarProductos: function(texto) {
-        const productos = DB.getProducts();
-        const tbody = document.getElementById('productsTableBody');
-        tbody.innerHTML = '';
-        
-        texto = texto.toLowerCase();
-        
-        productos
-            .filter(prod => prod.name.toLowerCase().includes(texto))
-            .forEach(prod => {
-                const fila = this.crearFilaProductoDashboard(prod);
-                tbody.appendChild(fila);
-            });
-    },
-
-    // Cargar lista de productos (sección productos)
-    cargarListaProductos: function() {
-        const productos = DB.getProducts();
+    // Cargar tabla de productos filtrada
+    cargarTablaProductosFiltrada: function(productos) {
         const tbody = document.getElementById('productsListBody');
         if (!tbody) return;
-        
         tbody.innerHTML = '';
         
         productos.forEach(prod => {
@@ -1182,10 +1247,25 @@ const App = {
     },
     
     initNightMode: function() {
-        const hour = new Date().getHours();
-        if (hour < 6 || hour >= 19) {
-            document.body.classList.add('night-mode');
-        }
+        const key = 'smart_inventory_theme';
+        const stored = localStorage.getItem(key);
+        this.setNightMode(stored === 'dark');
+    },
+
+    setNightMode: function(enabled) {
+        const key = 'smart_inventory_theme';
+        document.body.classList.toggle('night-mode', enabled);
+        localStorage.setItem(key, enabled ? 'dark' : 'light');
+        this.updateThemeToggle();
+    },
+
+    updateThemeToggle: function() {
+        const btn = document.getElementById('toggleTheme');
+        if (!btn) return;
+        const isDark = document.body.classList.contains('night-mode');
+        btn.innerHTML = isDark
+            ? '<i class="fas fa-sun"></i> Modo claro'
+            : '<i class="fas fa-moon"></i> Modo oscuro';
     },
     
     initKeyboardShortcuts: function() {
@@ -1422,6 +1502,14 @@ const App = {
             fila.appendChild(this.crearCeldaTexto(Calculator.formatWeekDisplay(reg.weekDate)));
             fila.appendChild(this.crearCeldaTexto(DB.formatQuantity(reg.initialStock, unit)));
             fila.appendChild(this.crearCeldaTexto(DB.formatQuantity(reg.purchase, unit)));
+            
+            const tipoRaw = String(reg.actionType || '').toLowerCase();
+            let tipoLabel = '-';
+            if (tipoRaw === 'compra' || tipoRaw === 'buy') tipoLabel = 'Compra';
+            else if (tipoRaw === 'pedido' || tipoRaw === 'order') tipoLabel = 'Pedido';
+            else if (tipoRaw) tipoLabel = 'Manual';
+            fila.appendChild(this.crearCeldaTexto(tipoLabel));
+            
             fila.appendChild(this.crearCeldaTexto(DB.formatQuantity(reg.finalStock, unit)));
             
             const consumoTd = document.createElement('td');

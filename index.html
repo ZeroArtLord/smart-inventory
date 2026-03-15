@@ -30,9 +30,14 @@
                     <span class="nav-subtitle">by ByteMind Solutions</span>
                 </div>
             </div>
-            <div id="syncIndicator" class="sync-indicator offline">
-                <span class="dot"></span>
-                <span class="label">Firebase: Offline</span>
+            <div class="nav-actions">
+                <div id="syncIndicator" class="sync-indicator offline">
+                    <span class="dot"></span>
+                    <span class="label">Firebase: Offline</span>
+                </div>
+                <button id="toggleTheme" class="btn btn-secondary btn-sm theme-toggle" type="button">
+                    <i class="fas fa-moon"></i> Modo oscuro
+                </button>
             </div>
             <div class="nav-menu" id="navMenu">
                 <button class="nav-btn active" data-section="checklist">
@@ -179,6 +184,32 @@
                 </div>
             </div>
 
+            <!-- Filtros Dashboard -->
+            <div class="dashboard-filters">
+                <div class="filters-row">
+                    <div class="filter-group">
+                        <label>Categoría:</label>
+                        <select id="dashboardCategoryFilter" class="filter-select">
+                            <option value="ALL">Todas las categorías</option>
+                            <option value="VIVERES">Víveres</option>
+                            <option value="CARNES">Carnes</option>
+                            <option value="CERVEZAS">Cervezas</option>
+                            <option value="REFRESCOS">Refrescos</option>
+                            <option value="HORTALIZAS">Hortalizas</option>
+                            <option value="POSTRES">Postres</option>
+                            <option value="DESECHABLES">Desechables</option>
+                            <option value="LIMPIEZA">Limpieza</option>
+                            <option value="LICORES">Licores</option>
+                            <option value="CHARCUTERIA">Charcutería</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Buscar:</label>
+                        <input type="text" id="dashboardSearch" placeholder="Buscar producto..." class="search-input">
+                    </div>
+                </div>
+            </div>
+
             <!-- Tabla de productos -->
             <div class="table-container">
                 <table id="productsTable">
@@ -227,6 +258,32 @@
                 <button id="addProductBtn" class="btn btn-primary">
                     <i class="fas fa-plus"></i> Agregar Producto
                 </button>
+            </div>
+
+            <!-- Filtros Productos -->
+            <div class="products-filters">
+                <div class="filters-row">
+                    <div class="filter-group">
+                        <label>Categoría:</label>
+                        <select id="productsCategoryFilter" class="filter-select">
+                            <option value="ALL">Todas las categorías</option>
+                            <option value="VIVERES">Víveres</option>
+                            <option value="CARNES">Carnes</option>
+                            <option value="CERVEZAS">Cervezas</option>
+                            <option value="REFRESCOS">Refrescos</option>
+                            <option value="HORTALIZAS">Hortalizas</option>
+                            <option value="POSTRES">Postres</option>
+                            <option value="DESECHABLES">Desechables</option>
+                            <option value="LIMPIEZA">Limpieza</option>
+                            <option value="LICORES">Licores</option>
+                            <option value="CHARCUTERIA">Charcutería</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Buscar:</label>
+                        <input type="text" id="productsSearch" placeholder="Buscar producto..." class="search-input">
+                    </div>
+                </div>
             </div>
 
             <!-- Formulario para agregar/editar producto -->
@@ -367,6 +424,7 @@
                                 <th>Semana</th>
                                 <th>Stock Inicial</th>
                                 <th>Compra</th>
+                                <th>Tipo</th>
                                 <th>Stock Final</th>
                                 <th>Consumo</th>
                                 <th>Acciones</th>

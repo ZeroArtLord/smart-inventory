@@ -312,6 +312,7 @@ const DB = {
             finalStock: parseInt(recordData.finalStock),
             consumption: parseInt(recordData.consumption),
             weekDate: recordData.weekDate,
+            actionType: recordData.actionType || 'manual',
             createdAt: new Date().toISOString()
         };
         
@@ -609,7 +610,8 @@ const DB = {
                     purchase: buy,
                     finalStock: finalStock,
                     consumption: 0,
-                    weekDate: this.getCurrentWeekISO()
+                    weekDate: this.getCurrentWeekISO(),
+                    actionType: 'compra'
                 });
                 
                 p.currentStock = finalStock;
@@ -648,7 +650,8 @@ const DB = {
                     purchase: order,
                     finalStock: finalStock,
                     consumption: 0,
-                    weekDate: this.getCurrentWeekISO()
+                    weekDate: this.getCurrentWeekISO(),
+                    actionType: 'pedido'
                 });
                 
                 p.currentStock = finalStock;
@@ -681,6 +684,7 @@ const DB = {
             finalStock: parseInt(recordData.finalStock),
             consumption: parseInt(recordData.consumption) || 0,
             weekDate: recordData.weekDate,
+            actionType: recordData.actionType || 'auto',
             createdAt: new Date().toISOString()
         };
         
