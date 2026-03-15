@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Inventory - ByteMind Solutions</title>
+    
+    <!-- Estilos CSS -->
+    <link rel="stylesheet" href="css/styles.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- SheetJS para Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+
+<body>
+    <!-- Barra de navegación -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <img src="img/ByteMind Solutions.png" alt="ByteMind Solutions">
+                <div class="nav-brand-text">
+                    <span class="nav-title">Smart Inventory</span>
+                    <span class="nav-subtitle">by ByteMind Solutions</span>
+                </div>
+            </div>
+            <div id="syncIndicator" class="sync-indicator offline">
+                <span class="dot"></span>
+                <span class="label">Firebase: Offline</span>
+            </div>
+            <div class="nav-menu" id="navMenu">
+                <button class="nav-btn active" data-section="checklist">
+                    <i class="fas fa-list-check"></i> Checklist
+                </button>
+                <button class="nav-btn" data-section="dashboard">
+                    <i class="fas fa-chart-bar"></i> Dashboard
+                </button>
+                <button class="nav-btn" data-section="products">
+                    <i class="fas fa-box"></i> Productos
+                </button>
+                <button class="nav-btn" data-section="register">
+                    <i class="fas fa-edit"></i> Registrar
+                </button>
+                <button class="nav-btn" data-section="history">
+                    <i class="fas fa-history"></i> Historial
+                </button>
+            </div>
+            <button class="menu-toggle" id="menuToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Contenido principal -->
+    <main class="container">
+        <!-- Checklist (sección activa) -->
+        <section id="checklist" class="section active">
+            <div class="section-header">
+                <h2><i class="fas fa-list-check"></i> Checklist de Inventario</h2>
+                <div class="action-buttons">
+                    <button id="toggleComparison" class="btn btn-secondary">
+                        <i class="fas fa-chart-simple"></i> Comparar semana anterior
+                    </button>
+                    <button id="openSummary" class="btn btn-primary">
+                        <i class="fas fa-chart-pie"></i> Ver Resumen del Día
+                    </button>
+                </div>
+            </div>
+
+            <div class="checklist-progress">
+                <div class="progress-bar" id="checklistProgress" style="width: 0%"></div>
+            </div>
+            
+            <div class="stock-target">
+                <label for="targetDays">Stock objetivo (días):</label>
+                <input type="number" id="targetDays" min="1" max="60" value="10">
+                <div class="target-quick">
+                    <button class="btn btn-secondary btn-sm target-btn" data-days="3">3 días</button>
+                    <button class="btn btn-secondary btn-sm target-btn" data-days="7">7 días</button>
+                    <button class="btn btn-secondary btn-sm target-btn" data-days="10">10 días</button>
+                    <button class="btn btn-secondary btn-sm target-btn" data-days="15">15 días</button>
+                </div>
+            </div>
+            
+            <div class="filters">
+                <button class="filter-btn active" data-category="ALL">Todas</button>
+                <button class="filter-btn" data-category="VIVERES">Víveres</button>
+                <button class="filter-btn" data-category="CARNES">Carnes</button>
+                <button class="filter-btn" data-category="CERVEZAS">Cervezas</button>
+                <button class="filter-btn" data-category="REFRESCOS">Refrescos</button>
+                <button class="filter-btn" data-category="HORTALIZAS">Hortalizas</button>
+                <button class="filter-btn" data-category="POSTRES">Postres</button>
+                <button class="filter-btn" data-category="DESECHABLES">Desechables</button>
+                <button class="filter-btn" data-category="LIMPIEZA">Limpieza</button>
+                <button class="filter-btn" data-category="LICORES">Licores</button>
+                <button class="filter-btn" data-category="CHARCUTERIA">Charcutería</button>
+            </div>
+            
+            <div id="checklistContainer" class="checklist-container">
+                <!-- Cards de checklist -->
+            </div>
+            <button id="loadMoreChecklist" class="btn btn-secondary" style="margin-top: 1rem; display: none;">
+                Cargar más
+            </button>
+        </section>
+
+        <!-- Dashboard -->
+        <section id="dashboard" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-chart-bar"></i> Dashboard</h2>
+                <div class="action-buttons">
+                    <button id="importExcel" class="btn btn-primary">
+                        <i class="fas fa-file-import"></i> Importar Excel
+                    </button>
+                    <button id="exportExcel" class="btn btn-success">
+                        <i class="fas fa-file-export"></i> Exportar Excel
+                    </button>
+                    <button id="exportAuditLogs" class="btn btn-secondary">
+                        <i class="fas fa-clipboard-list"></i> Exportar Auditor?a
+                    </button>
+                    <button id="restoreLatestBackup" class="btn btn-danger">
+                        <i class="fas fa-rotate-left"></i> Restaurar Backup
+                    </button>
+                    <input type="file" id="excelFile" accept=".xlsx,.xls,.csv" style="display: none;">
+                </div>
+            </div>
+
+            <!-- Tarjetas de resumen -->
+            <div class="summary-cards">
+                <div class="card">
+                    <div class="card-icon blue">
+                        <i class="fas fa-boxes"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3 id="totalProducts">0</h3>
+                        <p>Total Productos</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon green">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3 id="goodProducts">0</h3>
+                        <p>En buen estado</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon yellow">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3 id="lowProducts">0</h3>
+                        <p>Stock bajo</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon red">
+                        <i class="fas fa-exclamation-circle"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3 id="criticalProducts">0</h3>
+                        <p>Críticos</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Buscador -->
+            <div class="search-container">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchProduct" placeholder="Buscar producto...">
+                </div>
+            </div>
+
+            <!-- Tabla de productos -->
+            <div class="table-container">
+                <table id="productsTable">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Existencia</th>
+                            <th>Mínimo</th>
+                            <th>Máximo</th>
+                            <th>Unidad</th>
+                            <th>Consumo Promedio</th>
+                            <th>Recomendación</th>
+                            <th>Estado</th>
+                            <th>Categoría</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="productsTableBody">
+                        <!-- Los productos se cargarán aquí -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Predicciones -->
+            <div class="predictions-section">
+                <h3><i class="fas fa-chart-line"></i> Predicciones para Próximas Semanas</h3>
+                <div id="predictionsContainer" class="predictions-grid">
+                    <!-- Se llena con JS -->
+                </div>
+            </div>
+            <div class="prediction-chart">
+                <canvas id="predictionChart"></canvas>
+            </div>
+            <div class="alerts-section">
+                <h3><i class="fas fa-exclamation-triangle"></i> Alertas y Predicciones</h3>
+                <div id="alertsContainer" class="alerts-grid">
+                    <!-- Se llena con JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección de Productos -->
+        <section id="products" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-box"></i> Gestión de Productos</h2>
+                <button id="addProductBtn" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Agregar Producto
+                </button>
+            </div>
+
+            <!-- Formulario para agregar/editar producto -->
+            <div class="form-container" id="productFormContainer" style="display: none;">
+                <h3><i class="fas fa-edit"></i> <span id="formTitle">Nuevo Producto</span></h3>
+                <form id="productForm">
+                    <input type="hidden" id="productId">
+                    <div class="form-group">
+                        <label for="productName">Nombre del Producto *</label>
+                        <input type="text" id="productName" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="currentStock">Stock Actual</label>
+                            <input type="number" id="currentStock" min="0" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="minStock">Stock Mínimo</label>
+                            <input type="number" id="minStock" min="0" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="maxStock">Stock Máximo</label>
+                            <input type="number" id="maxStock" min="0" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="unit">Unidad</label>
+                            <input type="text" id="unit" list="unitOptions" placeholder="UND, KG, LT...">
+                            <datalist id="unitOptions">
+                                <option value="UND"></option>
+                                <option value="KG"></option>
+                                <option value="LT"></option>
+                                <option value="CAJA"></option>
+                                <option value="BULTOS"></option>
+                            </datalist>
+                        </div>
+                        <div class="form-group">
+                            <label for="category">Categoría (automática)</label>
+                            <input type="text" id="category" readonly>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Guardar</button>
+                        <button type="button" id="cancelForm" class="btn btn-secondary">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Lista de productos -->
+            <div class="table-container">
+                <table id="productsListTable">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Existencia</th>
+                            <th>Mínimo</th>
+                            <th>Máximo</th>
+                            <th>Unidad</th>
+                            <th>Categoría</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="productsListBody">
+                        <!-- Los productos se cargarán aquí -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Sección de Registro Semanal -->
+        <section id="register" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-edit"></i> Registro Semanal</h2>
+                <div class="week-info">
+                    <span id="currentWeek">Semana actual: Cargando...</span>
+                </div>
+            </div>
+
+            <div class="form-container">
+                <form id="weeklyForm">
+                    <div class="form-group">
+                        <label for="registerProduct">Producto *</label>
+                        <select id="registerProduct" required>
+                            <option value="">Seleccionar producto...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="currentStockWeek">Stock actual (hoy)</label>
+                            <input type="number" id="currentStockWeek" min="0" required>
+                            <small id="currentUnitHint" class="unit-hint">UND</small>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="weekDate">Fecha de la semana</label>
+                        <input type="week" id="weekDate" required>
+                    </div>
+
+                    <div class="result-box" id="weeklyResult" style="display: none;">
+                        <h4><i class="fas fa-calculator"></i> Resultado:</h4>
+                        <p>Consumo estimado: <span id="weeklyConsumption">0</span></p>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Guardar Registro
+                        </button>
+                        <button type="button" id="calculateConsumption" class="btn btn-secondary">
+                            <i class="fas fa-calculator"></i> Calcular Consumo
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- Sección de Historial -->
+        <section id="history" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-history"></i> Historial por Producto</h2>
+                <div class="product-selector">
+                    <select id="historyProduct">
+                        <option value="">Seleccionar producto...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="history-container">
+                <div class="chart-container">
+                    <canvas id="consumptionChart"></canvas>
+                </div>
+
+                <div class="table-container">
+                    <table id="historyTable">
+                        <thead>
+                            <tr>
+                                <th>Semana</th>
+                                <th>Stock Inicial</th>
+                                <th>Compra</th>
+                                <th>Stock Final</th>
+                                <th>Consumo</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="prediction-chart">
+                <canvas id="predictionChart"></canvas>
+            </div>
+            <div class="alerts-section">
+                <h3><i class="fas fa-exclamation-triangle"></i> Alertas y Predicciones</h3>
+                <div id="alertsContainer" class="alerts-grid">
+                    <!-- Se llena con JS -->
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer con logo y cr?ditos -->
+    <footer class="footer-brand">
+        <div class="footer-logo">
+            <img src="img/ByteMind Solutions.png" alt="ByteMind Solutions">
+        </div>
+        <div class="footer-title">
+            <span class="footer-app">Smart Inventory</span>
+            <span class="footer-badge">v2.0</span>
+        </div>
+        <div class="footer-card">
+            <div class="footer-credits">
+                <div class="footer-person">
+                    <i class="fas fa-user-tie"></i>
+                    <span class="footer-name">Armando Yanez</span>
+                    <div class="footer-role">Desarrollador</div>
+                </div>
+                <div class="footer-divider">|</div>
+                <div class="footer-person">
+                    <i class="fas fa-store"></i>
+                    <span class="footer-name">El Establo</span>
+                    <div class="footer-role">Cliente</div>
+                </div>
+            </div>
+            <div class="footer-year">
+                <i class="fas fa-calendar-alt"></i> 2024 - Presente
+            </div>
+        </div>
+        <div class="footer-rights">
+            <i class="fas fa-copyright"></i> 2024 ByteMind Solutions. Todos los derechos reservados.
+            <br>
+            Desarrollado con <i class="fas fa-heart"></i> para El Establo
+        </div>
+    </footer>
+
+    <!-- Botón flotante resumen -->
+    <button id="floatingSummary" class="floating-summary" title="Resumen del día">
+        <i class="fas fa-clipboard-check"></i>
+    </button>
+
+    <!-- Modal para confirmaciones -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle">Confirmar acción</h3>
+            <p id="modalMessage">¿Está seguro de realizar esta acción?</p>
+            <div class="modal-actions">
+                <button id="modalConfirm" class="btn btn-danger">Confirmar</button>
+                <button id="modalCancel" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para importación -->
+    <div id="importModal" class="modal">
+        <div class="modal-content">
+            <h3><i class="fas fa-file-import"></i> Resultado de Importación</h3>
+            <div id="importResults"></div>
+            <div class="modal-actions">
+                <button id="closeImportModal" class="btn btn-primary">Cerrar</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal resumen del día -->
+    <div id="summaryModal" class="modal">
+        <div class="modal-content summary-modal">
+            <h3><i class="fas fa-clipboard-check"></i> Resumen de Acciones para Hoy</h3>
+            <div id="summaryContent"></div>
+            <div class="modal-actions">
+                <button id="executePurchases" class="btn btn-success">Ya Compré</button>
+                <button id="executeOrders" class="btn btn-primary">Ya Pedí</button>
+                <button id="exportDailyReport" class="btn btn-secondary">Exportar</button>
+                <button id="closeSummaryModal" class="btn btn-danger">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="js/firebaseConfig.js"></script>
+    <script src="js/idb.js"></script>
+    <script src="js/sync.js"></script>
+    <script src="js/database.js"></script>
+    <script src="js/security.js"></script>
+    <script src="js/calculator.js"></script>
+    <script src="js/excelHandler.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
