@@ -166,11 +166,7 @@ const DB = {
         products.push(newProduct);
         this.saveProducts(products);
         IDBStore.put('products', newProduct);
-        
-        // ❌ ELIMINADA LA LÍNEA: Sync.enqueueProductUpdate(newProduct);
-        // Ahora solo se encola localmente, pero no sube automáticamente
-        Sync.enqueueProductUpdate(newProduct); // Esto solo guarda en cola, no sube (según el nuevo sync)
-        
+        Sync.enqueueProductUpdate(newProduct);
         this.auditLog('add_product', { id: newProduct.id, name: newProduct.name });
         
         return { success: true, product: newProduct };
@@ -179,7 +175,7 @@ const DB = {
     // Actualizar producto
     updateProduct: function(id, updateData) {
         if (!this.validateProductId(id)) {
-            return { success: false, message: 'ID de producto inválido' };
+            return { success: false, message: 'ID de producto invÃ¡lido' };
         }
         const products = this.getProducts();
         const index = products.findIndex(product => product.id === id);
@@ -213,10 +209,7 @@ const DB = {
         
         this.saveProducts(products);
         IDBStore.put('products', products[index]);
-        
-        // ❌ ELIMINADA LA LÍNEA: Sync.enqueueProductUpdate(products[index]);
-        Sync.enqueueProductUpdate(products[index]); // Solo encola
-        
+        Sync.enqueueProductUpdate(products[index]);
         this.auditLog('update_product', { id, name: products[index].name });
         return { success: true, product: products[index] };
     },
@@ -224,7 +217,7 @@ const DB = {
     // Eliminar producto
     deleteProduct: function(id) {
         if (!this.validateProductId(id)) {
-            return { success: false, message: 'ID de producto inválido' };
+            return { success: false, message: 'ID de producto invÃ¡lido' };
         }
         const products = this.getProducts();
         const filteredProducts = products.filter(product => product.id !== id);
@@ -319,7 +312,6 @@ const DB = {
             finalStock: parseInt(recordData.finalStock),
             consumption: parseInt(recordData.consumption),
             weekDate: recordData.weekDate,
-            actionType: recordData.actionType || 'manual',
             createdAt: new Date().toISOString()
         };
         
@@ -617,8 +609,7 @@ const DB = {
                     purchase: buy,
                     finalStock: finalStock,
                     consumption: 0,
-                    weekDate: this.getCurrentWeekISO(),
-                    actionType: 'compra'
+                    weekDate: this.getCurrentWeekISO()
                 });
                 
                 p.currentStock = finalStock;
@@ -632,8 +623,7 @@ const DB = {
         this.saveProducts(products);
         updatedProducts.forEach(p => {
             IDBStore.put('products', p);
-            // ❌ ELIMINADA LA LÍNEA: Sync.enqueueProductUpdate(p);
-            Sync.enqueueProductUpdate(p); // Solo encola
+            Sync.enqueueProductUpdate(p);
         });
         this.auditLog('execute_purchases', { updated });
         return updated;
@@ -658,8 +648,7 @@ const DB = {
                     purchase: order,
                     finalStock: finalStock,
                     consumption: 0,
-                    weekDate: this.getCurrentWeekISO(),
-                    actionType: 'pedido'
+                    weekDate: this.getCurrentWeekISO()
                 });
                 
                 p.currentStock = finalStock;
@@ -673,8 +662,7 @@ const DB = {
         this.saveProducts(products);
         updatedProducts.forEach(p => {
             IDBStore.put('products', p);
-            // ❌ ELIMINADA LA LÍNEA: Sync.enqueueProductUpdate(p);
-            Sync.enqueueProductUpdate(p); // Solo encola
+            Sync.enqueueProductUpdate(p);
         });
         this.auditLog('execute_orders', { updated });
         return updated;
@@ -693,7 +681,6 @@ const DB = {
             finalStock: parseInt(recordData.finalStock),
             consumption: parseInt(recordData.consumption) || 0,
             weekDate: recordData.weekDate,
-            actionType: recordData.actionType || 'auto',
             createdAt: new Date().toISOString()
         };
         
@@ -704,20 +691,20 @@ const DB = {
         return { success: true, record: newRecord };
     },
     
-    // Categorías automáticas por palabras clave
+    // Categor?as autom?ticas por palabras clave
     getCategoryForName: function(name) {
         const text = String(name || '').toLowerCase();
         const categories = [
-            { name: 'VIVERES', keywords: ['harina', 'arroz', 'azucar', 'azúcar', 'pasta', 'caraotas', 'aceite', 'sal', 'cafe', 'café', 'granos'] },
-            { name: 'CARNES', keywords: ['carne', 'pollo', 'res', 'cerdo', 'chuleta', 'jamon', 'jamón'] },
+            { name: 'VIVERES', keywords: ['harina', 'arroz', 'azucar', 'az?car', 'pasta', 'caraotas', 'aceite', 'sal', 'cafe', 'caf?', 'granos'] },
+            { name: 'CARNES', keywords: ['carne', 'pollo', 'res', 'cerdo', 'chuleta', 'jamon', 'jam?n'] },
             { name: 'CERVEZAS', keywords: ['cerveza', 'pilsen', 'lager'] },
             { name: 'REFRESCOS', keywords: ['refresco', 'gaseosa', 'cola', 'soda'] },
             { name: 'HORTALIZAS', keywords: ['tomate', 'lechuga', 'cebolla', 'papa', 'zanahoria', 'ajo'] },
             { name: 'POSTRES', keywords: ['postre', 'torta', 'helado', 'galleta'] },
             { name: 'DESECHABLES', keywords: ['vaso', 'plato', 'servilleta', 'cubierto', 'bolsa', 'envase'] },
-            { name: 'LIMPIEZA', keywords: ['jabon', 'jabón', 'detergente', 'desinfectante', 'limpiador', 'cloro', 'cera', 'cepillo', 'esponja'] },
+            { name: 'LIMPIEZA', keywords: ['jabon', 'jab?n', 'detergente', 'desinfectante', 'limpiador', 'cloro', 'cera', 'cepillo', 'esponja'] },
             { name: 'LICORES', keywords: ['ron', 'vodka', 'whisky', 'tequila', 'licor'] },
-            { name: 'CHARCUTERIA', keywords: ['mortadela', 'salchicha', 'jamon', 'jamón', 'queso', 'tocino'] }
+            { name: 'CHARCUTERIA', keywords: ['mortadela', 'salchicha', 'jamon', 'jam?n', 'queso', 'tocino'] }
         ];
         
         for (const category of categories) {
@@ -761,7 +748,7 @@ const DB = {
     },
     
 
-    // Cache de cálculos
+    // Cache de c?lculos
     calcCache: {
         cache: {},
         get: function(key, ttl = 60000) {
@@ -834,7 +821,7 @@ const DB = {
         return base;
     },
 
-    // Predicción de ruptura de stock
+    // Predicci?n de ruptura de stock
     predictStockout: function(product) {
         const avgConsumption = this.getAverageConsumption(product.id);
         if (avgConsumption <= 0) return null;
@@ -864,7 +851,7 @@ const DB = {
         };
     },
 
-    // Auditoría
+    // Auditor?a
     auditLog: function(action, details) {
         const logs = JSON.parse(localStorage.getItem(this.AUDIT_KEY) || '[]');
         logs.push({
@@ -882,7 +869,7 @@ const DB = {
         return logs ? JSON.parse(logs) : [];
     },
 
-    // Backup automático diario
+    // Backup autom?tico diario
     autoBackup: function() {
         const lastBackup = localStorage.getItem('smart_inventory_last_backup');
         const now = Date.now();
@@ -948,7 +935,7 @@ const DB = {
         return { changed, count: repaired.length };
     },
 
-    // Hash simple para detectar manipulación
+    // Hash simple para detectar manipulaci?n
     calculateHash: function(text) {
         let hash = 5381;
         for (let i = 0; i < text.length; i++) {
