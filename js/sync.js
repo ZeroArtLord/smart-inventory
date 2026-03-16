@@ -66,77 +66,96 @@ const Sync = {
         });
     },
     
-    // Subir manualmente (solo cuando el usuario hace clic)
+    // Subir manualmente (con control de lotes y verificación)
     async pushToFirebase() {
         if (!this.isOnline() || !window.firebaseDb) {
             alert('Sin conexión a internet');
-            return { subidos: 0, errores: 1 };
+            return { subidos: 0, errores: 0, total: 0 };
         }
 
-        const items = await IDBStore.getAll('syncQueue');
         const localProducts = DB.getProducts();
-        const localHistory = DB.getHistory();
-        const localDaily = DB.getDailyRecords();
+        const total = localProducts.length;
+        if (total === 0) {
+            alert('No hay productos para subir');
+            return { subidos: 0, errores: 0, total: 0 };
+        }
+
+        console.log(`📤 Iniciando subida de ${total} productos a Firebase...`);
+
         let subidos = 0;
         let errores = 0;
+        const batchSize = 500;
 
         try {
-            // 1) Sincronizar productos: subir todos y borrar los que no existan localmente
-            const remoteSnapshot = await window.firebaseDb.collection('products').get();
-            const remoteIds = new Set();
-            remoteSnapshot.forEach(docSnap => remoteIds.add(docSnap.id));
-
-            const localIds = new Set(localProducts.map(p => p.id));
-
-            for (const product of localProducts) {
-                const data = {
-                    ...product,
-                    projectKey: this.projectKey,
-                    updatedAt: product.updatedAt,
-                    deviceId: this.deviceId
-                };
-                await window.firebaseDb.collection('products').doc(product.id).set(data, { merge: false });
-                subidos++;
+            for (let i = 0; i < total; i += batchSize) {
+                const batch = window.firebaseDb.batch();
+                const chunk = localProducts.slice(i, i + batchSize);
+                chunk.forEach(product => {
+                    const docRef = window.firebaseDb.collection('products').doc(product.id);
+                    const data = {
+                        ...product,
+                        projectKey: this.projectKey,
+                        updatedAt: product.updatedAt || new Date().toISOString(),
+                        deviceId: this.deviceId
+                    };
+                    batch.set(docRef, data, { merge: false });
+                });
+                await batch.commit();
+                subidos += chunk.length;
+                console.log(`✅ Lote ${Math.floor(i / batchSize) + 1} subido (${chunk.length} productos)`);
             }
 
-            for (const remoteId of remoteIds) {
-                if (!localIds.has(remoteId)) {
-                    await window.firebaseDb.collection('products').doc(remoteId).delete();
-                    subidos++;
+            try {
+                const history = DB.getHistory();
+                const daily = DB.getDailyRecords();
+                if (history.length > 0) {
+                    await window.firebaseDb.collection('meta').doc('history').set({
+                        projectKey: this.projectKey,
+                        updatedAt: new Date().toISOString(),
+                        deviceId: this.deviceId,
+                        data: history
+                    }, { merge: false });
                 }
+                if (daily.length > 0) {
+                    await window.firebaseDb.collection('meta').doc('daily').set({
+                        projectKey: this.projectKey,
+                        updatedAt: new Date().toISOString(),
+                        deviceId: this.deviceId,
+                        data: daily
+                    }, { merge: false });
+                }
+            } catch (metaError) {
+                console.warn('Error al subir metadatos (no crítico):', metaError);
             }
 
-            // 2) Sincronizar historial y registro diario como snapshots completos
-            const meta = window.firebaseDb.collection('meta');
-            await meta.doc('history').set({
-                projectKey: this.projectKey,
-                updatedAt: new Date().toISOString(),
-                deviceId: this.deviceId,
-                data: localHistory
-            }, { merge: false });
-            subidos++;
-
-            await meta.doc('daily').set({
-                projectKey: this.projectKey,
-                updatedAt: new Date().toISOString(),
-                deviceId: this.deviceId,
-                data: localDaily
-            }, { merge: false });
-            subidos++;
-
-            // 3) Limpiar cola local (ya subimos un snapshot completo)
-            for (const item of items) {
-                await IDBStore.delete('syncQueue', item.id);
+            const snapshot = await window.firebaseDb.collection('products').get();
+            const remoteCount = snapshot.size;
+            if (remoteCount === total) {
+                console.log(`🎉 ¡Subida exitosa! ${remoteCount} productos en Firebase.`);
+                try {
+                    const items = await IDBStore.getAll('syncQueue');
+                    for (const item of items) {
+                        await IDBStore.delete('syncQueue', item.id);
+                    }
+                } catch (e) {}
+                localStorage.removeItem('checklist_draft');
+            } else {
+                console.error(`❌ Discrepancia: Firebase tiene ${remoteCount} productos, pero se intentaron subir ${total}.`);
+                errores = total - remoteCount;
             }
         } catch (error) {
-            console.error('Error subiendo datos:', error);
-            errores++;
+            console.error('❌ Error grave en pushToFirebase:', error);
+            errores = total - subidos;
         }
 
-        // Después de subir, descargar para asegurar consistencia
-        await this.pullFromFirebase();
+        const resultado = { subidos, errores, total };
+        if (resultado.errores > 0) {
+            alert(`⚠️ Subida incompleta: ${subidos} de ${total} productos subidos. Revisa la consola.`);
+        } else if (subidos === total) {
+            alert(`✅ ${subidos} productos subidos correctamente.`);
+        }
 
-        return { subidos, errores };
+        return resultado;
     },
     
     // DESCARGAR TODO de Firebase y SOBRESCRIBIR localStorage

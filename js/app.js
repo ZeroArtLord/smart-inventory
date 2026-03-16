@@ -224,12 +224,13 @@ const App = {
                 }
                 
                 if (confirm('¿Subir todos los cambios locales a Firebase? Esto publicará tus productos en la nube.')) {
+                    this.showToast('Subiendo productos...', 'info');
                     const resultado = await Sync.pushToFirebase();
-                    if (resultado.subidos > 0) {
+                    if (resultado.subidos > 0 && resultado.errores === 0) {
                         this.showToast(`${resultado.subidos} productos subidos correctamente`, 'success');
                         this.limpiarBorradorChecklist();
                     } else if (resultado.errores > 0) {
-                        this.showToast(`Error al subir ${resultado.errores} productos`, 'error');
+                        this.showToast(`Error al subir ${resultado.errores} de ${resultado.total || resultado.subidos} productos`, 'error');
                     } else {
                         this.showToast('No había cambios pendientes', 'info');
                     }
@@ -324,6 +325,57 @@ const App = {
         const exportHistory = document.getElementById('exportHistory');
         if (exportHistory) {
             exportHistory.addEventListener('click', () => this.exportHistory());
+        }
+
+        const verifyFirebaseBtn = document.getElementById('verifyFirebase');
+        if (verifyFirebaseBtn) {
+            verifyFirebaseBtn.addEventListener('click', async () => {
+                if (!Sync.isOnline()) {
+                    alert('No hay conexión a internet');
+                    return;
+                }
+                this.showToast('Verificando subida...', 'info');
+                const localCount = DB.getProducts().length;
+                try {
+                    const snapshot = await window.firebaseDb.collection('products').get();
+                    const remoteCount = snapshot.size;
+                    if (remoteCount === localCount) {
+                        this.showToast(`✅ Firebase tiene ${remoteCount} productos (OK)`, 'success');
+                    } else {
+                        this.showToast(`⚠️ Firebase ${remoteCount} vs Local ${localCount}`, 'warning');
+                    }
+                } catch (e) {
+                    console.error('Error verificando Firebase:', e);
+                    this.showToast('Error al verificar Firebase', 'error');
+                }
+            });
+        }
+
+        const clearLocalBtn = document.getElementById('clearLocalData');
+        if (clearLocalBtn) {
+            clearLocalBtn.addEventListener('click', async () => {
+                if (!confirm('¿Eliminar todos los datos locales de este dispositivo? Esto borrará productos, historial y borradores.')) {
+                    return;
+                }
+                try {
+                    localStorage.clear();
+                    if (window.indexedDB && indexedDB.deleteDatabase) {
+                        indexedDB.deleteDatabase('smart_inventory_db');
+                    }
+                    if (window.DB && DB.init) {
+                        DB.init();
+                    }
+                    this.updateDraftBadge();
+                    this.cargarChecklist();
+                    this.cargarListaProductos();
+                    this.actualizarDashboard();
+                    this.cargarSelectores();
+                    this.showToast('Datos locales eliminados', 'success');
+                } catch (e) {
+                    console.error('Error limpiando datos locales:', e);
+                    this.showToast('Error al limpiar datos locales', 'error');
+                }
+            });
         }
 
         const exportReportPdf = document.getElementById('exportReportPdf');
