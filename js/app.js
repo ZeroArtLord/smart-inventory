@@ -230,7 +230,11 @@ const App = {
                         this.showToast(`${resultado.subidos} productos subidos correctamente`, 'success');
                         this.limpiarBorradorChecklist();
                     } else if (resultado.errores > 0) {
-                        this.showToast(`Error al subir ${resultado.errores} de ${resultado.total || resultado.subidos} productos`, 'error');
+                        const remotoTxt = (resultado.remoteCount !== null && resultado.remoteCount !== undefined)
+                            ? ` (Firebase: ${resultado.remoteCount})`
+                            : '';
+                        const totalTxt = resultado.total ?? resultado.subidos;
+                        this.showToast(`Error al subir ${resultado.errores} de ${totalTxt} productos${remotoTxt}`, 'error');
                     } else {
                         this.showToast('No había cambios pendientes', 'info');
                     }

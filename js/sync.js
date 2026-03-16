@@ -73,17 +73,26 @@ const Sync = {
             return { subidos: 0, errores: 0, total: 0 };
         }
 
-        const localProducts = DB.getProducts();
+        const rawProducts = DB.getProducts();
+        const totalRaw = rawProducts.length;
+        const { products: localProducts, duplicates, invalidIds } = this.normalizeProductsForUpload(rawProducts);
         const total = localProducts.length;
         if (total === 0) {
             alert('No hay productos para subir');
             return { subidos: 0, errores: 0, total: 0 };
         }
 
-        console.log(`📤 Iniciando subida de ${total} productos a Firebase...`);
+        console.log(`📤 Iniciando subida de ${total} productos a Firebase... (local: ${totalRaw})`);
+        if (duplicates.length > 0) {
+            console.warn('⚠️ IDs duplicados detectados (se sube la última versión):', duplicates);
+        }
+        if (invalidIds.length > 0) {
+            console.warn('⚠️ Productos sin ID válido fueron omitidos:', invalidIds);
+        }
 
         let subidos = 0;
         let errores = 0;
+        let remoteCount = null;
         const batchSize = 500;
 
         try {
@@ -92,12 +101,12 @@ const Sync = {
                 const chunk = localProducts.slice(i, i + batchSize);
                 chunk.forEach(product => {
                     const docRef = window.firebaseDb.collection('products').doc(product.id);
-                    const data = {
+                    const data = this.sanitizeForFirestore({
                         ...product,
                         projectKey: this.projectKey,
                         updatedAt: product.updatedAt || new Date().toISOString(),
                         deviceId: this.deviceId
-                    };
+                    });
                     batch.set(docRef, data, { merge: false });
                 });
                 await batch.commit();
@@ -129,7 +138,7 @@ const Sync = {
             }
 
             const snapshot = await window.firebaseDb.collection('products').get();
-            const remoteCount = snapshot.size;
+            remoteCount = snapshot.size;
             if (remoteCount === total) {
                 console.log(`🎉 ¡Subida exitosa! ${remoteCount} productos en Firebase.`);
                 try {
@@ -141,20 +150,21 @@ const Sync = {
                 localStorage.removeItem('checklist_draft');
             } else {
                 console.error(`❌ Discrepancia: Firebase tiene ${remoteCount} productos, pero se intentaron subir ${total}.`);
-                errores = total - remoteCount;
+                errores = Math.max(0, total - remoteCount);
             }
         } catch (error) {
             console.error('❌ Error grave en pushToFirebase:', error);
-            errores = total - subidos;
+            errores = Math.max(1, total - subidos);
         }
 
-        const resultado = { subidos, errores, total };
+        const resultado = { subidos, errores, total, remoteCount, totalRaw };
         if (resultado.errores > 0) {
-            alert(`⚠️ Subida incompleta: ${subidos} de ${total} productos subidos. Revisa la consola.`);
+            const remotoTxt = (remoteCount !== null) ? ` Firebase: ${remoteCount}.` : '';
+            alert(`⚠️ Subida incompleta: ${subidos} de ${total} productos subidos.${remotoTxt} Revisa la consola.`);
         } else if (subidos === total) {
             alert(`✅ ${subidos} productos subidos correctamente.`);
         }
-
+        
         return resultado;
     },
     
@@ -220,5 +230,40 @@ const Sync = {
             console.error('❌ Error al descargar de Firebase:', error);
             return 0;
         }
+    }
+    ,
+
+    sanitizeForFirestore(obj) {
+        if (obj === null || obj === undefined) return null;
+        if (Array.isArray(obj)) {
+            return obj.map(item => this.sanitizeForFirestore(item)).filter(v => v !== undefined);
+        }
+        if (typeof obj === 'object') {
+            const out = {};
+            Object.keys(obj).forEach(key => {
+                const val = this.sanitizeForFirestore(obj[key]);
+                if (val !== undefined) out[key] = val;
+            });
+            return out;
+        }
+        return obj;
+    },
+
+    normalizeProductsForUpload(rawProducts) {
+        const map = new Map();
+        const duplicates = [];
+        const invalidIds = [];
+        rawProducts.forEach((p, idx) => {
+            const id = (p && p.id !== undefined && p.id !== null) ? String(p.id).trim() : '';
+            if (!id) {
+                invalidIds.push({ index: idx, name: p?.name || '', id: p?.id });
+                return;
+            }
+            if (map.has(id)) {
+                duplicates.push(id);
+            }
+            map.set(id, p);
+        });
+        return { products: Array.from(map.values()), duplicates, invalidIds };
     }
 };
