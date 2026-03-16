@@ -58,6 +58,9 @@
                 <button class="nav-btn" data-section="history">
                     <i class="fas fa-history"></i> Historial
                 </button>
+                <button class="nav-btn" data-section="reports">
+                    <i class="fas fa-file-lines"></i> Reportes
+                </button>
             </div>
             <button class="menu-toggle" id="menuToggle">
                 <i class="fas fa-bars"></i>
@@ -70,7 +73,10 @@
         <!-- Checklist (sección activa) -->
         <section id="checklist" class="section active">
             <div class="section-header">
-                <h2><i class="fas fa-list-check"></i> Checklist de Inventario</h2>
+                <h2>
+                    <i class="fas fa-list-check"></i> Checklist de Inventario
+                    <span id="draftBadge" class="draft-badge hidden">Borrador</span>
+                </h2>
                 <div class="action-buttons">
                     <button id="toggleComparison" class="btn btn-secondary">
                         <i class="fas fa-chart-simple"></i> Comparar semana anterior
@@ -138,6 +144,9 @@
                     </button>
                     <button id="exportExcel" class="btn btn-success">
                         <i class="fas fa-file-export"></i> Exportar Excel
+                    </button>
+                    <button id="forcePullFirebase" class="btn btn-secondary">
+                        <i class="fas fa-cloud-download-alt"></i> Forzar descarga
                     </button>
                     <button id="exportAuditLogs" class="btn btn-secondary">
                         <i class="fas fa-clipboard-list"></i> Exportar Auditor?a
@@ -484,6 +493,37 @@
                 </div>
             </div>
         </section>
+
+        <!-- Sección de Reportes -->
+        <section id="reports" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-chart-pie"></i> Reportes</h2>
+                <div class="action-buttons">
+                    <button id="exportReportPdf" class="btn btn-primary">
+                        <i class="fas fa-file-pdf"></i> Exportar PDF
+                    </button>
+                </div>
+            </div>
+
+            <div class="reports-tabs">
+                <button class="btn btn-secondary report-tab active" data-report="compras">
+                    <i class="fas fa-cart-shopping"></i> Compras pendientes
+                </button>
+                <button class="btn btn-secondary report-tab" data-report="pedidos">
+                    <i class="fas fa-truck"></i> Pedidos pendientes
+                </button>
+                <button class="btn btn-secondary report-tab" data-report="movimientos">
+                    <i class="fas fa-clipboard-list"></i> Movimientos
+                </button>
+                <button class="btn btn-secondary report-tab" data-report="sin-movimiento">
+                    <i class="fas fa-ban"></i> Sin movimiento
+                </button>
+            </div>
+
+            <div id="reportContent" class="report-content">
+                <!-- Se llena con JS -->
+            </div>
+        </section>
     </main>
 
     <!-- Footer con logo y cr?ditos -->
@@ -607,6 +647,8 @@
     <!-- Scripts -->
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="js/firebaseConfig.js"></script>
     <script src="js/idb.js"></script>
     <script src="js/sync.js"></script>

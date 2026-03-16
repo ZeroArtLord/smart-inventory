@@ -12,6 +12,10 @@ const App = {
     selectedProductIds: new Set(),
     sortState: {},
     comparisonEnabled: false,
+    maxWarningShown: new Set(),
+    reportMovementProductId: '',
+    draftSaveTimer: null,
+    draftRestored: false,
     rateLimit: {
         count: 0,
         lastTime: Date.now()
@@ -51,6 +55,8 @@ const App = {
         this.initKeyboardShortcuts();
         this.initInactivityMonitor();
         this.checkStorageLimit();
+        this.initReports();
+        this.updateDraftBadge();
         DB.autoBackup();
     },
 
@@ -78,6 +84,24 @@ const App = {
         document.getElementById('exportExcel').addEventListener('click', () => {
             ExcelHandler.exportToExcel();
         });
+        
+        const forcePullBtn = document.getElementById('forcePullFirebase');
+        if (forcePullBtn) {
+            forcePullBtn.addEventListener('click', async () => {
+                if (!Sync.isOnline()) {
+                    alert('No hay conexión a internet');
+                    return;
+                }
+                if (confirm('¿Forzar descarga desde Firebase? Esto sobrescribirá los datos locales con los de la nube.')) {
+                    const count = await Sync.pullFromFirebase();
+                    if (count > 0) {
+                        this.showToast(`${count} productos actualizados`, 'success');
+                    } else {
+                        this.showToast('No se encontraron productos en Firebase', 'info');
+                    }
+                }
+            });
+        }
 
         // Actualizar categoría automática en formulario
         document.getElementById('productName').addEventListener('input', (e) => {
@@ -139,6 +163,8 @@ const App = {
                 this.productoAEliminar = null;
                 this.cerrarModal('confirmModal');
                 this.actualizarDashboard();
+                this.cargarListaProductos();
+                this.cargarChecklist(this.currentChecklistCategory);
                 this.cargarSelectores();
             }
         });
@@ -188,14 +214,22 @@ const App = {
             restoreBackupBtn.addEventListener('click', () => this.restoreLatestBackup());
         }
 
-        // Botón de sincronización manual (nuevo)
+        // Botón de sincronización manual
         const syncBtn = document.getElementById('syncToFirebase');
         if (syncBtn) {
             syncBtn.addEventListener('click', async () => {
-                if (confirm('¿Subir todos los cambios locales a Firebase? Esto publicará tus productos.')) {
-                    const subidos = await Sync.flushQueue();
-                    if (subidos > 0) {
-                        this.showToast(`${subidos} productos subidos`, 'success');
+                if (!Sync.isOnline()) {
+                    alert('No hay conexión a internet');
+                    return;
+                }
+                
+                if (confirm('¿Subir todos los cambios locales a Firebase? Esto publicará tus productos en la nube.')) {
+                    const resultado = await Sync.pushToFirebase();
+                    if (resultado.subidos > 0) {
+                        this.showToast(`${resultado.subidos} productos subidos correctamente`, 'success');
+                        this.limpiarBorradorChecklist();
+                    } else if (resultado.errores > 0) {
+                        this.showToast(`Error al subir ${resultado.errores} productos`, 'error');
                     } else {
                         this.showToast('No había cambios pendientes', 'info');
                     }
@@ -292,6 +326,15 @@ const App = {
             exportHistory.addEventListener('click', () => this.exportHistory());
         }
 
+        const exportReportPdf = document.getElementById('exportReportPdf');
+        if (exportReportPdf) {
+            exportReportPdf.addEventListener('click', () => this.exportCurrentReportPdf());
+        }
+
+        document.querySelectorAll('.report-tab').forEach(btn => {
+            btn.addEventListener('click', (e) => this.selectReportTab(e));
+        });
+
         const selectAll = document.getElementById('selectAllProducts');
         if (selectAll) {
             selectAll.addEventListener('change', (e) => this.toggleSelectAll(e.target.checked));
@@ -313,6 +356,7 @@ const App = {
         }
 
         this.initSortableTables();
+        this.disableNumberWheel(document);
     },
 
     // Cambiar entre secciones
@@ -340,6 +384,7 @@ const App = {
             this.filtrarProductos();
         }
         if (seccion === 'history') this.cargarSelectores();
+        if (seccion === 'reports') this.renderCurrentReport();
     },
 
     // Actualizar dashboard
@@ -823,6 +868,7 @@ const App = {
             this.ocultarFormularioProducto();
             this.actualizarDashboard();
             this.cargarListaProductos();
+            this.cargarChecklist(this.currentChecklistCategory);
             this.cargarSelectores();
         } else {
             alert('Error: ' + resultado.message);
@@ -932,6 +978,7 @@ const App = {
             card.className = `checklist-card ${status.status}`;
             card.dataset.productId = prod.id;
             card.dataset.row = rowIndex;
+            card.dataset.status = status.status;
             
             const header = document.createElement('div');
             header.className = 'checklist-header';
@@ -963,6 +1010,7 @@ const App = {
                 <span class="checklist-status">${status.icon} ${status.label}</span>
                 <span class="rec-hint" data-recommend="${autoRecommend}">SUGERIDO: ${DB.formatQuantity(autoRecommend, unit)}</span>
                 <span class="rec-warning">Comprando menos de lo sugerido</span>
+                <span class="max-warning"></span>
             `;
             
             if (this.comparisonEnabled && lastRecord) {
@@ -980,6 +1028,7 @@ const App = {
         
         container.appendChild(fragment);
         this.attachChecklistEvents(container);
+        this.restaurarBorradorChecklist();
         this.updateAllRecommendationWarnings();
         this.updateChecklistProgress();
         
@@ -1022,11 +1071,13 @@ const App = {
             input.addEventListener('input', (e) => this.debouncedSaveChecklist(e));
             input.addEventListener('blur', (e) => this.saveChecklistImmediately(e));
             input.addEventListener('input', () => this.updateRecommendationWarningForInput(input));
+            input.addEventListener('input', () => this.scheduleDraftSave());
             if (input.dataset.field === 'stock') {
                 // Actualiza sugerencias en tiempo real al cambiar stock
                 input.addEventListener('input', (e) => this.actualizarSugerenciaPorStock(e.target));
             }
         });
+        this.disableNumberWheel(root);
     },
     
     setupAutoSave: function() {
@@ -1118,40 +1169,12 @@ const App = {
         if (!product) return;
         
         const stock = this.getChecklistValue(inputs, 'stock');
-        let buy = this.getChecklistValue(inputs, 'buy');
-        let order = this.getChecklistValue(inputs, 'order');
+        const buy = this.getChecklistValue(inputs, 'buy');
+        const order = this.getChecklistValue(inputs, 'order');
         
         if (stock < 0 || buy < 0 || order < 0) {
             this.showToast('No se permiten valores negativos.', 'error');
             return;
-        }
-        
-        const maxStock = DB.normalizeNumber(product.maxStock);
-        if (maxStock > 0 && (stock + buy + order) > maxStock) {
-            const allowedExtra = Math.max(0, maxStock - stock);
-            let newBuy = buy;
-            let newOrder = order;
-            
-            if (newBuy + newOrder > allowedExtra) {
-                const excess = (newBuy + newOrder) - allowedExtra;
-                // Reducir primero PEDIR y luego COMPRAR
-                if (newOrder >= excess) {
-                    newOrder -= excess;
-                } else {
-                    const remaining = excess - newOrder;
-                    newOrder = 0;
-                    newBuy = Math.max(0, newBuy - remaining);
-                }
-            }
-            
-            // Actualizar inputs
-            this.setChecklistValue(inputs, 'buy', newBuy);
-            this.setChecklistValue(inputs, 'order', newOrder);
-            
-            buy = newBuy;
-            order = newOrder;
-            
-            this.showToast('Ajusté COMPRAR/PEDIR para no exceder el máximo.', 'warning');
         }
         
         DB.updateProduct(productId, { currentStock: stock });
@@ -1166,8 +1189,39 @@ const App = {
             orderToday: order,
             stockAfter: stock
         });
+
+        // Aprendizaje automático semanal desde checklist
+        const semanaActual = Calculator.getCurrentWeek();
+        const history = DB.getHistoryByProduct(productId);
+        const ultimoRegistro = DB.getLatestHistoryRecord(history);
+        if (!ultimoRegistro || ultimoRegistro.weekDate !== semanaActual) {
+            const stockAnterior = ultimoRegistro ? DB.normalizeNumber(ultimoRegistro.finalStock) : 0;
+            const movimientos = history.filter(h =>
+                (h.actionType === 'compra' || h.actionType === 'pedido') &&
+                (ultimoRegistro ? new Date(h.createdAt) > new Date(ultimoRegistro.createdAt) : true)
+            );
+            const comprasReales = movimientos
+                .filter(h => h.actionType === 'compra')
+                .reduce((sum, h) => sum + DB.normalizeNumber(h.purchase), 0);
+            const pedidosReales = movimientos
+                .filter(h => h.actionType === 'pedido')
+                .reduce((sum, h) => sum + DB.normalizeNumber(h.purchase), 0);
+            const consumo = stockAnterior + comprasReales + pedidosReales - stock;
+            DB.addHistoryRecord({
+                productId: productId,
+                productName: product.name,
+                initialStock: stockAnterior,
+                purchase: comprasReales + pedidosReales,
+                finalStock: stock,
+                consumption: Math.max(0, consumo),
+                weekDate: semanaActual,
+                actionType: 'auto'
+            });
+        }
         this.markChecklistProgress(productId);
         Array.from(inputs).forEach(input => this.updateRecommendationWarningForInput(input));
+        this.updateMaxWarningForInputs(inputs, true);
+        this.actualizarEstadoTarjeta(row, stock);
         
         const card = document.querySelector(`.checklist-card[data-row="${row}"]`);
         if (card) {
@@ -1176,6 +1230,10 @@ const App = {
         }
         
         this.actualizarDashboard();
+        const reportsSection = document.getElementById('reports');
+        if (reportsSection && reportsSection.classList.contains('active')) {
+            this.renderCurrentReport();
+        }
     },
     
     getChecklistValue: function(inputs, field) {
@@ -1219,6 +1277,8 @@ const App = {
             if (hint) hint.classList.remove('warn');
             if (warn) warn.classList.remove('show');
         }
+
+        this.updateMaxWarningForInputs(inputs, false);
     },
 
     // Recalcular sugerencias cuando cambia el stock (sin guardar)
@@ -1263,6 +1323,503 @@ const App = {
         }
         
         this.updateRecommendationWarningForInput(stockInput);
+        this.actualizarEstadoTarjeta(row, nuevoStock);
+    },
+
+    updateMaxWarningForInputs: function(inputs, showToast) {
+        if (!inputs || inputs.length === 0) return;
+        const productId = inputs[0].dataset.productId;
+        const product = DB.getProductById(productId);
+        if (!product) return;
+        
+        const row = inputs[0].dataset.row;
+        const stock = this.getChecklistValue(inputs, 'stock');
+        const buy = this.getChecklistValue(inputs, 'buy');
+        const order = this.getChecklistValue(inputs, 'order');
+        const maxStock = DB.normalizeNumber(product.maxStock);
+        const totalStock = stock + buy + order;
+        const exceeds = maxStock > 0 && totalStock > maxStock;
+        
+        const stockInput = Array.from(inputs).find(i => i.dataset.field === 'stock');
+        const buyInput = Array.from(inputs).find(i => i.dataset.field === 'buy');
+        const orderInput = Array.from(inputs).find(i => i.dataset.field === 'order');
+        const stockExceeds = maxStock > 0 && stock > maxStock;
+        const buyOrderExceeds = maxStock > 0 && (stock + buy + order) > maxStock && (buy + order) > 0;
+        if (stockInput) stockInput.classList.toggle('exceeds-max', stockExceeds);
+        if (buyInput) buyInput.classList.toggle('exceeds-max', buyOrderExceeds && buy > 0);
+        if (orderInput) orderInput.classList.toggle('exceeds-max', buyOrderExceeds && order > 0);
+        
+        const card = document.querySelector(`.checklist-card[data-row="${row}"]`);
+        if (card) {
+            card.classList.toggle('exceeds-max', exceeds);
+            const warning = card.querySelector('.max-warning');
+            if (warning) {
+                if (stockExceeds && buyOrderExceeds) {
+                    warning.textContent = '⚠️ Stock y compras superan el máximo';
+                } else if (stockExceeds) {
+                    warning.textContent = '⚠️ Stock actual supera el máximo permitido';
+                } else if (buyOrderExceeds) {
+                    warning.textContent = '⚠️ La compra/pedido supera el máximo disponible';
+                } else {
+                    warning.textContent = '';
+                }
+            }
+        }
+        
+        if (exceeds && showToast) {
+            if (!this.maxWarningShown.has(productId)) {
+                this.showToast('Estás superando el stock máximo.', 'warning');
+                this.maxWarningShown.add(productId);
+            }
+        } else if (!exceeds) {
+            this.maxWarningShown.delete(productId);
+        }
+    },
+
+    actualizarEstadoTarjeta: function(row, nuevoStock = null) {
+        const inputs = document.querySelectorAll(`.checklist-inputs input[data-row="${row}"]`);
+        if (!inputs || inputs.length === 0) return;
+        const productId = inputs[0].dataset.productId;
+        const product = DB.getProductById(productId);
+        if (!product) return;
+        
+        const stock = (nuevoStock !== null && nuevoStock !== undefined)
+            ? nuevoStock
+            : this.getChecklistValue(inputs, 'stock');
+        const tmpProduct = { ...product, currentStock: stock };
+        const estado = DB.getProductStatus(tmpProduct);
+        
+        const card = document.querySelector(`.checklist-card[data-row="${row}"]`);
+        if (!card) return;
+        const prevStatus = card.dataset.status || '';
+        card.classList.remove('good', 'low', 'critical');
+        card.classList.add(estado.status);
+        const statusSpan = card.querySelector('.checklist-status');
+        if (statusSpan) statusSpan.textContent = `${estado.icon} ${estado.label}`;
+        if (prevStatus && prevStatus !== estado.status) {
+            card.classList.add('status-flash');
+            setTimeout(() => card.classList.remove('status-flash'), 300);
+        }
+        card.dataset.status = estado.status;
+    },
+
+    initReports: function() {
+        this.currentReport = 'compras';
+        this.renderCurrentReport();
+    },
+
+    selectReportTab: function(e) {
+        const btn = e.target.closest('.report-tab');
+        if (!btn) return;
+        document.querySelectorAll('.report-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.currentReport = btn.dataset.report || 'compras';
+        this.renderCurrentReport();
+    },
+
+    renderCurrentReport: function() {
+        switch (this.currentReport) {
+            case 'pedidos':
+                this.renderReportPedidos();
+                break;
+            case 'movimientos':
+                this.renderReportMovimientos();
+                break;
+            case 'sin-movimiento':
+                this.renderReportSinMovimiento();
+                break;
+            case 'compras':
+            default:
+                this.renderReportCompras();
+                break;
+        }
+    },
+
+    renderReportCompras: function() {
+        const container = document.getElementById('reportContent');
+        if (!container) return;
+        const products = DB.getProducts().filter(p => (p.actionsPending?.buy || 0) > 0);
+        const rows = products.map(p => {
+            const estado = DB.getProductStatus(p);
+            const unit = DB.normalizeUnit(p.unit);
+            return `
+                <tr>
+                    <td>${p.name}</td>
+                    <td>${DB.formatQuantity(p.actionsPending.buy, unit)}</td>
+                    <td>${unit}</td>
+                    <td>${estado.icon} ${estado.label}</td>
+                    <td>${p.supplier || '-'}</td>
+                    <td>
+                        <button class="btn btn-success btn-sm report-action" data-action="comprar" data-id="${p.id}">
+                            <i class="fas fa-check"></i> Marcar comprado
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        container.innerHTML = `
+            <div class="report-header">
+                <h3>Compras pendientes</h3>
+                <p>Productos con compras pendientes en mercado.</p>
+            </div>
+            <div class="table-container report-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Cantidad</th>
+                            <th>Unidad</th>
+                            <th>Estado</th>
+                            <th>Proveedor</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || '<tr><td colspan="6">No hay compras pendientes.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        this.attachReportActions();
+    },
+
+    renderReportPedidos: function() {
+        const container = document.getElementById('reportContent');
+        if (!container) return;
+        const products = DB.getProducts().filter(p => (p.actionsPending?.order || 0) > 0);
+        const rows = products.map(p => {
+            const estado = DB.getProductStatus(p);
+            const unit = DB.normalizeUnit(p.unit);
+            return `
+                <tr>
+                    <td>${p.name}</td>
+                    <td>${DB.formatQuantity(p.actionsPending.order, unit)}</td>
+                    <td>${unit}</td>
+                    <td>${estado.icon} ${estado.label}</td>
+                    <td>${p.supplier || '-'}</td>
+                    <td>
+                        <button class="btn btn-success btn-sm report-action" data-action="pedir" data-id="${p.id}">
+                            <i class="fas fa-check"></i> Marcar pedido
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        container.innerHTML = `
+            <div class="report-header">
+                <h3>Pedidos pendientes</h3>
+                <p>Productos con pedidos pendientes a proveedores.</p>
+            </div>
+            <div class="table-container report-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Cantidad</th>
+                            <th>Unidad</th>
+                            <th>Estado</th>
+                            <th>Proveedor</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || '<tr><td colspan="6">No hay pedidos pendientes.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        this.attachReportActions();
+    },
+
+    renderReportMovimientos: function() {
+        const container = document.getElementById('reportContent');
+        if (!container) return;
+        const products = DB.getProducts();
+        const history = DB.getHistory().slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        const selectOptions = ['<option value="">Todos los productos</option>']
+            .concat(products.map(p => `<option value="${p.id}">${p.name}</option>`))
+            .join('');
+        const filterId = this.reportMovementProductId || '';
+        const filtered = filterId ? history.filter(h => h.productId === filterId) : history;
+        const rows = filtered.map(h => {
+            const compras = h.actionType === 'compra' ? (h.purchase ?? 0) : (h.actionType === 'manual' || h.actionType === 'auto' ? (h.purchase ?? 0) : 0);
+            const pedidos = h.actionType === 'pedido' ? (h.purchase ?? 0) : 0;
+            return `
+                <tr>
+                    <td>${h.weekDate || '-'}</td>
+                    <td>${h.productName || '-'}</td>
+                    <td>${h.initialStock ?? 0}</td>
+                    <td>${compras}</td>
+                    <td>${pedidos}</td>
+                    <td>${h.finalStock ?? 0}</td>
+                    <td>${h.consumption ?? 0}</td>
+                    <td>${h.actionType || 'manual'}</td>
+                </tr>
+            `;
+        }).join('');
+        container.innerHTML = `
+            <div class="report-header">
+                <h3>Movimientos</h3>
+                <p>Historial de consumos, compras y pedidos.</p>
+                <div class="report-filter">
+                    <label for="movementFilter">Producto:</label>
+                    <select id="movementFilter" class="filter-select">
+                        ${selectOptions}
+                    </select>
+                </div>
+            </div>
+            <div class="table-container report-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Semana</th>
+                            <th>Producto</th>
+                            <th>Stock Inicial</th>
+                            <th>Compras</th>
+                            <th>Pedidos</th>
+                            <th>Stock Final</th>
+                            <th>Consumo</th>
+                            <th>Tipo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || '<tr><td colspan="8">No hay movimientos registrados.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        const movementFilter = document.getElementById('movementFilter');
+        if (movementFilter) {
+            movementFilter.value = filterId;
+            movementFilter.addEventListener('change', (e) => {
+                this.reportMovementProductId = e.target.value || '';
+                this.renderReportMovimientos();
+            });
+        }
+    },
+
+    renderReportSinMovimiento: function() {
+        const container = document.getElementById('reportContent');
+        if (!container) return;
+        const results = DB.getProductsWithoutMovement(4);
+        const rows = results.map(item => {
+            const unit = DB.normalizeUnit(item.product.unit);
+            const last = item.lastMovement ? item.lastMovement : 'Sin registros';
+            return `
+                <tr>
+                    <td>${item.product.name}</td>
+                    <td>${DB.formatQuantity(item.product.currentStock, unit)}</td>
+                    <td>${last}</td>
+                </tr>
+            `;
+        }).join('');
+        container.innerHTML = `
+            <div class="report-header">
+                <h3>Productos sin movimiento</h3>
+                <p>Consumo cero en las últimas 4 semanas.</p>
+            </div>
+            <div class="table-container report-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Stock actual</th>
+                            <th>Último movimiento</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || '<tr><td colspan="3">No hay productos sin movimiento.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    },
+
+    attachReportActions: function() {
+        document.querySelectorAll('.report-action').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.dataset.id;
+                const action = btn.dataset.action;
+                if (!id) return;
+                if (action === 'comprar') {
+                    const res = DB.executePurchaseForProduct(id);
+                    if (res.success) {
+                        this.showToast('Compra registrada', 'success');
+                        this.limpiarBorradorChecklist();
+                    }
+                } else if (action === 'pedir') {
+                    const res = DB.executeOrderForProduct(id);
+                    if (res.success) {
+                        this.showToast('Pedido registrado', 'success');
+                        this.limpiarBorradorChecklist();
+                    }
+                }
+                this.actualizarDashboard();
+                this.cargarChecklist(this.currentChecklistCategory);
+                this.cargarListaProductos();
+                this.cargarSelectores();
+                this.renderCurrentReport();
+            });
+        });
+    },
+
+    getCurrentReportTitle: function() {
+        switch (this.currentReport) {
+            case 'pedidos': return 'Pedidos pendientes';
+            case 'movimientos': return 'Movimientos';
+            case 'sin-movimiento': return 'Productos sin movimiento';
+            case 'compras':
+            default: return 'Compras pendientes';
+        }
+    },
+
+    exportCurrentReportPdf: async function() {
+        const content = document.getElementById('reportContent');
+        if (!content || typeof html2canvas === 'undefined' || !window.jspdf) {
+            alert('No se pudo exportar el PDF');
+            return;
+        }
+        const title = this.getCurrentReportTitle();
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'report-export';
+        wrapper.style.padding = '24px';
+        wrapper.style.background = '#ffffff';
+        wrapper.style.color = '#1a2b4c';
+        wrapper.style.width = '900px';
+        wrapper.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px;">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <img src="img/ByteMind Solutions.png" alt="ByteMind Solutions" style="height:48px;" />
+                    <div>
+                        <div style="font-size:20px;font-weight:700;">Smart Inventory</div>
+                        <div style="font-size:12px;color:#4a5b7c;">${title}</div>
+                    </div>
+                </div>
+                <div style="font-size:12px;color:#4a5b7c;text-align:right;">
+                    ${this.getTodayDate()}<br>
+                    ByteMind Solutions
+                </div>
+            </div>
+            <div>${content.innerHTML}</div>
+            <div style="margin-top:16px;border-top:1px solid #dee2e6;padding-top:8px;font-size:11px;color:#4a5b7c;text-align:center;">
+                Smart Inventory - Desarrollado por Armando Yanez para El Establo · ${new Date().getFullYear()} · Todos los derechos reservados
+            </div>
+        `;
+        document.body.appendChild(wrapper);
+        
+        const canvas = await html2canvas(wrapper, { scale: 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const imgWidth = pageWidth - 20;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        let position = 10;
+        let heightLeft = imgHeight;
+        
+        pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight - 20;
+        
+        while (heightLeft > 0) {
+            pdf.addPage();
+            position = heightLeft - imgHeight + 10;
+            pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight - 20;
+        }
+        
+        pdf.save(`SmartInventory_${title.replace(/\s+/g, '_')}_${this.getTodayDate()}.pdf`);
+        wrapper.remove();
+    },
+
+    disableNumberWheel: function(scope) {
+        const root = scope || document;
+        root.querySelectorAll('input[type="number"]').forEach(input => {
+            if (input.dataset.noWheel === '1') return;
+            input.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
+            input.dataset.noWheel = '1';
+        });
+    },
+
+    scheduleDraftSave: function() {
+        if (this.draftSaveTimer) clearTimeout(this.draftSaveTimer);
+        this.draftSaveTimer = setTimeout(() => {
+            this.guardarBorradorChecklist();
+        }, 300);
+    },
+
+    guardarBorradorChecklist: function() {
+        const inputs = document.querySelectorAll('.checklist-inputs input');
+        if (!inputs || inputs.length === 0) return;
+        const draftData = {};
+        inputs.forEach(input => {
+            const productId = input.dataset.productId;
+            if (!productId) return;
+            if (!draftData[productId]) {
+                draftData[productId] = { stock: '', buy: '', order: '' };
+            }
+            const field = input.dataset.field;
+            if (field === 'stock') draftData[productId].stock = input.value;
+            else if (field === 'buy') draftData[productId].buy = input.value;
+            else if (field === 'order') draftData[productId].order = input.value;
+        });
+        const draft = {
+            timestamp: Date.now(),
+            data: draftData
+        };
+        localStorage.setItem('checklist_draft', JSON.stringify(draft));
+        this.updateDraftBadge();
+    },
+
+    restaurarBorradorChecklist: function() {
+        const draftJson = localStorage.getItem('checklist_draft');
+        if (!draftJson) return;
+        try {
+            const draft = JSON.parse(draftJson);
+            if (!draft || !draft.timestamp || !draft.data) return;
+            if (Date.now() - draft.timestamp > 24 * 60 * 60 * 1000) {
+                localStorage.removeItem('checklist_draft');
+                return;
+            }
+            Object.entries(draft.data).forEach(([productId, values]) => {
+                const inputs = document.querySelectorAll(`.checklist-inputs input[data-product-id="${productId}"]`);
+                inputs.forEach(input => {
+                    const field = input.dataset.field;
+                    if (field === 'stock' && values.stock !== undefined) input.value = values.stock;
+                    else if (field === 'buy' && values.buy !== undefined) input.value = values.buy;
+                    else if (field === 'order' && values.order !== undefined) input.value = values.order;
+                });
+                const anyInput = document.querySelector(`.checklist-inputs input[data-product-id="${productId}"]`);
+                if (anyInput) {
+                    const row = anyInput.dataset.row;
+                    this.updateRecommendationWarningForInput(anyInput);
+                    const rowInputs = document.querySelectorAll(`.checklist-inputs input[data-row="${row}"]`);
+                    this.updateMaxWarningForInputs(rowInputs, false);
+                    this.actualizarEstadoTarjeta(row);
+                }
+            });
+            if (!this.draftRestored) {
+                this.draftRestored = true;
+                this.showToast('Borrador del checklist restaurado', 'info');
+            }
+            this.updateDraftBadge();
+        } catch (e) {
+            console.error('Error restaurando borrador:', e);
+        }
+    },
+
+    limpiarBorradorChecklist: function() {
+        localStorage.removeItem('checklist_draft');
+        this.draftRestored = false;
+        this.updateDraftBadge();
+    },
+
+    updateDraftBadge: function() {
+        const badge = document.getElementById('draftBadge');
+        if (!badge) return;
+        const exists = !!localStorage.getItem('checklist_draft');
+        badge.classList.toggle('hidden', !exists);
     },
     
     setChecklistValue: function(inputs, field, value) {
@@ -1588,6 +2145,7 @@ const App = {
         const updated = DB.executePurchases();
         this.cargarChecklist();
         this.actualizarDashboard();
+        if (updated > 0) this.limpiarBorradorChecklist();
         this.showToast(`Compras registradas: ${updated} productos`, 'success');
     },
     
@@ -1596,6 +2154,7 @@ const App = {
         const updated = DB.executeOrders();
         this.cargarChecklist();
         this.actualizarDashboard();
+        if (updated > 0) this.limpiarBorradorChecklist();
         this.showToast(`Pedidos registrados: ${updated} productos`, 'success');
     },
     

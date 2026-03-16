@@ -26,10 +26,7 @@ const DB = {
             localStorage.setItem(this.AUDIT_KEY, JSON.stringify([]));
         }
         
-        // Datos de ejemplo para pruebas
-        if (this.getProducts().length === 0) {
-            this.addSampleData();
-        }
+        // Datos de ejemplo para pruebas (deshabilitado)
         
         // Normalizar productos existentes
         this.migrateProducts();
@@ -167,9 +164,10 @@ const DB = {
         this.saveProducts(products);
         IDBStore.put('products', newProduct);
         
-        // ❌ ELIMINADA LA LÍNEA: Sync.enqueueProductUpdate(newProduct);
-        // Ahora solo se encola localmente, pero no sube automáticamente
-        Sync.enqueueProductUpdate(newProduct); // Esto solo guarda en cola, no sube (según el nuevo sync)
+        // Encolar cambio local para subida manual a Firebase
+        if (window.Sync && Sync.queueProductUpdate) {
+            Sync.queueProductUpdate(newProduct);
+        }
         
         this.auditLog('add_product', { id: newProduct.id, name: newProduct.name });
         
@@ -214,8 +212,10 @@ const DB = {
         this.saveProducts(products);
         IDBStore.put('products', products[index]);
         
-        // ❌ ELIMINADA LA LÍNEA: Sync.enqueueProductUpdate(products[index]);
-        Sync.enqueueProductUpdate(products[index]); // Solo encola
+        // Encolar cambio local para subida manual a Firebase
+        if (window.Sync && Sync.queueProductUpdate) {
+            Sync.queueProductUpdate(products[index]);
+        }
         
         this.auditLog('update_product', { id, name: products[index].name });
         return { success: true, product: products[index] };
@@ -235,6 +235,10 @@ const DB = {
         
         this.saveProducts(filteredProducts);
         IDBStore.delete('products', id);
+        // Encolar eliminación para subida manual a Firebase
+        if (window.Sync && Sync.queueProductDelete) {
+            Sync.queueProductDelete(id);
+        }
         
         // También eliminar historial del producto
         this.deleteProductHistory(id);
@@ -632,11 +636,48 @@ const DB = {
         this.saveProducts(products);
         updatedProducts.forEach(p => {
             IDBStore.put('products', p);
-            // ❌ ELIMINADA LA LÍNEA: Sync.enqueueProductUpdate(p);
-            Sync.enqueueProductUpdate(p); // Solo encola
+            // Encolar cambio local para subida manual a Firebase
+            if (window.Sync && Sync.queueProductUpdate) {
+                Sync.queueProductUpdate(p);
+            }
         });
         this.auditLog('execute_purchases', { updated });
         return updated;
+    },
+
+    // Ejecutar compra de un solo producto
+    executePurchaseForProduct: function(productId) {
+        const products = this.getProducts();
+        const product = products.find(p => p.id === productId);
+        if (!product) return { success: false, message: 'Producto no encontrado' };
+        const buy = this.normalizeNumber(product.actionsPending?.buy || 0);
+        if (buy <= 0) return { success: false, message: 'No hay compras pendientes' };
+        
+        const initialStock = this.normalizeNumber(product.currentStock);
+        const finalStock = initialStock + buy;
+        
+        this.addAutoHistoryRecord({
+            productId: product.id,
+            productName: product.name,
+            initialStock: initialStock,
+            purchase: buy,
+            finalStock: finalStock,
+            consumption: 0,
+            weekDate: this.getCurrentWeekISO(),
+            actionType: 'compra'
+        });
+        
+        product.currentStock = finalStock;
+        product.actionsPending.buy = 0;
+        product.updatedAt = new Date().toISOString();
+        
+        this.saveProducts(products);
+        IDBStore.put('products', product);
+        if (window.Sync && Sync.queueProductUpdate) {
+            Sync.queueProductUpdate(product);
+        }
+        this.auditLog('execute_purchase_single', { id: productId });
+        return { success: true };
     },
     
     // Ejecutar pedidos (sumar al stock y limpiar pendientes)
@@ -673,11 +714,48 @@ const DB = {
         this.saveProducts(products);
         updatedProducts.forEach(p => {
             IDBStore.put('products', p);
-            // ❌ ELIMINADA LA LÍNEA: Sync.enqueueProductUpdate(p);
-            Sync.enqueueProductUpdate(p); // Solo encola
+            // Encolar cambio local para subida manual a Firebase
+            if (window.Sync && Sync.queueProductUpdate) {
+                Sync.queueProductUpdate(p);
+            }
         });
         this.auditLog('execute_orders', { updated });
         return updated;
+    },
+
+    // Ejecutar pedido de un solo producto
+    executeOrderForProduct: function(productId) {
+        const products = this.getProducts();
+        const product = products.find(p => p.id === productId);
+        if (!product) return { success: false, message: 'Producto no encontrado' };
+        const order = this.normalizeNumber(product.actionsPending?.order || 0);
+        if (order <= 0) return { success: false, message: 'No hay pedidos pendientes' };
+        
+        const initialStock = this.normalizeNumber(product.currentStock);
+        const finalStock = initialStock + order;
+        
+        this.addAutoHistoryRecord({
+            productId: product.id,
+            productName: product.name,
+            initialStock: initialStock,
+            purchase: order,
+            finalStock: finalStock,
+            consumption: 0,
+            weekDate: this.getCurrentWeekISO(),
+            actionType: 'pedido'
+        });
+        
+        product.currentStock = finalStock;
+        product.actionsPending.order = 0;
+        product.updatedAt = new Date().toISOString();
+        
+        this.saveProducts(products);
+        IDBStore.put('products', product);
+        if (window.Sync && Sync.queueProductUpdate) {
+            Sync.queueProductUpdate(product);
+        }
+        this.auditLog('execute_order_single', { id: productId });
+        return { success: true };
     },
     
     // Agregar registro de historial automático (compra/pedido)
@@ -702,6 +780,32 @@ const DB = {
         this.clearCalculationCache();
         this.auditLog('add_auto_history', { id: newRecord.id, productId: newRecord.productId });
         return { success: true, record: newRecord };
+    },
+
+    // Productos sin movimiento (consumo 0) en las últimas N semanas
+    getProductsWithoutMovement: function(weeks = 4) {
+        const products = this.getProducts();
+        const results = [];
+        products.forEach(p => {
+            const history = this.getHistoryByProduct(p.id);
+            if (history.length === 0) {
+                results.push({
+                    product: p,
+                    lastMovement: null
+                });
+                return;
+            }
+            const lastWeeks = history.slice(0, weeks);
+            const totalConsumption = lastWeeks.reduce((sum, r) => sum + (r.consumption || 0), 0);
+            if (totalConsumption === 0) {
+                const latest = this.getLatestHistoryRecord(history);
+                results.push({
+                    product: p,
+                    lastMovement: latest ? latest.weekDate : null
+                });
+            }
+        });
+        return results;
     },
     
     // Categorías automáticas por palabras clave
