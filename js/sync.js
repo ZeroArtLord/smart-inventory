@@ -95,7 +95,7 @@ const Sync = {
                     updatedAt: product.updatedAt,
                     deviceId: this.deviceId
                 };
-                await window.firebaseDb.collection('products').doc(product.id).set(data, { merge: true });
+                await window.firebaseDb.collection('products').doc(product.id).set(data, { merge: false });
                 subidos++;
             }
 
@@ -183,6 +183,9 @@ const Sync = {
             
             // Notificar a la app para que recargue la interfaz
             if (window.App) {
+                if (window.App.limpiarBorradorChecklist) {
+                    window.App.limpiarBorradorChecklist();
+                }
                 window.App.actualizarDashboard();
                 window.App.cargarChecklist();
                 window.App.cargarListaProductos();
