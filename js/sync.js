@@ -304,7 +304,11 @@ const Sync = {
                 .set(cleaned, { merge: true });
             return { id, lastUpdated: nowIso };
         } catch (err) {
-            console.error('Error guardando borrador en Firebase:', err);
+            console.error('Error guardando borrador en Firebase:', err, {
+                deviceId: this.deviceId,
+                draftId: id,
+                projectKey: this.projectKey
+            });
             throw err;
         }
     },

@@ -24,6 +24,7 @@ const App = {
     draftConflict: false,
     draftOfflineWarned: false,
     lastDraftSnapshot: '',
+    draftSaveErrorShown: false,
     reportRealizadasFrom: '',
     reportRealizadasTo: '',
     reportDatePickers: [],
@@ -2088,8 +2089,16 @@ const App = {
                     this.refreshDraftsList();
                     this.showToast(`Borrador guardado en Firebase (${productCount} productos)`, 'success');
                     this.verifyDraftSaved(draftId, productCount);
+                    this.draftSaveErrorShown = false;
                 }
-            }).catch(e => console.warn('Error guardando borrador:', e));
+            }).catch(e => {
+                console.warn('Error guardando borrador:', e);
+                if (!this.draftSaveErrorShown) {
+                    const msg = e?.code || e?.message || 'permiso denegado';
+                    this.showToast(`No se pudo guardar el borrador: ${msg}`, 'error');
+                    this.draftSaveErrorShown = true;
+                }
+            });
         }
     },
 
@@ -2117,7 +2126,8 @@ const App = {
                 })
                 .catch(e => {
                     console.warn('Error guardando borrador:', e);
-                    this.showToast(`No se pudo guardar el borrador: ${e?.message || 'permiso denegado'}`, 'error');
+                    const msg = e?.code || e?.message || 'permiso denegado';
+                    this.showToast(`No se pudo guardar el borrador: ${msg}`, 'error');
                 });
         } else {
             this.showToast('No se pudo guardar el borrador', 'error');
