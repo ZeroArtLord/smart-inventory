@@ -26,6 +26,7 @@ const App = {
     lastDraftSnapshot: '',
     reportRealizadasFrom: '',
     reportRealizadasTo: '',
+    reportDatePickers: [],
     lastHiddenTime: null,
     rateLimit: {
         count: 0,
@@ -1892,9 +1893,9 @@ const App = {
                 <p>Detalle por fecha de compras y pedidos ejecutados.</p>
                 <div class="report-filter">
                     <label>Desde:</label>
-                    <input type="date" id="realizadasFrom" value="${from}">
+                    <input type="text" id="realizadasFrom" placeholder="dd/mm/aaaa" value="${from}">
                     <label>Hasta:</label>
-                    <input type="date" id="realizadasTo" value="${to}">
+                    <input type="text" id="realizadasTo" placeholder="dd/mm/aaaa" value="${to}">
                     <button class="btn btn-secondary btn-sm" id="realizadasApply">
                         <i class="fas fa-filter"></i> Filtrar
                     </button>
@@ -1912,6 +1913,37 @@ const App = {
                 this.renderReportRealizadas();
             });
         }
+
+        const activityDates = new Set(
+            history.map(h => (h.createdAt ? h.createdAt.split('T')[0] : '')).filter(Boolean)
+        );
+        this.initRealizadasDatePickers(activityDates);
+    },
+
+    initRealizadasDatePickers: function(activityDates) {
+        if (typeof flatpickr === 'undefined') return;
+        // Limpiar instancias previas
+        if (this.reportDatePickers && this.reportDatePickers.length > 0) {
+            this.reportDatePickers.forEach(p => p.destroy());
+        }
+        this.reportDatePickers = [];
+
+        const options = {
+            dateFormat: 'Y-m-d',
+            altInput: true,
+            altFormat: 'd/m/Y',
+            allowInput: true,
+            onDayCreate: function(dObj, dStr, fp, dayElem) {
+                const date = dayElem.dateObj.toISOString().split('T')[0];
+                if (activityDates.has(date)) {
+                    dayElem.classList.add('has-activity');
+                }
+            }
+        };
+        const from = document.getElementById('realizadasFrom');
+        const to = document.getElementById('realizadasTo');
+        if (from) this.reportDatePickers.push(flatpickr(from, options));
+        if (to) this.reportDatePickers.push(flatpickr(to, options));
     },
 
     exportCurrentReportPdf: async function() {

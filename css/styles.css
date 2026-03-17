@@ -1615,6 +1615,19 @@ input:focus-visible {
     color: var(--primary-color);
 }
 
+/* Flatpickr - marcar días con actividad */
+.flatpickr-day.has-activity::after {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    position: absolute;
+    left: 50%;
+    bottom: 3px;
+    transform: translateX(-50%);
+}
+
 .report-filter {
     margin-top: 0.5rem;
     display: flex;
