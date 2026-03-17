@@ -24,6 +24,8 @@ const App = {
     draftConflict: false,
     draftOfflineWarned: false,
     lastDraftSnapshot: '',
+    reportRealizadasFrom: '',
+    reportRealizadasTo: '',
     lastHiddenTime: null,
     rateLimit: {
         count: 0,
@@ -1838,8 +1840,17 @@ const App = {
         const container = document.getElementById('reportContent');
         if (!container) return;
         const history = DB.getHistory().filter(h => h.actionType === 'compra' || h.actionType === 'pedido');
+        const from = this.reportRealizadasFrom || '';
+        const to = this.reportRealizadasTo || '';
+        const filteredHistory = history.filter(h => {
+            const date = h.createdAt ? h.createdAt.split('T')[0] : '';
+            if (!date) return true;
+            if (from && date < from) return false;
+            if (to && date > to) return false;
+            return true;
+        });
         const grouped = {};
-        history.forEach(h => {
+        filteredHistory.forEach(h => {
             const date = h.createdAt ? h.createdAt.split('T')[0] : (h.weekDate || 'Sin fecha');
             if (!grouped[date]) grouped[date] = [];
             grouped[date].push(h);
@@ -1879,9 +1890,28 @@ const App = {
             <div class="report-header">
                 <h3>Compras y pedidos realizados</h3>
                 <p>Detalle por fecha de compras y pedidos ejecutados.</p>
+                <div class="report-filter">
+                    <label>Desde:</label>
+                    <input type="date" id="realizadasFrom" value="${from}">
+                    <label>Hasta:</label>
+                    <input type="date" id="realizadasTo" value="${to}">
+                    <button class="btn btn-secondary btn-sm" id="realizadasApply">
+                        <i class="fas fa-filter"></i> Filtrar
+                    </button>
+                </div>
             </div>
             ${sections || '<p>No hay compras o pedidos registrados.</p>'}
         `;
+        const fromInput = document.getElementById('realizadasFrom');
+        const toInput = document.getElementById('realizadasTo');
+        const applyBtn = document.getElementById('realizadasApply');
+        if (applyBtn) {
+            applyBtn.addEventListener('click', () => {
+                this.reportRealizadasFrom = fromInput?.value || '';
+                this.reportRealizadasTo = toInput?.value || '';
+                this.renderReportRealizadas();
+            });
+        }
     },
 
     exportCurrentReportPdf: async function() {
@@ -1905,6 +1935,9 @@ const App = {
         wrapper.style.background = '#ffffff';
         wrapper.style.color = '#1a2b4c';
         wrapper.style.width = '900px';
+        const filterInfo = (this.currentReport === 'realizadas' && (this.reportRealizadasFrom || this.reportRealizadasTo))
+            ? `<div style="font-size:11px;color:#4a5b7c;margin-top:6px;">Rango: ${this.reportRealizadasFrom || 'inicio'} → ${this.reportRealizadasTo || 'hoy'}</div>`
+            : '';
         wrapper.innerHTML = `
             <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px;">
                 <div style="display:flex;align-items:center;gap:12px;">
@@ -1919,6 +1952,7 @@ const App = {
                     ByteMind Solutions
                 </div>
             </div>
+            ${filterInfo}
             <div>${content.innerHTML}</div>
             <div style="margin-top:16px;border-top:1px solid #dee2e6;padding-top:8px;font-size:11px;color:#4a5b7c;text-align:center;">
                 Smart Inventory - Desarrollado por Armando Yanez para El Establo · ${new Date().getFullYear()} · Todos los derechos reservados
