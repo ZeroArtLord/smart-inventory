@@ -2102,40 +2102,70 @@ const App = {
         }
     },
 
-    guardarBorradorManual: function() {
+    guardarBorradorManual: async function() {
         const inputs = document.querySelectorAll('.checklist-inputs input');
-        if (!inputs || inputs.length === 0) return;
+        if (!inputs || inputs.length === 0) {
+            this.showToast('No hay datos para guardar', 'warning');
+            return;
+        }
+
         if (!Sync.isOnline()) {
-            this.showToast('Conéctate a internet para guardar borradores', 'warning');
+            this.showToast('Sin conexión a internet. El borrador se guardará localmente.', 'warning');
+            this.guardarBorradorLocal(inputs);
             return;
         }
+
         if (!window.firebaseDb) {
-            this.showToast('Firebase no está listo. Recarga la página.', 'error');
+            this.showToast('Firebase no está disponible. Intenta recargar.', 'error');
             return;
         }
+
         const { draftData, productCount } = this.buildDraftData(inputs);
+        if (productCount === 0) {
+            this.showToast('No hay valores para guardar', 'info');
+            return;
+        }
+
         const newId = Date.now().toString();
         this.currentDraftId = newId;
-        this.draftConflict = false;
         this.updateDraftBadge();
-        if (window.Sync && Sync.saveChecklistDraft) {
-            this.showToast('Guardando borrador...', 'info');
-            Sync.saveChecklistDraft(draftData, newId, { create: true })
-                .then((res) => {
-                    if (res?.lastUpdated) this.draftLastUpdated = res.lastUpdated;
-                    this.lastDraftSnapshot = JSON.stringify(draftData);
-                    this.showToast(`Borrador guardado en Firebase (${productCount} productos)`, 'success');
-                    this.refreshDraftsList();
-                    this.verifyDraftSaved(newId, productCount);
-                })
-                .catch(e => {
-                    console.warn('Error guardando borrador:', e);
-                    const msg = e?.code || e?.message || 'permiso denegado';
-                    this.showToast(`No se pudo guardar el borrador: ${msg}`, 'error');
-                });
-        } else {
-            this.showToast('No se pudo guardar el borrador', 'error');
+
+        this.showToast('Guardando borrador...', 'info');
+
+        try {
+            const result = await Sync.saveChecklistDraft(draftData, newId, { create: true });
+            if (result && result.lastUpdated) {
+                this.draftLastUpdated = result.lastUpdated;
+                this.lastDraftSnapshot = JSON.stringify(draftData);
+                this.showToast(`Borrador guardado en Firebase (${productCount} productos)`, 'success');
+                await this.refreshDraftsList();
+            } else {
+                throw new Error('Respuesta inesperada');
+            }
+        } catch (error) {
+            console.error('Error guardando borrador:', error);
+            let msg = 'Error desconocido';
+            if (error.code === 'permission-denied') {
+                msg = 'Permiso denegado. Revisa las reglas de Firebase.';
+            } else if (error.code === 'unavailable') {
+                msg = 'Firebase no disponible. Intenta más tarde.';
+            } else if (error.message) {
+                msg = error.message;
+            }
+            this.showToast(`No se pudo guardar: ${msg}`, 'error');
+            this.guardarBorradorLocal(inputs);
         }
+    },
+
+    guardarBorradorLocal: function(inputs) {
+        const { draftData, productCount } = this.buildDraftData(inputs);
+        if (productCount === 0) return;
+        localStorage.setItem('checklist_draft_backup', JSON.stringify({
+            data: draftData,
+            timestamp: Date.now()
+        }));
+        this.showToast(`Borrador guardado localmente (${productCount} productos)`, 'info');
+        this.updateDraftBadge();
     },
 
     restaurarBorradorChecklist: function(draftProducts) {
@@ -2167,7 +2197,28 @@ const App = {
     comprobarBorradorChecklist: async function() {
         if (this.draftPrompted) return;
         this.draftPrompted = true;
-        if (!Sync.isOnline()) {
+        const tryLocalBackup = () => {
+            const backup = localStorage.getItem('checklist_draft_backup');
+            if (!backup) return false;
+            try {
+                const parsed = JSON.parse(backup);
+                const ts = parsed?.timestamp || 0;
+                if (ts && (Date.now() - ts) <= 24 * 60 * 60 * 1000 && parsed?.data) {
+                    if (confirm('Se encontró un borrador local. ¿Restaurar?')) {
+                        this.restaurarBorradorChecklist(parsed.data);
+                        return true;
+                    }
+                    return true;
+                }
+                localStorage.removeItem('checklist_draft_backup');
+            } catch (e) {
+                console.warn('Borrador local inválido:', e);
+            }
+            return false;
+        };
+
+        if (!Sync.isOnline() || !window.firebaseDb) {
+            tryLocalBackup();
             return;
         }
 
@@ -2207,7 +2258,10 @@ const App = {
             }
         }
 
-        if (!draftData) return;
+        if (!draftData) {
+            tryLocalBackup();
+            return;
+        }
         this.cachedDraftData = draftData;
         this.restaurarBorradorChecklist(draftData);
     },
