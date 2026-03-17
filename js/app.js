@@ -1872,19 +1872,7 @@ const App = {
             }
             return;
         }
-        const draftData = {};
-        inputs.forEach(input => {
-            const productId = input.dataset.productId;
-            if (!productId) return;
-            if (!draftData[productId]) {
-                draftData[productId] = { stock: 0, buy: 0, order: 0 };
-            }
-            const field = input.dataset.field;
-            const value = parseFloat(input.value) || 0;
-            if (field === 'stock') draftData[productId].stock = value;
-            else if (field === 'buy') draftData[productId].buy = value;
-            else if (field === 'order') draftData[productId].order = value;
-        });
+        const { draftData, productCount } = this.buildDraftData(inputs);
         const draftId = this.currentDraftId || Date.now().toString();
         this.currentDraftId = draftId;
         this.updateDraftBadge();
@@ -1897,6 +1885,8 @@ const App = {
                 } else if (res?.lastUpdated) {
                     this.draftLastUpdated = res.lastUpdated;
                     this.refreshDraftsList();
+                    this.showToast(`Borrador guardado en Firebase (${productCount} productos)`, 'success');
+                    this.verifyDraftSaved(draftId, productCount);
                 }
             }).catch(e => console.warn('Error guardando borrador:', e));
         }
@@ -1909,19 +1899,7 @@ const App = {
             this.showToast('Conéctate a internet para guardar borradores', 'warning');
             return;
         }
-        const draftData = {};
-        inputs.forEach(input => {
-            const productId = input.dataset.productId;
-            if (!productId) return;
-            if (!draftData[productId]) {
-                draftData[productId] = { stock: 0, buy: 0, order: 0 };
-            }
-            const field = input.dataset.field;
-            const value = parseFloat(input.value) || 0;
-            if (field === 'stock') draftData[productId].stock = value;
-            else if (field === 'buy') draftData[productId].buy = value;
-            else if (field === 'order') draftData[productId].order = value;
-        });
+        const { draftData, productCount } = this.buildDraftData(inputs);
         const newId = Date.now().toString();
         this.currentDraftId = newId;
         this.draftConflict = false;
@@ -1930,8 +1908,9 @@ const App = {
             Sync.saveChecklistDraft(draftData, newId, { create: true })
                 .then((res) => {
                     if (res?.lastUpdated) this.draftLastUpdated = res.lastUpdated;
-                    this.showToast('Borrador guardado', 'success');
+                    this.showToast(`Borrador guardado en Firebase (${productCount} productos)`, 'success');
                     this.refreshDraftsList();
+                    this.verifyDraftSaved(newId, productCount);
                 })
                 .catch(e => {
                     console.warn('Error guardando borrador:', e);
@@ -2083,6 +2062,39 @@ const App = {
             }
         }
         this.updateDraftBadge();
+    },
+
+    buildDraftData: function(inputs) {
+        const draftData = {};
+        inputs.forEach(input => {
+            const productId = input.dataset.productId;
+            if (!productId) return;
+            if (!draftData[productId]) {
+                draftData[productId] = { stock: 0, buy: 0, order: 0 };
+            }
+            const field = input.dataset.field;
+            const value = parseFloat(input.value) || 0;
+            if (field === 'stock') draftData[productId].stock = value;
+            else if (field === 'buy') draftData[productId].buy = value;
+            else if (field === 'order') draftData[productId].order = value;
+        });
+        const productCount = Object.values(draftData).filter(v => (v.stock || 0) > 0 || (v.buy || 0) > 0 || (v.order || 0) > 0).length;
+        return { draftData, productCount };
+    },
+
+    verifyDraftSaved: async function(draftId, expectedCount) {
+        if (!Sync.isOnline() || !draftId || !Sync.loadChecklistDraft) return;
+        try {
+            const remote = await Sync.loadChecklistDraft(draftId);
+            const remoteCount = remote?.productCount ?? 0;
+            if (remoteCount === expectedCount) {
+                this.showToast(`✅ Borrador verificado (${remoteCount} productos)`, 'success');
+            } else {
+                this.showToast(`⚠️ Borrador en Firebase: ${remoteCount} vs local ${expectedCount}`, 'warning');
+            }
+        } catch (e) {
+            this.showToast('No se pudo verificar el borrador', 'warning');
+        }
     },
     handleDraftConflict: function(res) {
         if (confirm('Otro dispositivo actualizó este borrador. ¿Deseas sobrescribir tu versión?')) {
