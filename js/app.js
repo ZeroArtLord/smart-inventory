@@ -388,6 +388,7 @@ const App = {
                     return;
                 }
                 await this.refreshDraftsList();
+                console.log('DraftsList actual:', this.draftsList);
                 if (!this.draftsList || this.draftsList.length === 0) {
                     const backup = localStorage.getItem('checklist_draft_backup');
                     if (backup) {
@@ -402,7 +403,7 @@ const App = {
                             }
                         } catch (e) {}
                     }
-                    this.showToast(`No hay borradores guardados (deviceId: ${Sync.deviceId})`, 'info');
+                    this.showToast(`Error al cargar borradores (deviceId: ${Sync.deviceId})`, 'warning');
                     return;
                 }
                 this.mostrarSelectorBorradores(this.draftsList);
