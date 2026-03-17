@@ -387,26 +387,12 @@ const App = {
                     this.showToast('Conéctate a internet para ver borradores', 'warning');
                     return;
                 }
-                await this.refreshDraftsList();
-                console.log('DraftsList actual:', this.draftsList);
-                if (!this.draftsList || this.draftsList.length === 0) {
-                    const backup = localStorage.getItem('checklist_draft_backup');
-                    if (backup) {
-                        try {
-                            const parsed = JSON.parse(backup);
-                            const ts = parsed?.timestamp || 0;
-                            if (ts && (Date.now() - ts) <= 24 * 60 * 60 * 1000 && parsed?.data) {
-                                if (confirm('No hay borradores en Firebase. Se encontró un borrador local, ¿restaurarlo?')) {
-                                    this.restaurarBorradorChecklist(parsed.data);
-                                    return;
-                                }
-                            }
-                        } catch (e) {}
-                    }
-                    this.showToast(`Error al cargar borradores (deviceId: ${Sync.deviceId})`, 'warning');
+                const drafts = await this.refreshDraftsList();
+                if (!drafts || drafts.length === 0) {
+                    this.showToast(`No hay borradores guardados (deviceId: ${Sync.deviceId})`, 'info');
                     return;
                 }
-                this.mostrarSelectorBorradores(this.draftsList);
+                this.mostrarSelectorBorradores(drafts);
             });
         }
 
@@ -2290,13 +2276,16 @@ const App = {
         const container = document.getElementById('draftsListContainer');
         if (!container) return;
         container.innerHTML = '';
+
         if (!drafts || drafts.length === 0) {
             container.innerHTML = '<p>No hay borradores guardados.</p>';
             document.getElementById('draftSelectorModal').classList.add('active');
             return;
         }
+
         const list = document.createElement('div');
         list.className = 'draft-list';
+
         drafts.forEach(d => {
             const item = document.createElement('div');
             item.className = 'draft-item';
@@ -2310,23 +2299,33 @@ const App = {
             `;
             list.appendChild(item);
         });
+
         container.appendChild(list);
+
         container.querySelectorAll('button[data-draft]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const id = btn.dataset.draft;
+                console.log('Restaurando borrador:', id);
+
                 if (window.Sync && Sync.loadChecklistDraft) {
                     const draft = await Sync.loadChecklistDraft(id);
-                if (draft && draft.products) {
-                    this.currentDraftId = id;
-                    this.cachedDraftData = draft.products;
-                    this.draftLastUpdated = draft.lastUpdated || null;
-                    this.lastDraftSnapshot = JSON.stringify(draft.products);
-                    this.restaurarBorradorChecklist(draft.products);
-                    this.cerrarModal('draftSelectorModal');
-                }
+                    console.log('Borrador cargado:', draft);
+
+                    if (draft && draft.products) {
+                        this.currentDraftId = id;
+                        this.cachedDraftData = draft.products;
+                        this.draftLastUpdated = draft.lastUpdated || null;
+                        this.lastDraftSnapshot = JSON.stringify(draft.products);
+                        this.restaurarBorradorChecklist(draft.products);
+                        this.cerrarModal('draftSelectorModal');
+                        this.showToast('Borrador restaurado', 'success');
+                    } else {
+                        this.showToast('Error al cargar el borrador', 'error');
+                    }
                 }
             });
         });
+
         document.getElementById('draftSelectorModal').classList.add('active');
     },
 
@@ -2347,15 +2346,18 @@ const App = {
     },
 
     refreshDraftsList: async function() {
-        if (window.Sync && Sync.listChecklistDrafts) {
-            try {
-                const drafts = await Sync.listChecklistDrafts();
-                this.draftsList = drafts;
-            } catch (e) {
-                this.draftsList = [];
-            }
+        if (!window.Sync) return [];
+        try {
+            const drafts = await Sync.listChecklistDrafts();
+            this.draftsList = drafts || [];
+            this.updateDraftBadge();
+            console.log('Borradores actualizados:', drafts);
+            return this.draftsList;
+        } catch (e) {
+            console.error('Error en refreshDraftsList:', e);
+            this.draftsList = [];
+            return [];
         }
-        this.updateDraftBadge();
     },
 
     refreshReportsIfActive: function() {
