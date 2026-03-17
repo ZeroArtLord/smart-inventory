@@ -2109,6 +2109,10 @@ const App = {
             this.showToast('Conéctate a internet para guardar borradores', 'warning');
             return;
         }
+        if (!window.firebaseDb) {
+            this.showToast('Firebase no está listo. Recarga la página.', 'error');
+            return;
+        }
         const { draftData, productCount } = this.buildDraftData(inputs);
         const newId = Date.now().toString();
         this.currentDraftId = newId;
