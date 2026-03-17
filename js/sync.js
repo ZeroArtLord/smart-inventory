@@ -301,6 +301,7 @@ const Sync = {
                 productCount: countNonZero(draftData)
             };
             const cleaned = this.sanitizeForFirestore(draft);
+            console.log('Enviando a Firebase:', JSON.stringify(cleaned, null, 2));
             await window.firebaseDb
                 .collection('checklist_drafts')
                 .doc(this.deviceId)

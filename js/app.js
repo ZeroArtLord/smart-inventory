@@ -2140,7 +2140,8 @@ const App = {
             return;
         }
 
-        console.log('Datos a guardar:', draftData);
+        console.log('DATOS A GUARDAR (productos con valores):', productCount);
+        console.log('draftData completo:', JSON.stringify(draftData, null, 2));
 
         const newId = Date.now().toString();
         this.currentDraftId = newId;
@@ -2150,13 +2151,19 @@ const App = {
 
         try {
             const result = await Sync.saveChecklistDraft(draftData, newId, { create: true });
-            if (result && result.lastUpdated) {
+            console.log('Resultado de saveChecklistDraft:', result);
+
+            const verificado = await Sync.loadChecklistDraft(newId);
+            console.log('Borrador verificado en Firebase:', verificado);
+
+            if (!verificado || !verificado.products || Object.keys(verificado.products).length === 0) {
+                this.showToast('Borrador guardado vacío. Revisa la consola.', 'warning');
+            } else {
+                const numProductos = Object.keys(verificado.products).length;
+                this.showToast(`Borrador guardado con ${numProductos} productos`, 'success');
                 this.draftLastUpdated = result.lastUpdated;
                 this.lastDraftSnapshot = JSON.stringify(draftData);
-                this.showToast(`Borrador guardado (${productCount} productos)`, 'success');
                 await this.refreshDraftsList();
-            } else {
-                throw new Error('Respuesta inesperada al guardar');
             }
         } catch (error) {
             console.error('Error en guardarBorradorManual:', error);
