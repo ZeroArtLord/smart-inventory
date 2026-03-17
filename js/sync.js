@@ -265,5 +265,27 @@ const Sync = {
             map.set(id, p);
         });
         return { products: Array.from(map.values()), duplicates, invalidIds };
+    },
+
+    async saveChecklistDraft(draftData) {
+        if (!this.isOnline() || !window.firebaseDb) return;
+        const draft = {
+            deviceId: this.deviceId,
+            lastUpdated: new Date().toISOString(),
+            products: draftData
+        };
+        await window.firebaseDb.collection('checklist_drafts').doc(this.deviceId).set(draft, { merge: true });
+    },
+
+    async loadChecklistDraft() {
+        if (!this.isOnline() || !window.firebaseDb) return null;
+        const doc = await window.firebaseDb.collection('checklist_drafts').doc(this.deviceId).get();
+        if (doc.exists) return doc.data();
+        return null;
+    },
+
+    async deleteChecklistDraft() {
+        if (!this.isOnline() || !window.firebaseDb) return;
+        await window.firebaseDb.collection('checklist_drafts').doc(this.deviceId).delete();
     }
 };

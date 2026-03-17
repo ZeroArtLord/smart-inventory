@@ -16,6 +16,9 @@ const App = {
     reportMovementProductId: '',
     draftSaveTimer: null,
     draftRestored: false,
+    draftPrompted: false,
+    cachedDraftData: null,
+    lastHiddenTime: null,
     rateLimit: {
         count: 0,
         lastTime: Date.now()
@@ -58,6 +61,21 @@ const App = {
         this.initReports();
         this.updateDraftBadge();
         DB.autoBackup();
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                const lastHidden = this.lastHiddenTime || 0;
+                const now = Date.now();
+                if (lastHidden && (now - lastHidden) > 30000) {
+                    this.showToast('Recuperando datos...', 'info');
+                    this.actualizarDashboard();
+                    this.cargarChecklist(this.currentChecklistCategory);
+                }
+                this.lastHiddenTime = null;
+            } else {
+                this.lastHiddenTime = Date.now();
+            }
+        });
     },
 
     // Cargar todos los eventos
@@ -103,21 +121,7 @@ const App = {
             });
         }
 
-        // Actualizar categoría automática en formulario
-        document.getElementById('productName').addEventListener('input', (e) => {
-            const categorySelect = document.getElementById('category');
-            if (!categorySelect) return;
-            if (categorySelect.dataset.manual === '1') return;
-            const category = DB.getCategoryForName(e.target.value);
-            categorySelect.value = category;
-        });
-
-        const categorySelect = document.getElementById('category');
-        if (categorySelect) {
-            categorySelect.addEventListener('change', () => {
-                categorySelect.dataset.manual = '1';
-            });
-        }
+        // Categoría manual: sin autocompletado por nombre
 
         // Formulario productos
         document.getElementById('addProductBtn').addEventListener('click', () => {
@@ -873,16 +877,14 @@ const App = {
             document.getElementById('maxStock').value = producto.maxStock || 0;
             document.getElementById('unit').value = producto.unit || 'UND';
             if (categorySelect) {
-                categorySelect.value = producto.category || DB.getCategoryForName(producto.name);
-                categorySelect.dataset.manual = '1';
+                categorySelect.value = producto.category || '';
             }
         } else {
             formTitle.textContent = 'Nuevo Producto';
             document.getElementById('productForm').reset();
             document.getElementById('productId').value = '';
             if (categorySelect) {
-                categorySelect.value = DB.getCategoryForName(document.getElementById('productName').value);
-                categorySelect.dataset.manual = '0';
+                categorySelect.value = '';
             }
         }
         
@@ -1084,7 +1086,11 @@ const App = {
         
         container.appendChild(fragment);
         this.attachChecklistEvents(container);
-        this.restaurarBorradorChecklist();
+        if (!append) {
+            this.comprobarBorradorChecklist();
+        } else if (this.cachedDraftData) {
+            this.restaurarBorradorChecklist(this.cachedDraftData);
+        }
         this.updateAllRecommendationWarnings();
         this.updateChecklistProgress();
         
@@ -1813,12 +1819,13 @@ const App = {
             const productId = input.dataset.productId;
             if (!productId) return;
             if (!draftData[productId]) {
-                draftData[productId] = { stock: '', buy: '', order: '' };
+                draftData[productId] = { stock: 0, buy: 0, order: 0 };
             }
             const field = input.dataset.field;
-            if (field === 'stock') draftData[productId].stock = input.value;
-            else if (field === 'buy') draftData[productId].buy = input.value;
-            else if (field === 'order') draftData[productId].order = input.value;
+            const value = parseFloat(input.value) || 0;
+            if (field === 'stock') draftData[productId].stock = value;
+            else if (field === 'buy') draftData[productId].buy = value;
+            else if (field === 'order') draftData[productId].order = value;
         });
         const draft = {
             timestamp: Date.now(),
@@ -1826,49 +1833,81 @@ const App = {
         };
         localStorage.setItem('checklist_draft', JSON.stringify(draft));
         this.updateDraftBadge();
+        if (window.Sync && Sync.saveChecklistDraft) {
+            Sync.saveChecklistDraft(draftData).catch(e => console.warn('Error guardando borrador:', e));
+        }
     },
 
-    restaurarBorradorChecklist: function() {
-        const draftJson = localStorage.getItem('checklist_draft');
-        if (!draftJson) return;
-        try {
-            const draft = JSON.parse(draftJson);
-            if (!draft || !draft.timestamp || !draft.data) return;
-            if (Date.now() - draft.timestamp > 24 * 60 * 60 * 1000) {
-                localStorage.removeItem('checklist_draft');
-                return;
-            }
-            Object.entries(draft.data).forEach(([productId, values]) => {
-                const inputs = document.querySelectorAll(`.checklist-inputs input[data-product-id="${productId}"]`);
-                inputs.forEach(input => {
-                    const field = input.dataset.field;
-                    if (field === 'stock' && values.stock !== undefined) input.value = values.stock;
-                    else if (field === 'buy' && values.buy !== undefined) input.value = values.buy;
-                    else if (field === 'order' && values.order !== undefined) input.value = values.order;
-                });
-                const anyInput = document.querySelector(`.checklist-inputs input[data-product-id="${productId}"]`);
-                if (anyInput) {
-                    const row = anyInput.dataset.row;
-                    this.updateRecommendationWarningForInput(anyInput);
-                    const rowInputs = document.querySelectorAll(`.checklist-inputs input[data-row="${row}"]`);
-                    this.updateMaxWarningForInputs(rowInputs, false);
-                    this.actualizarEstadoTarjeta(row);
-                }
+    restaurarBorradorChecklist: function(draftProducts) {
+        if (!draftProducts) return;
+        Object.entries(draftProducts).forEach(([productId, values]) => {
+            const inputs = document.querySelectorAll(`.checklist-inputs input[data-product-id="${productId}"]`);
+            inputs.forEach(input => {
+                const field = input.dataset.field;
+                if (field === 'stock' && values.stock !== undefined) input.value = values.stock;
+                else if (field === 'buy' && values.buy !== undefined) input.value = values.buy;
+                else if (field === 'order' && values.order !== undefined) input.value = values.order;
             });
-            if (!this.draftRestored) {
-                this.draftRestored = true;
-                this.showToast('Borrador del checklist restaurado', 'info');
+            const anyInput = document.querySelector(`.checklist-inputs input[data-product-id="${productId}"]`);
+            if (anyInput) {
+                const row = anyInput.dataset.row;
+                this.updateRecommendationWarningForInput(anyInput);
+                const rowInputs = document.querySelectorAll(`.checklist-inputs input[data-row="${row}"]`);
+                this.updateMaxWarningForInputs(rowInputs, false);
+                this.actualizarEstadoTarjeta(row);
             }
-            this.updateDraftBadge();
-        } catch (e) {
-            console.error('Error restaurando borrador:', e);
+        });
+        if (!this.draftRestored) {
+            this.draftRestored = true;
+            this.showToast('Borrador restaurado', 'success');
+        }
+        this.updateDraftBadge();
+    },
+
+    comprobarBorradorChecklist: async function() {
+        if (this.draftPrompted) return;
+        this.draftPrompted = true;
+
+        let draftData = null;
+        if (window.Sync && Sync.loadChecklistDraft) {
+            const draft = await Sync.loadChecklistDraft();
+            if (draft && draft.products && draft.lastUpdated) {
+                const last = new Date(draft.lastUpdated);
+                if ((Date.now() - last.getTime()) <= 24 * 60 * 60 * 1000) {
+                    draftData = draft.products;
+                } else if (Sync.deleteChecklistDraft) {
+                    Sync.deleteChecklistDraft();
+                }
+            }
+        }
+
+        if (!draftData) {
+            const draftJson = localStorage.getItem('checklist_draft');
+            if (draftJson) {
+                try {
+                    const draft = JSON.parse(draftJson);
+                    if (draft && draft.timestamp && draft.data && (Date.now() - draft.timestamp) <= 24 * 60 * 60 * 1000) {
+                        draftData = draft.data;
+                    }
+                } catch (e) {}
+            }
+        }
+
+        if (!draftData) return;
+        if (confirm('Se encontró un borrador pendiente del checklist. ¿Desea restaurarlo?')) {
+            this.cachedDraftData = draftData;
+            this.restaurarBorradorChecklist(draftData);
         }
     },
 
     limpiarBorradorChecklist: function() {
         localStorage.removeItem('checklist_draft');
         this.draftRestored = false;
+        this.cachedDraftData = null;
         this.updateDraftBadge();
+        if (window.Sync && Sync.deleteChecklistDraft) {
+            Sync.deleteChecklistDraft().catch(() => {});
+        }
     },
 
     updateDraftBadge: function() {
