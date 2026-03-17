@@ -1,4 +1,5 @@
 ﻿// auth.js - Autenticacion con Google
+console.log('auth.js cargado correctamente');
 
 const Auth = {
     user: null,
@@ -13,9 +14,9 @@ const Auth = {
             }
         });
 
-        const landingLoginBtn = document.getElementById('landingLoginBtn');
-        if (landingLoginBtn) {
-            landingLoginBtn.addEventListener('click', () => this.login());
+        const welcomeLoginBtn = document.getElementById('welcomeLoginBtn');
+        if (welcomeLoginBtn) {
+            welcomeLoginBtn.addEventListener('click', () => this.login());
         }
     },
 
@@ -84,3 +85,5 @@ const Auth = {
         }
     }
 };
+
+window.Auth = Auth;
