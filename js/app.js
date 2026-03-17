@@ -2130,7 +2130,7 @@ const App = {
         }
 
         if (!window.firebaseDb) {
-            this.showToast('Firebase no está disponible. Intenta recargar.', 'error');
+            this.showToast('Firebase no está disponible. Recarga la página.', 'error');
             return;
         }
 
@@ -2139,6 +2139,8 @@ const App = {
             this.showToast('No hay valores para guardar', 'info');
             return;
         }
+
+        console.log('Datos a guardar:', draftData);
 
         const newId = Date.now().toString();
         this.currentDraftId = newId;
@@ -2151,22 +2153,18 @@ const App = {
             if (result && result.lastUpdated) {
                 this.draftLastUpdated = result.lastUpdated;
                 this.lastDraftSnapshot = JSON.stringify(draftData);
-                this.showToast(`Borrador guardado en Firebase (${productCount} productos)`, 'success');
+                this.showToast(`Borrador guardado (${productCount} productos)`, 'success');
                 await this.refreshDraftsList();
             } else {
-                throw new Error('Respuesta inesperada');
+                throw new Error('Respuesta inesperada al guardar');
             }
         } catch (error) {
-            console.error('Error guardando borrador:', error);
-            let msg = 'Error desconocido';
-            if (error.code === 'permission-denied') {
-                msg = 'Permiso denegado. Revisa las reglas de Firebase.';
-            } else if (error.code === 'unavailable') {
-                msg = 'Firebase no disponible. Intenta más tarde.';
-            } else if (error.message) {
-                msg = error.message;
-            }
-            this.showToast(`No se pudo guardar: ${msg}`, 'error');
+            console.error('Error en guardarBorradorManual:', error);
+            let mensaje = 'Error al guardar';
+            if (error.code === 'permission-denied') mensaje = 'Permiso denegado';
+            else if (error.code === 'unavailable') mensaje = 'Firebase no disponible';
+            else if (error.message) mensaje = error.message;
+            this.showToast(`Error: ${mensaje}`, 'error');
             this.guardarBorradorLocal(inputs);
         }
     },
