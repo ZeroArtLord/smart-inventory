@@ -388,6 +388,19 @@ const App = {
                 }
                 await this.refreshDraftsList();
                 if (!this.draftsList || this.draftsList.length === 0) {
+                    const backup = localStorage.getItem('checklist_draft_backup');
+                    if (backup) {
+                        try {
+                            const parsed = JSON.parse(backup);
+                            const ts = parsed?.timestamp || 0;
+                            if (ts && (Date.now() - ts) <= 24 * 60 * 60 * 1000 && parsed?.data) {
+                                if (confirm('No hay borradores en Firebase. Se encontró un borrador local, ¿restaurarlo?')) {
+                                    this.restaurarBorradorChecklist(parsed.data);
+                                    return;
+                                }
+                            }
+                        } catch (e) {}
+                    }
                     this.showToast(`No hay borradores guardados (deviceId: ${Sync.deviceId})`, 'info');
                     return;
                 }
@@ -2098,6 +2111,7 @@ const App = {
                     this.showToast(`No se pudo guardar el borrador: ${msg}`, 'error');
                     this.draftSaveErrorShown = true;
                 }
+                this.guardarBorradorLocal(inputs);
             });
         }
     },
@@ -2139,6 +2153,7 @@ const App = {
                 this.lastDraftSnapshot = JSON.stringify(draftData);
                 this.showToast(`Borrador guardado en Firebase (${productCount} productos)`, 'success');
                 await this.refreshDraftsList();
+                this.verifyDraftSaved(newId, productCount);
             } else {
                 throw new Error('Respuesta inesperada');
             }
