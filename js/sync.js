@@ -287,6 +287,10 @@ const Sync = {
                 }
             }
 
+            const countNonZero = (data) => {
+                if (!data) return 0;
+                return Object.values(data).filter(v => (v?.stock || 0) > 0 || (v?.buy || 0) > 0 || (v?.order || 0) > 0).length;
+            };
             const draft = {
                 id,
                 deviceId: this.deviceId,
@@ -294,7 +298,7 @@ const Sync = {
                 createdAt: options.create ? nowIso : undefined,
                 lastUpdated: nowIso,
                 products: draftData,
-                productCount: Object.keys(draftData || {}).length
+                productCount: countNonZero(draftData)
             };
             const cleaned = this.sanitizeForFirestore(draft);
             await window.firebaseDb
