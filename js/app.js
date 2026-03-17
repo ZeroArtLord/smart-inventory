@@ -2101,7 +2101,6 @@ const App = {
                     this.lastDraftSnapshot = JSON.stringify(draftData);
                     this.refreshDraftsList();
                     this.showToast(`Borrador guardado en Firebase (${productCount} productos)`, 'success');
-                    this.verifyDraftSaved(draftId, productCount);
                     this.draftSaveErrorShown = false;
                 }
             }).catch(e => {
@@ -2153,7 +2152,6 @@ const App = {
                 this.lastDraftSnapshot = JSON.stringify(draftData);
                 this.showToast(`Borrador guardado en Firebase (${productCount} productos)`, 'success');
                 await this.refreshDraftsList();
-                this.verifyDraftSaved(newId, productCount);
             } else {
                 throw new Error('Respuesta inesperada');
             }
@@ -2378,20 +2376,7 @@ const App = {
         return { draftData, productCount };
     },
 
-    verifyDraftSaved: async function(draftId, expectedCount) {
-        if (!Sync.isOnline() || !draftId || !Sync.loadChecklistDraft) return;
-        try {
-            const remote = await Sync.loadChecklistDraft(draftId);
-            const remoteCount = remote?.productCount ?? 0;
-            if (remoteCount === expectedCount) {
-                this.showToast(`✅ Borrador verificado (${remoteCount} productos)`, 'success');
-            } else {
-                this.showToast(`⚠️ Borrador en Firebase: ${remoteCount} vs local ${expectedCount}`, 'warning');
-            }
-        } catch (e) {
-            this.showToast('No se pudo verificar el borrador', 'warning');
-        }
-    },
+    
     handleDraftConflict: function(res) {
         if (confirm('Otro dispositivo actualizó este borrador. ¿Deseas sobrescribir tu versión?')) {
             this.draftConflict = false;
