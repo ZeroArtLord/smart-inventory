@@ -67,7 +67,7 @@ const Sync = {
     },
     
     // Subir manualmente (con control de lotes y verificación)
-    async pushToFirebase() {
+    async pushToFirebase(options = {}) {
         if (!this.isOnline() || !window.firebaseDb) {
             alert('Sin conexión a internet');
             return { subidos: 0, errores: 0, total: 0 };
@@ -94,6 +94,7 @@ const Sync = {
         let errores = 0;
         let remoteCount = null;
         const batchSize = 500;
+        const onProgress = options.onProgress;
 
         try {
             for (let i = 0; i < total; i += batchSize) {
@@ -112,6 +113,7 @@ const Sync = {
                 await batch.commit();
                 subidos += chunk.length;
                 console.log(`✅ Lote ${Math.floor(i / batchSize) + 1} subido (${chunk.length} productos)`);
+                if (onProgress) onProgress(subidos, total);
             }
 
             try {

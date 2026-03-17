@@ -23,6 +23,7 @@ const App = {
     draftLastUpdated: null,
     draftConflict: false,
     draftOfflineWarned: false,
+    lastDraftSnapshot: '',
     lastHiddenTime: null,
     rateLimit: {
         count: 0,
@@ -80,6 +81,13 @@ const App = {
                 this.lastHiddenTime = null;
             } else {
                 this.lastHiddenTime = Date.now();
+            }
+        });
+
+        window.addEventListener('beforeunload', (e) => {
+            if (this.hasUnsavedChecklistChanges()) {
+                e.preventDefault();
+                e.returnValue = '';
             }
         });
     },
@@ -234,8 +242,15 @@ const App = {
                 }
                 
                 if (confirm('¿Subir todos los cambios locales a Firebase? Esto publicará tus productos en la nube.')) {
+                    syncBtn.disabled = true;
+                    const originalHtml = syncBtn.innerHTML;
+                    syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subiendo...';
                     this.showToast('Subiendo productos...', 'info');
-                    const resultado = await Sync.pushToFirebase();
+                    const resultado = await Sync.pushToFirebase({
+                        onProgress: (done, total) => {
+                            syncBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${done}/${total}`;
+                        }
+                    });
                     if (resultado.subidos > 0 && resultado.errores === 0) {
                         this.showToast(`${resultado.subidos} productos subidos correctamente`, 'success');
                         this.limpiarBorradorChecklist();
@@ -248,6 +263,8 @@ const App = {
                     } else {
                         this.showToast('No había cambios pendientes', 'info');
                     }
+                    syncBtn.disabled = false;
+                    syncBtn.innerHTML = originalHtml;
                 }
             });
         }
@@ -310,20 +327,32 @@ const App = {
         const dashboardCat = document.getElementById('dashboardCategoryFilter');
         const dashboardSearch = document.getElementById('dashboardSearch');
         if (dashboardCat) {
-            dashboardCat.addEventListener('change', () => this.filtrarDashboard());
+            dashboardCat.addEventListener('change', () => {
+                localStorage.setItem('filter_dashboard_category', dashboardCat.value);
+                this.filtrarDashboard();
+            });
         }
         if (dashboardSearch) {
-            dashboardSearch.addEventListener('input', () => this.filtrarDashboard());
+            dashboardSearch.addEventListener('input', () => {
+                localStorage.setItem('filter_dashboard_search', dashboardSearch.value || '');
+                this.filtrarDashboard();
+            });
         }
 
         // Products filters
         const productsCat = document.getElementById('productsCategoryFilter');
         const productsSearch = document.getElementById('productsSearch');
         if (productsCat) {
-            productsCat.addEventListener('change', () => this.filtrarProductos());
+            productsCat.addEventListener('change', () => {
+                localStorage.setItem('filter_products_category', productsCat.value);
+                this.filtrarProductos();
+            });
         }
         if (productsSearch) {
-            productsSearch.addEventListener('input', () => this.filtrarProductos());
+            productsSearch.addEventListener('input', () => {
+                localStorage.setItem('filter_products_search', productsSearch.value || '');
+                this.filtrarProductos();
+            });
         }
 
         const resetDashboardFilters = document.getElementById('resetDashboardFilters');
@@ -634,6 +663,12 @@ const App = {
 
     // Filtros del Dashboard
     filtrarDashboard: function() {
+        const savedCat = localStorage.getItem('filter_dashboard_category');
+        const savedSearch = localStorage.getItem('filter_dashboard_search');
+        const catSelect = document.getElementById('dashboardCategoryFilter');
+        const searchInput = document.getElementById('dashboardSearch');
+        if (catSelect && savedCat && catSelect.value !== savedCat) catSelect.value = savedCat;
+        if (searchInput && savedSearch !== null && searchInput.value !== savedSearch) searchInput.value = savedSearch;
         const categoria = document.getElementById('dashboardCategoryFilter')?.value || 'ALL';
         const texto = (document.getElementById('dashboardSearch')?.value || '').toLowerCase().trim();
         
@@ -649,6 +684,12 @@ const App = {
 
     // Filtros de Productos
     filtrarProductos: function() {
+        const savedCat = localStorage.getItem('filter_products_category');
+        const savedSearch = localStorage.getItem('filter_products_search');
+        const catSelect = document.getElementById('productsCategoryFilter');
+        const searchInput = document.getElementById('productsSearch');
+        if (catSelect && savedCat && catSelect.value !== savedCat) catSelect.value = savedCat;
+        if (searchInput && savedSearch !== null && searchInput.value !== savedSearch) searchInput.value = savedSearch;
         const categoria = document.getElementById('productsCategoryFilter')?.value || 'ALL';
         const texto = (document.getElementById('productsSearch')?.value || '').toLowerCase().trim();
         
@@ -1046,6 +1087,8 @@ const App = {
         if (!container) return;
         
         if (!append) {
+            const savedCat = localStorage.getItem('filter_checklist_category');
+            if (savedCat) category = savedCat;
             this.checklistOffset = 0;
             container.innerHTML = '';
         }
@@ -1148,6 +1191,8 @@ const App = {
         if (loadMoreBtn) {
             loadMoreBtn.style.display = this.checklistOffset < productos.length ? 'block' : 'none';
         }
+
+        this.initChecklistInfiniteScroll();
     },
     
     crearChecklistInput: function(label, value, unit, productId, field, row, col, recommend = 0) {
@@ -1791,6 +1836,13 @@ const App = {
             alert('No se pudo exportar el PDF');
             return;
         }
+        const exportBtn = document.getElementById('exportReportPdf');
+        const originalHtml = exportBtn ? exportBtn.innerHTML : '';
+        if (exportBtn) {
+            exportBtn.disabled = true;
+            exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando...';
+        }
+        this.showToast('Generando PDF...', 'info');
         const title = this.getCurrentReportTitle();
         
         const wrapper = document.createElement('div');
@@ -1843,6 +1895,10 @@ const App = {
         
         pdf.save(`SmartInventory_${title.replace(/\s+/g, '_')}_${this.getTodayDate()}.pdf`);
         wrapper.remove();
+        if (exportBtn) {
+            exportBtn.disabled = false;
+            exportBtn.innerHTML = originalHtml;
+        }
     },
 
     disableNumberWheel: function(scope) {
@@ -1852,6 +1908,30 @@ const App = {
             input.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
             input.dataset.noWheel = '1';
         });
+    },
+
+    initChecklistInfiniteScroll: function() {
+        const loadMoreBtn = document.getElementById('loadMoreChecklist');
+        if (!loadMoreBtn) return;
+        if (this.checklistObserver) {
+            this.checklistObserver.disconnect();
+        }
+        this.checklistObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && loadMoreBtn.style.display !== 'none') {
+                    this.cargarChecklist(this.currentChecklistCategory, true);
+                }
+            });
+        }, { rootMargin: '200px' });
+        this.checklistObserver.observe(loadMoreBtn);
+    },
+
+    hasUnsavedChecklistChanges: function() {
+        const inputs = document.querySelectorAll('.checklist-inputs input');
+        if (!inputs || inputs.length === 0) return false;
+        const { draftData } = this.buildDraftData(inputs);
+        const snapshot = JSON.stringify(draftData);
+        return snapshot !== (this.lastDraftSnapshot || '');
     },
 
     scheduleDraftSave: function() {
@@ -1884,6 +1964,7 @@ const App = {
                     this.handleDraftConflict(res);
                 } else if (res?.lastUpdated) {
                     this.draftLastUpdated = res.lastUpdated;
+                    this.lastDraftSnapshot = JSON.stringify(draftData);
                     this.refreshDraftsList();
                     this.showToast(`Borrador guardado en Firebase (${productCount} productos)`, 'success');
                     this.verifyDraftSaved(draftId, productCount);
@@ -1908,6 +1989,7 @@ const App = {
             Sync.saveChecklistDraft(draftData, newId, { create: true })
                 .then((res) => {
                     if (res?.lastUpdated) this.draftLastUpdated = res.lastUpdated;
+                    this.lastDraftSnapshot = JSON.stringify(draftData);
                     this.showToast(`Borrador guardado en Firebase (${productCount} productos)`, 'success');
                     this.refreshDraftsList();
                     this.verifyDraftSaved(newId, productCount);
@@ -1984,6 +2066,7 @@ const App = {
                         draftData = draft.products;
                         this.currentDraftId = draftId;
                         this.draftLastUpdated = draft.lastUpdated || null;
+                        this.lastDraftSnapshot = JSON.stringify(draftData);
                     }
                 }
             }
@@ -2024,13 +2107,14 @@ const App = {
                 const id = btn.dataset.draft;
                 if (window.Sync && Sync.loadChecklistDraft) {
                     const draft = await Sync.loadChecklistDraft(id);
-                    if (draft && draft.products) {
-                        this.currentDraftId = id;
-                        this.cachedDraftData = draft.products;
-                        this.draftLastUpdated = draft.lastUpdated || null;
-                        this.restaurarBorradorChecklist(draft.products);
-                        this.cerrarModal('draftSelectorModal');
-                    }
+                if (draft && draft.products) {
+                    this.currentDraftId = id;
+                    this.cachedDraftData = draft.products;
+                    this.draftLastUpdated = draft.lastUpdated || null;
+                    this.lastDraftSnapshot = JSON.stringify(draft.products);
+                    this.restaurarBorradorChecklist(draft.products);
+                    this.cerrarModal('draftSelectorModal');
+                }
                 }
             });
         });
@@ -2044,6 +2128,7 @@ const App = {
         if (id) this.currentDraftId = null;
         this.draftLastUpdated = null;
         this.draftConflict = false;
+        this.lastDraftSnapshot = '';
         this.updateDraftBadge();
         if (window.Sync && Sync.deleteChecklistDraft) {
             if (id) {
@@ -2062,6 +2147,13 @@ const App = {
             }
         }
         this.updateDraftBadge();
+    },
+
+    refreshReportsIfActive: function() {
+        const reportsSection = document.getElementById('reports');
+        if (reportsSection && reportsSection.classList.contains('active')) {
+            this.renderCurrentReport();
+        }
     },
 
     buildDraftData: function(inputs) {
@@ -2158,6 +2250,7 @@ const App = {
         const btn = e.target.closest('.filter-btn');
         btn.classList.add('active');
         const category = btn.dataset.category;
+        localStorage.setItem('filter_checklist_category', category);
         this.checklistOffset = 0;
         this.cargarChecklist(category);
     },
@@ -2473,6 +2566,7 @@ const App = {
         this.actualizarDashboard();
         if (updated > 0) this.limpiarBorradorChecklist();
         this.showToast(`Compras registradas: ${updated} productos`, 'success');
+        this.refreshReportsIfActive();
     },
     
     ejecutarPedidos: function() {
@@ -2482,6 +2576,7 @@ const App = {
         this.actualizarDashboard();
         if (updated > 0) this.limpiarBorradorChecklist();
         this.showToast(`Pedidos registrados: ${updated} productos`, 'success');
+        this.refreshReportsIfActive();
     },
     
     showToast: function(message, type = 'info') {
