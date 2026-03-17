@@ -1548,6 +1548,36 @@ input:focus-visible {
     display: none;
 }
 
+.draft-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.draft-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--light-color);
+}
+
+.draft-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.85rem;
+}
+
+.draft-meta .draft-date {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
 .status-flash {
     animation: statusPulse 0.3s ease;
 }

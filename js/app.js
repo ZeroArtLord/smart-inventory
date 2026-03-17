@@ -18,6 +18,11 @@ const App = {
     draftRestored: false,
     draftPrompted: false,
     cachedDraftData: null,
+    currentDraftId: null,
+    draftsList: [],
+    draftLastUpdated: null,
+    draftConflict: false,
+    draftOfflineWarned: false,
     lastHiddenTime: null,
     rateLimit: {
         count: 0,
@@ -60,6 +65,7 @@ const App = {
         this.checkStorageLimit();
         this.initReports();
         this.updateDraftBadge();
+        this.refreshDraftsList();
         DB.autoBackup();
 
         document.addEventListener('visibilitychange', () => {
@@ -333,6 +339,52 @@ const App = {
         const exportHistory = document.getElementById('exportHistory');
         if (exportHistory) {
             exportHistory.addEventListener('click', () => this.exportHistory());
+        }
+
+        const saveProgressBtn = document.getElementById('saveProgressBtn');
+        if (saveProgressBtn) {
+            saveProgressBtn.addEventListener('click', () => this.guardarBorradorManual());
+        }
+
+        const openDraftsBtn = document.getElementById('openDraftsBtn');
+        if (openDraftsBtn) {
+            openDraftsBtn.addEventListener('click', async () => {
+                if (!Sync.isOnline()) {
+                    this.showToast('Conéctate a internet para ver borradores', 'warning');
+                    return;
+                }
+                await this.refreshDraftsList();
+                if (!this.draftsList || this.draftsList.length === 0) {
+                    this.showToast('No hay borradores guardados', 'info');
+                    return;
+                }
+                this.mostrarSelectorBorradores(this.draftsList);
+            });
+        }
+
+        const closeDraftSelector = document.getElementById('closeDraftSelector');
+        if (closeDraftSelector) {
+            closeDraftSelector.addEventListener('click', () => this.cerrarModal('draftSelectorModal'));
+        }
+
+        const startNewDraft = document.getElementById('startNewDraft');
+        if (startNewDraft) {
+            startNewDraft.addEventListener('click', () => {
+                const newId = Date.now().toString();
+                this.currentDraftId = newId;
+                this.cachedDraftData = null;
+                this.draftLastUpdated = null;
+                this.draftConflict = false;
+                if (Sync.isOnline() && Sync.saveChecklistDraft) {
+                    Sync.saveChecklistDraft({}, newId, { create: true })
+                        .then((res) => { if (res?.lastUpdated) this.draftLastUpdated = res.lastUpdated; })
+                        .catch(() => {});
+                } else {
+                    this.showToast('Conéctate a internet para crear borradores', 'warning');
+                }
+                this.cerrarModal('draftSelectorModal');
+                this.showToast('Nuevo checklist iniciado', 'info');
+            });
         }
 
         const verifyFirebaseBtn = document.getElementById('verifyFirebase');
@@ -1088,8 +1140,6 @@ const App = {
         this.attachChecklistEvents(container);
         if (!append) {
             this.comprobarBorradorChecklist();
-        } else if (this.cachedDraftData) {
-            this.restaurarBorradorChecklist(this.cachedDraftData);
         }
         this.updateAllRecommendationWarnings();
         this.updateChecklistProgress();
@@ -1814,6 +1864,14 @@ const App = {
     guardarBorradorChecklist: function() {
         const inputs = document.querySelectorAll('.checklist-inputs input');
         if (!inputs || inputs.length === 0) return;
+        if (this.draftConflict) return;
+        if (!Sync.isOnline()) {
+            if (!this.draftOfflineWarned) {
+                this.showToast('Sin internet: el borrador no puede guardarse en la nube', 'warning');
+                this.draftOfflineWarned = true;
+            }
+            return;
+        }
         const draftData = {};
         inputs.forEach(input => {
             const productId = input.dataset.productId;
@@ -1827,14 +1885,60 @@ const App = {
             else if (field === 'buy') draftData[productId].buy = value;
             else if (field === 'order') draftData[productId].order = value;
         });
-        const draft = {
-            timestamp: Date.now(),
-            data: draftData
-        };
-        localStorage.setItem('checklist_draft', JSON.stringify(draft));
+        const draftId = this.currentDraftId || Date.now().toString();
+        this.currentDraftId = draftId;
         this.updateDraftBadge();
         if (window.Sync && Sync.saveChecklistDraft) {
-            Sync.saveChecklistDraft(draftData).catch(e => console.warn('Error guardando borrador:', e));
+            Sync.saveChecklistDraft(draftData, draftId, {
+                localLastUpdated: this.draftLastUpdated
+            }).then((res) => {
+                if (res?.conflict) {
+                    this.handleDraftConflict(res);
+                } else if (res?.lastUpdated) {
+                    this.draftLastUpdated = res.lastUpdated;
+                    this.refreshDraftsList();
+                }
+            }).catch(e => console.warn('Error guardando borrador:', e));
+        }
+    },
+
+    guardarBorradorManual: function() {
+        const inputs = document.querySelectorAll('.checklist-inputs input');
+        if (!inputs || inputs.length === 0) return;
+        if (!Sync.isOnline()) {
+            this.showToast('Conéctate a internet para guardar borradores', 'warning');
+            return;
+        }
+        const draftData = {};
+        inputs.forEach(input => {
+            const productId = input.dataset.productId;
+            if (!productId) return;
+            if (!draftData[productId]) {
+                draftData[productId] = { stock: 0, buy: 0, order: 0 };
+            }
+            const field = input.dataset.field;
+            const value = parseFloat(input.value) || 0;
+            if (field === 'stock') draftData[productId].stock = value;
+            else if (field === 'buy') draftData[productId].buy = value;
+            else if (field === 'order') draftData[productId].order = value;
+        });
+        const newId = Date.now().toString();
+        this.currentDraftId = newId;
+        this.draftConflict = false;
+        this.updateDraftBadge();
+        if (window.Sync && Sync.saveChecklistDraft) {
+            Sync.saveChecklistDraft(draftData, newId, { create: true })
+                .then((res) => {
+                    if (res?.lastUpdated) this.draftLastUpdated = res.lastUpdated;
+                    this.showToast('Borrador guardado', 'success');
+                    this.refreshDraftsList();
+                })
+                .catch(e => {
+                    console.warn('Error guardando borrador:', e);
+                    this.showToast('No se pudo guardar el borrador', 'error');
+                });
+        } else {
+            this.showToast('No se pudo guardar el borrador', 'error');
         }
     },
 
@@ -1867,54 +1971,169 @@ const App = {
     comprobarBorradorChecklist: async function() {
         if (this.draftPrompted) return;
         this.draftPrompted = true;
+        if (!Sync.isOnline()) {
+            return;
+        }
 
         let draftData = null;
-        if (window.Sync && Sync.loadChecklistDraft) {
-            const draft = await Sync.loadChecklistDraft();
-            if (draft && draft.products && draft.lastUpdated) {
-                const last = new Date(draft.lastUpdated);
-                if ((Date.now() - last.getTime()) <= 24 * 60 * 60 * 1000) {
-                    draftData = draft.products;
-                } else if (Sync.deleteChecklistDraft) {
-                    Sync.deleteChecklistDraft();
+        let draftId = null;
+        let drafts = [];
+        if (window.Sync && Sync.listChecklistDrafts) {
+            drafts = await Sync.listChecklistDrafts();
+        }
+
+        const now = Date.now();
+        const recentDrafts = drafts.filter(d => {
+            const last = d.lastUpdated ? new Date(d.lastUpdated).getTime() : 0;
+            return last && (now - last) <= 24 * 60 * 60 * 1000;
+        });
+        this.draftsList = recentDrafts;
+        this.updateDraftBadge();
+
+        if (recentDrafts.length > 1) {
+            this.mostrarSelectorBorradores(recentDrafts);
+            return;
+        }
+
+        if (recentDrafts.length === 1) {
+            const single = recentDrafts[0];
+            draftId = single.id;
+            if (confirm('Se encontró un borrador pendiente del checklist. ¿Desea restaurarlo?')) {
+                if (window.Sync && Sync.loadChecklistDraft) {
+                    const draft = await Sync.loadChecklistDraft(draftId);
+                    if (draft && draft.products) {
+                        draftData = draft.products;
+                        this.currentDraftId = draftId;
+                        this.draftLastUpdated = draft.lastUpdated || null;
+                    }
                 }
             }
         }
 
-        if (!draftData) {
-            const draftJson = localStorage.getItem('checklist_draft');
-            if (draftJson) {
-                try {
-                    const draft = JSON.parse(draftJson);
-                    if (draft && draft.timestamp && draft.data && (Date.now() - draft.timestamp) <= 24 * 60 * 60 * 1000) {
-                        draftData = draft.data;
-                    }
-                } catch (e) {}
-            }
-        }
-
         if (!draftData) return;
-        if (confirm('Se encontró un borrador pendiente del checklist. ¿Desea restaurarlo?')) {
-            this.cachedDraftData = draftData;
-            this.restaurarBorradorChecklist(draftData);
+        this.cachedDraftData = draftData;
+        this.restaurarBorradorChecklist(draftData);
+    },
+
+    mostrarSelectorBorradores: function(drafts) {
+        const container = document.getElementById('draftsListContainer');
+        if (!container) return;
+        container.innerHTML = '';
+        if (!drafts || drafts.length === 0) {
+            container.innerHTML = '<p>No hay borradores guardados.</p>';
+            document.getElementById('draftSelectorModal').classList.add('active');
+            return;
+        }
+        const list = document.createElement('div');
+        list.className = 'draft-list';
+        drafts.forEach(d => {
+            const item = document.createElement('div');
+            item.className = 'draft-item';
+            const date = d.lastUpdated ? new Date(d.lastUpdated) : new Date();
+            item.innerHTML = `
+                <div class="draft-meta">
+                    <div class="draft-date">${date.toLocaleString()}</div>
+                    <div>${d.productCount || 0} productos</div>
+                </div>
+                <button class="btn btn-secondary btn-sm" data-draft="${d.id}">Restaurar</button>
+            `;
+            list.appendChild(item);
+        });
+        container.appendChild(list);
+        container.querySelectorAll('button[data-draft]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.dataset.draft;
+                if (window.Sync && Sync.loadChecklistDraft) {
+                    const draft = await Sync.loadChecklistDraft(id);
+                    if (draft && draft.products) {
+                        this.currentDraftId = id;
+                        this.cachedDraftData = draft.products;
+                        this.draftLastUpdated = draft.lastUpdated || null;
+                        this.restaurarBorradorChecklist(draft.products);
+                        this.cerrarModal('draftSelectorModal');
+                    }
+                }
+            });
+        });
+        document.getElementById('draftSelectorModal').classList.add('active');
+    },
+
+    limpiarBorradorChecklist: function(draftId = null) {
+        this.draftRestored = false;
+        this.cachedDraftData = null;
+        const id = draftId || this.currentDraftId;
+        if (id) this.currentDraftId = null;
+        this.draftLastUpdated = null;
+        this.draftConflict = false;
+        this.updateDraftBadge();
+        if (window.Sync && Sync.deleteChecklistDraft) {
+            if (id) {
+                Sync.deleteChecklistDraft(id).finally(() => this.refreshDraftsList());
+            }
         }
     },
 
-    limpiarBorradorChecklist: function() {
-        localStorage.removeItem('checklist_draft');
-        this.draftRestored = false;
-        this.cachedDraftData = null;
+    refreshDraftsList: async function() {
+        if (window.Sync && Sync.listChecklistDrafts) {
+            try {
+                const drafts = await Sync.listChecklistDrafts();
+                this.draftsList = drafts;
+            } catch (e) {
+                this.draftsList = [];
+            }
+        }
         this.updateDraftBadge();
-        if (window.Sync && Sync.deleteChecklistDraft) {
-            Sync.deleteChecklistDraft().catch(() => {});
+    },
+    handleDraftConflict: function(res) {
+        if (confirm('Otro dispositivo actualizó este borrador. ¿Deseas sobrescribir tu versión?')) {
+            this.draftConflict = false;
+            const inputs = document.querySelectorAll('.checklist-inputs input');
+            const draftData = {};
+            inputs.forEach(input => {
+                const productId = input.dataset.productId;
+                if (!productId) return;
+                if (!draftData[productId]) {
+                    draftData[productId] = { stock: 0, buy: 0, order: 0 };
+                }
+                const field = input.dataset.field;
+                const value = parseFloat(input.value) || 0;
+                if (field === 'stock') draftData[productId].stock = value;
+                else if (field === 'buy') draftData[productId].buy = value;
+                else if (field === 'order') draftData[productId].order = value;
+            });
+            Sync.saveChecklistDraft(draftData, this.currentDraftId, { force: true })
+                .then((r) => {
+                    if (r?.lastUpdated) this.draftLastUpdated = r.lastUpdated;
+                });
+        } else if (confirm('¿Deseas recargar la versión remota del borrador?')) {
+            this.draftConflict = false;
+            Sync.loadChecklistDraft(this.currentDraftId).then(d => {
+                if (d && d.products) {
+                    this.draftLastUpdated = d.lastUpdated || null;
+                    this.restaurarBorradorChecklist(d.products);
+                }
+            });
+        } else {
+            this.draftConflict = true;
         }
     },
 
     updateDraftBadge: function() {
         const badge = document.getElementById('draftBadge');
         if (!badge) return;
-        const exists = !!localStorage.getItem('checklist_draft');
-        badge.classList.toggle('hidden', !exists);
+        const count = (this.draftsList && this.draftsList.length) ? this.draftsList.length : 0;
+        if (count > 1) {
+            badge.textContent = `Borradores (${count})`;
+            badge.classList.toggle('hidden', false);
+            return;
+        }
+        if (this.currentDraftId) {
+            badge.textContent = 'Borrador activo';
+            badge.classList.toggle('hidden', false);
+        } else {
+            badge.textContent = 'Borrador';
+            badge.classList.toggle('hidden', count === 0);
+        }
     },
     
     setChecklistValue: function(inputs, field, value) {

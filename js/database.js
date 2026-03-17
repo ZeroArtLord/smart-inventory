@@ -153,7 +153,9 @@ const DB = {
             minStock: this.normalizeNumber(productData.minStock),
             maxStock: this.normalizeNumber(productData.maxStock),
             unit: this.normalizeUnit(productData.unit),
-            category: productData.category ? this.sanitizeText(productData.category) : this.getCategoryForName(productData.name),
+            category: productData.category !== undefined && productData.category !== null
+                ? this.sanitizeText(productData.category)
+                : 'OTROS',
             supplier: this.sanitizeText(productData.supplier || ''),
             actionsPending: { buy: 0, order: 0 },
             createdAt: new Date().toISOString(),
@@ -203,7 +205,9 @@ const DB = {
             maxStock: this.normalizeNumber(
                 updateData.maxStock !== undefined ? updateData.maxStock : products[index].maxStock
             ),
-            category: updateData.category ? this.sanitizeText(updateData.category) : this.getCategoryForName(updateData.name || products[index].name),
+            category: updateData.category !== undefined && updateData.category !== null
+                ? this.sanitizeText(updateData.category)
+                : (products[index].category ?? 'OTROS'),
             supplier: updateData.supplier !== undefined ? this.sanitizeText(updateData.supplier) : products[index].supplier,
             actionsPending: updateData.actionsPending || products[index].actionsPending || { buy: 0, order: 0 },
             updatedAt: new Date().toISOString()
@@ -841,7 +845,9 @@ const DB = {
         const updated = products.map(product => {
             const unit = this.normalizeUnit(product.unit);
             const maxStock = this.normalizeNumber(product.maxStock);
-            const category = product.category || this.getCategoryForName(product.name);
+            const category = (product.category !== undefined && product.category !== null)
+                ? product.category
+                : 'OTROS';
             const actionsPending = product.actionsPending || { buy: 0, order: 0 };
             const supplier = product.supplier || '';
             
@@ -1039,7 +1045,7 @@ const DB = {
                 minStock: this.normalizeNumber(p.minStock),
                 maxStock: this.normalizeNumber(p.maxStock),
                 unit: this.normalizeUnit(p.unit),
-                category: p.category || this.getCategoryForName(p.name),
+                category: (p.category !== undefined && p.category !== null) ? p.category : 'OTROS',
                 actionsPending: p.actionsPending || { buy: 0, order: 0 },
                 supplier: this.sanitizeText(p.supplier || '')
             };

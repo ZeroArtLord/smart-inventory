@@ -267,25 +267,98 @@ const Sync = {
         return { products: Array.from(map.values()), duplicates, invalidIds };
     },
 
-    async saveChecklistDraft(draftData) {
+    async saveChecklistDraft(draftData, draftId = null, options = {}) {
         if (!this.isOnline() || !window.firebaseDb) return;
+        const id = draftId || Date.now().toString();
+        const nowIso = new Date().toISOString();
+
+        if (!options.force && draftId && options.localLastUpdated) {
+            const existing = await this.loadChecklistDraft(draftId);
+            if (existing?.lastUpdated) {
+                const remoteTime = new Date(existing.lastUpdated).getTime();
+                const localTime = new Date(options.localLastUpdated).getTime();
+                if (remoteTime > localTime) {
+                    return { conflict: true, remoteLastUpdated: existing.lastUpdated };
+                }
+            }
+        }
+
         const draft = {
+            id,
             deviceId: this.deviceId,
-            lastUpdated: new Date().toISOString(),
-            products: draftData
+            projectKey: this.projectKey,
+            createdAt: options.create ? nowIso : undefined,
+            lastUpdated: nowIso,
+            products: draftData,
+            productCount: Object.keys(draftData || {}).length
         };
-        await window.firebaseDb.collection('checklist_drafts').doc(this.deviceId).set(draft, { merge: true });
+        const cleaned = this.sanitizeForFirestore(draft);
+        await window.firebaseDb
+            .collection('checklist_drafts')
+            .doc(this.deviceId)
+            .collection('drafts')
+            .doc(id)
+            .set(cleaned, { merge: true });
+        return { id, lastUpdated: nowIso };
     },
 
-    async loadChecklistDraft() {
+    async loadChecklistDraft(draftId) {
         if (!this.isOnline() || !window.firebaseDb) return null;
-        const doc = await window.firebaseDb.collection('checklist_drafts').doc(this.deviceId).get();
+        if (!draftId) return null;
+        const doc = await window.firebaseDb
+            .collection('checklist_drafts')
+            .doc(this.deviceId)
+            .collection('drafts')
+            .doc(draftId)
+            .get();
         if (doc.exists) return doc.data();
         return null;
     },
 
-    async deleteChecklistDraft() {
+    async deleteChecklistDraft(draftId) {
         if (!this.isOnline() || !window.firebaseDb) return;
-        await window.firebaseDb.collection('checklist_drafts').doc(this.deviceId).delete();
+        if (!draftId) return;
+        await window.firebaseDb
+            .collection('checklist_drafts')
+            .doc(this.deviceId)
+            .collection('drafts')
+            .doc(draftId)
+            .delete();
+    },
+
+    async listChecklistDrafts() {
+        if (!this.isOnline() || !window.firebaseDb) return [];
+        try {
+            const snapshot = await window.firebaseDb
+                .collection('checklist_drafts')
+                .doc(this.deviceId)
+                .collection('drafts')
+                .orderBy('lastUpdated', 'desc')
+                .get();
+            const drafts = [];
+            snapshot.forEach(doc => drafts.push(doc.data()));
+            return drafts;
+        } catch (e) {
+            const snapshot = await window.firebaseDb
+                .collection('checklist_drafts')
+                .doc(this.deviceId)
+                .collection('drafts')
+                .get();
+            const drafts = [];
+            snapshot.forEach(doc => drafts.push(doc.data()));
+            return drafts;
+        }
+    },
+
+    async deleteAllChecklistDrafts() {
+        if (!this.isOnline() || !window.firebaseDb) return;
+        const snapshot = await window.firebaseDb
+            .collection('checklist_drafts')
+            .doc(this.deviceId)
+            .collection('drafts')
+            .get();
+        const batch = window.firebaseDb.batch();
+        snapshot.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
     }
 };

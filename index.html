@@ -84,6 +84,12 @@
                     <button id="toggleQuickReview" class="btn btn-secondary">
                         <i class="fas fa-triangle-exclamation"></i> Revisión rápida
                     </button>
+                    <button id="saveProgressBtn" class="btn btn-secondary">
+                        <i class="fas fa-save"></i> Guardar progreso
+                    </button>
+                    <button id="openDraftsBtn" class="btn btn-secondary">
+                        <i class="fas fa-folder-open"></i> Borradores
+                    </button>
                     <button id="openSummary" class="btn btn-primary">
                         <i class="fas fa-chart-pie"></i> Ver Resumen del Día
                     </button>
@@ -646,6 +652,18 @@
             <div class="modal-actions">
                 <button id="applyBulkEdit" class="btn btn-success">Aplicar cambios</button>
                 <button id="cancelBulkEdit" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal selector de borradores -->
+    <div id="draftSelectorModal" class="modal">
+        <div class="modal-content">
+            <h3><i class="fas fa-list"></i> Borradores guardados</h3>
+            <div id="draftsListContainer"></div>
+            <div class="modal-actions">
+                <button id="startNewDraft" class="btn btn-primary">Nuevo checklist</button>
+                <button id="closeDraftSelector" class="btn btn-secondary">Cerrar</button>
             </div>
         </div>
     </div>
