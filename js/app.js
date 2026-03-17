@@ -71,6 +71,7 @@ const App = {
         this.initReports();
         this.updateDraftBadge();
         this.refreshDraftsList();
+        this.updateDeviceIdDisplay();
         DB.autoBackup();
 
         document.addEventListener('visibilitychange', () => {
@@ -2427,6 +2428,13 @@ const App = {
             badge.textContent = 'Borrador';
             badge.classList.toggle('hidden', count === 0);
         }
+    },
+
+    updateDeviceIdDisplay: function() {
+        const deviceSpan = document.getElementById('deviceIdDisplay');
+        if (!deviceSpan || !window.Sync || !Sync.deviceId) return;
+        const shortId = Sync.deviceId.length > 8 ? `${Sync.deviceId.slice(0, 8)}...` : Sync.deviceId;
+        deviceSpan.textContent = `ID: ${shortId}`;
     },
     
     setChecklistValue: function(inputs, field, value) {
