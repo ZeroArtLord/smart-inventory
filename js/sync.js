@@ -274,42 +274,48 @@ const Sync = {
         const id = draftId || Date.now().toString();
         const nowIso = new Date().toISOString();
 
-        if (!options.force && draftId && options.localLastUpdated) {
-            const existing = await this.loadChecklistDraft(draftId);
-            if (existing?.lastUpdated) {
-                const remoteTime = new Date(existing.lastUpdated).getTime();
-                const localTime = new Date(options.localLastUpdated).getTime();
-                if (remoteTime > localTime) {
-                    return { conflict: true, remoteLastUpdated: existing.lastUpdated };
+        try {
+            if (!options.force && draftId && options.localLastUpdated) {
+                const existing = await this.loadChecklistDraft(draftId, this.deviceId);
+                if (existing?.lastUpdated) {
+                    const remoteTime = new Date(existing.lastUpdated).getTime();
+                    const localTime = new Date(options.localLastUpdated).getTime();
+                    if (remoteTime > localTime) {
+                        return { conflict: true, remoteLastUpdated: existing.lastUpdated };
+                    }
                 }
             }
-        }
 
-        const draft = {
-            id,
-            deviceId: this.deviceId,
-            projectKey: this.projectKey,
-            createdAt: options.create ? nowIso : undefined,
-            lastUpdated: nowIso,
-            products: draftData,
-            productCount: Object.keys(draftData || {}).length
-        };
-        const cleaned = this.sanitizeForFirestore(draft);
-        await window.firebaseDb
-            .collection('checklist_drafts')
-            .doc(this.deviceId)
-            .collection('drafts')
-            .doc(id)
-            .set(cleaned, { merge: true });
-        return { id, lastUpdated: nowIso };
+            const draft = {
+                id,
+                deviceId: this.deviceId,
+                projectKey: this.projectKey,
+                createdAt: options.create ? nowIso : undefined,
+                lastUpdated: nowIso,
+                products: draftData,
+                productCount: Object.keys(draftData || {}).length
+            };
+            const cleaned = this.sanitizeForFirestore(draft);
+            await window.firebaseDb
+                .collection('checklist_drafts')
+                .doc(this.deviceId)
+                .collection('drafts')
+                .doc(id)
+                .set(cleaned, { merge: true });
+            return { id, lastUpdated: nowIso };
+        } catch (err) {
+            console.error('Error guardando borrador en Firebase:', err);
+            throw err;
+        }
     },
 
-    async loadChecklistDraft(draftId) {
+    async loadChecklistDraft(draftId, deviceId = null) {
         if (!this.isOnline() || !window.firebaseDb) return null;
         if (!draftId) return null;
+        const owner = deviceId || this.deviceId;
         const doc = await window.firebaseDb
             .collection('checklist_drafts')
-            .doc(this.deviceId)
+            .doc(owner)
             .collection('drafts')
             .doc(draftId)
             .get();
@@ -317,12 +323,13 @@ const Sync = {
         return null;
     },
 
-    async deleteChecklistDraft(draftId) {
+    async deleteChecklistDraft(draftId, deviceId = null) {
         if (!this.isOnline() || !window.firebaseDb) return;
         if (!draftId) return;
+        const owner = deviceId || this.deviceId;
         await window.firebaseDb
             .collection('checklist_drafts')
-            .doc(this.deviceId)
+            .doc(owner)
             .collection('drafts')
             .doc(draftId)
             .delete();
@@ -338,7 +345,7 @@ const Sync = {
                 .orderBy('lastUpdated', 'desc')
                 .get();
             const drafts = [];
-            snapshot.forEach(doc => drafts.push(doc.data()));
+            snapshot.forEach(doc => drafts.push({ id: doc.id, ...doc.data() }));
             return drafts;
         } catch (e) {
             const snapshot = await window.firebaseDb
@@ -347,7 +354,7 @@ const Sync = {
                 .collection('drafts')
                 .get();
             const drafts = [];
-            snapshot.forEach(doc => drafts.push(doc.data()));
+            snapshot.forEach(doc => drafts.push({ id: doc.id, ...doc.data() }));
             return drafts;
         }
     },

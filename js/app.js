@@ -387,7 +387,7 @@ const App = {
                 }
                 await this.refreshDraftsList();
                 if (!this.draftsList || this.draftsList.length === 0) {
-                    this.showToast('No hay borradores guardados', 'info');
+                    this.showToast(`No hay borradores guardados (deviceId: ${Sync.deviceId})`, 'info');
                     return;
                 }
                 this.mostrarSelectorBorradores(this.draftsList);
@@ -2106,6 +2106,7 @@ const App = {
         this.draftConflict = false;
         this.updateDraftBadge();
         if (window.Sync && Sync.saveChecklistDraft) {
+            this.showToast('Guardando borrador...', 'info');
             Sync.saveChecklistDraft(draftData, newId, { create: true })
                 .then((res) => {
                     if (res?.lastUpdated) this.draftLastUpdated = res.lastUpdated;
@@ -2116,7 +2117,7 @@ const App = {
                 })
                 .catch(e => {
                     console.warn('Error guardando borrador:', e);
-                    this.showToast('No se pudo guardar el borrador', 'error');
+                    this.showToast(`No se pudo guardar el borrador: ${e?.message || 'permiso denegado'}`, 'error');
                 });
         } else {
             this.showToast('No se pudo guardar el borrador', 'error');
