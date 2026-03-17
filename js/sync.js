@@ -33,6 +33,12 @@ const Sync = {
             this.updateIndicator();
         });
     },
+
+    getDraftOwnerId(ownerId = null) {
+        if (ownerId) return ownerId;
+        if (window.Auth && Auth.getCurrentId) return Auth.getCurrentId();
+        return this.deviceId;
+    },
     
     updateIndicator() {
         const el = document.getElementById('syncIndicator');
@@ -277,7 +283,7 @@ const Sync = {
 
         try {
             if (!options.force && draftId && options.localLastUpdated) {
-                const existing = await this.loadChecklistDraft(draftId, this.deviceId);
+                const existing = await this.loadChecklistDraft(draftId, ownerId);
                 if (existing?.lastUpdated) {
                     const remoteTime = new Date(existing.lastUpdated).getTime();
                     const localTime = new Date(options.localLastUpdated).getTime();
@@ -293,7 +299,7 @@ const Sync = {
             };
             const draft = {
                 id,
-                deviceId: this.deviceId,
+                deviceId: ownerId,
                 projectKey: this.projectKey,
                 createdAt: options.create ? nowIso : undefined,
                 lastUpdated: nowIso,
@@ -304,14 +310,14 @@ const Sync = {
             console.log('Enviando a Firebase:', JSON.stringify(cleaned, null, 2));
             await window.firebaseDb
                 .collection('checklist_drafts')
-                .doc(this.deviceId)
+                .doc(ownerId)
                 .collection('drafts')
                 .doc(id)
                 .set(cleaned, { merge: true });
             return { id, lastUpdated: nowIso };
         } catch (err) {
             console.error('Error guardando borrador en Firebase:', err, {
-                deviceId: this.deviceId,
+                deviceId: ownerId,
                 draftId: id,
                 projectKey: this.projectKey
             });
@@ -319,10 +325,10 @@ const Sync = {
         }
     },
 
-    async loadChecklistDraft(draftId, deviceId = null) {
+    async loadChecklistDraft(draftId, ownerId = null) {
         if (!this.isOnline() || !window.firebaseDb) return null;
         if (!draftId) return null;
-        const owner = deviceId || this.deviceId;
+        const owner = this.getDraftOwnerId(ownerId);
         const doc = await window.firebaseDb
             .collection('checklist_drafts')
             .doc(owner)
@@ -333,10 +339,10 @@ const Sync = {
         return null;
     },
 
-    async deleteChecklistDraft(draftId, deviceId = null) {
+    async deleteChecklistDraft(draftId, ownerId = null) {
         if (!this.isOnline() || !window.firebaseDb) return;
         if (!draftId) return;
-        const owner = deviceId || this.deviceId;
+        const owner = this.getDraftOwnerId(ownerId);
         await window.firebaseDb
             .collection('checklist_drafts')
             .doc(owner)
@@ -345,12 +351,13 @@ const Sync = {
             .delete();
     },
 
-    async listChecklistDrafts() {
+    async listChecklistDrafts(ownerId = null) {
+        const owner = this.getDraftOwnerId(ownerId);
         if (!this.isOnline() || !window.firebaseDb) return [];
         try {
             const snapshot = await window.firebaseDb
                 .collection('checklist_drafts')
-                .doc(this.deviceId)
+                .doc(owner)
                 .collection('drafts')
                 .orderBy('lastUpdated', 'desc')
                 .get();
@@ -360,7 +367,7 @@ const Sync = {
         } catch (e) {
             const snapshot = await window.firebaseDb
                 .collection('checklist_drafts')
-                .doc(this.deviceId)
+                .doc(owner)
                 .collection('drafts')
                 .get();
             const drafts = [];
@@ -369,11 +376,12 @@ const Sync = {
         }
     },
 
-    async deleteAllChecklistDrafts() {
+    async deleteAllChecklistDrafts(ownerId = null) {
         if (!this.isOnline() || !window.firebaseDb) return;
+        const owner = this.getDraftOwnerId(ownerId);
         const snapshot = await window.firebaseDb
             .collection('checklist_drafts')
-            .doc(this.deviceId)
+            .doc(owner)
             .collection('drafts')
             .get();
         const batch = window.firebaseDb.batch();

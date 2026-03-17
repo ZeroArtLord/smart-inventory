@@ -55,6 +55,9 @@ const App = {
             Security.verifyProductsHash();
             Security.checkStorageLimit();
         }
+        if (window.Auth && Auth.init) {
+            Auth.init();
+        }
         this.cargarEventos();
         this.actualizarDashboard();
         this.cargarSelectores();
@@ -389,10 +392,25 @@ const App = {
                 }
                 const drafts = await this.refreshDraftsList();
                 if (!drafts || drafts.length === 0) {
-                    this.showToast(`No hay borradores guardados (deviceId: ${Sync.deviceId})`, 'info');
+                    const ownerId = (window.Auth && Auth.getCurrentId) ? Auth.getCurrentId() : Sync.deviceId;
+                    this.showToast(`No hay borradores guardados (id: ${ownerId})`, 'info');
                     return;
                 }
                 this.mostrarSelectorBorradores(drafts);
+            });
+        }
+
+        const loginBtn = document.getElementById('loginBtn');
+        if (loginBtn) {
+            loginBtn.addEventListener('click', () => {
+                if (window.Auth && Auth.login) Auth.login();
+            });
+        }
+
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', () => {
+                if (window.Auth && Auth.logout) Auth.logout();
             });
         }
 

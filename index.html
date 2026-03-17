@@ -38,6 +38,13 @@
                     <span class="label">Firebase: Offline</span>
                 </div>
                 <span id="deviceIdDisplay" class="device-id" title="Identificador de este dispositivo"></span>
+                <button id="loginBtn" class="btn btn-secondary btn-sm">
+                    <i class="fas fa-sign-in-alt"></i> Iniciar sesión
+                </button>
+                <button id="logoutBtn" class="btn btn-secondary btn-sm" style="display: none;">
+                    <i class="fas fa-sign-out-alt"></i> Cerrar sesión
+                </button>
+                <span id="userDisplay" class="user-name" style="display: none;"></span>
                 <button id="syncToFirebase" class="btn btn-secondary btn-sm" title="Subir cambios a Firebase">
                     <i class="fas fa-cloud-upload-alt"></i> Subir
                 </button>
@@ -677,12 +684,14 @@
     <!-- Scripts -->
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="js/firebaseConfig.js"></script>
     <script src="js/idb.js"></script>
     <script src="js/sync.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/database.js"></script>
     <script src="js/security.js"></script>
     <script src="js/calculator.js"></script>
