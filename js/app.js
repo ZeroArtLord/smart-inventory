@@ -1582,6 +1582,9 @@ const App = {
             case 'movimientos':
                 this.renderReportMovimientos();
                 break;
+            case 'realizadas':
+                this.renderReportRealizadas();
+                break;
             case 'sin-movimiento':
                 this.renderReportSinMovimiento();
                 break;
@@ -1824,10 +1827,61 @@ const App = {
         switch (this.currentReport) {
             case 'pedidos': return 'Pedidos pendientes';
             case 'movimientos': return 'Movimientos';
+            case 'realizadas': return 'Compras y pedidos realizados';
             case 'sin-movimiento': return 'Productos sin movimiento';
             case 'compras':
             default: return 'Compras pendientes';
         }
+    },
+
+    renderReportRealizadas: function() {
+        const container = document.getElementById('reportContent');
+        if (!container) return;
+        const history = DB.getHistory().filter(h => h.actionType === 'compra' || h.actionType === 'pedido');
+        const grouped = {};
+        history.forEach(h => {
+            const date = h.createdAt ? h.createdAt.split('T')[0] : (h.weekDate || 'Sin fecha');
+            if (!grouped[date]) grouped[date] = [];
+            grouped[date].push(h);
+        });
+        const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+        const sections = dates.map(date => {
+            const rows = grouped[date].map(h => `
+                <tr>
+                    <td>${h.productName || '-'}</td>
+                    <td>${h.actionType === 'compra' ? 'Compra' : 'Pedido'}</td>
+                    <td>${h.purchase ?? 0}</td>
+                    <td>${h.finalStock ?? 0}</td>
+                </tr>
+            `).join('');
+            return `
+                <div class="report-block">
+                    <h4>${date}</h4>
+                    <div class="table-container report-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Tipo</th>
+                                    <th>Cantidad</th>
+                                    <th>Stock final</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rows || '<tr><td colspan="4">Sin registros.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        container.innerHTML = `
+            <div class="report-header">
+                <h3>Compras y pedidos realizados</h3>
+                <p>Detalle por fecha de compras y pedidos ejecutados.</p>
+            </div>
+            ${sections || '<p>No hay compras o pedidos registrados.</p>'}
+        `;
     },
 
     exportCurrentReportPdf: async function() {
