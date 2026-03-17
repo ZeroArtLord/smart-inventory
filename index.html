@@ -78,8 +78,28 @@
         </div>
     </nav>
 
+    <!-- Pantalla de inicio de sesión (visible solo cuando no hay usuario) -->
+    <div id="landingScreen" class="landing-screen">
+        <div class="landing-content">
+            <img src="img/ByteMind Solutions.png" alt="ByteMind Solutions" class="landing-logo">
+            <h1>Smart Inventory</h1>
+            <p class="landing-tagline">Gestiona tu inventario de forma inteligente</p>
+            <p class="landing-description">
+                Controla tus compras, pedidos y stock con predicciones automáticas.<br>
+                Accede desde cualquier dispositivo con tu cuenta de Google.
+            </p>
+            <button id="landingLoginBtn" class="btn btn-primary btn-large">
+                <i class="fab fa-google"></i> Iniciar sesión con Google
+            </button>
+            <div class="landing-footer">
+                <p>Desarrollado por Armando Yanez para El Establo</p>
+                <p class="copyright">© 2024 ByteMind Solutions</p>
+            </div>
+        </div>
+    </div>
+
     <!-- Contenido principal -->
-    <main class="container">
+    <main class="container" style="display: none;">
         <!-- Checklist (sección activa) -->
         <section id="checklist" class="section active">
             <div class="section-header">

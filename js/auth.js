@@ -12,6 +12,11 @@ const Auth = {
                 this.migrateDrafts();
             }
         });
+
+        const landingLoginBtn = document.getElementById('landingLoginBtn');
+        if (landingLoginBtn) {
+            landingLoginBtn.addEventListener('click', () => this.login());
+        }
     },
 
     async login() {
@@ -32,14 +37,20 @@ const Auth = {
         const loginBtn = document.getElementById('loginBtn');
         const logoutBtn = document.getElementById('logoutBtn');
         const userDisplay = document.getElementById('userDisplay');
+        const landingScreen = document.getElementById('landingScreen');
+        const mainContainer = document.querySelector('.container');
         if (!loginBtn || !logoutBtn || !userDisplay) return;
 
         if (this.user) {
+            if (landingScreen) landingScreen.style.display = 'none';
+            if (mainContainer) mainContainer.style.display = 'block';
             loginBtn.style.display = 'none';
             logoutBtn.style.display = 'inline-flex';
             userDisplay.style.display = 'inline-flex';
             userDisplay.textContent = this.user.displayName || this.user.email || 'Usuario';
         } else {
+            if (landingScreen) landingScreen.style.display = 'flex';
+            if (mainContainer) mainContainer.style.display = 'none';
             loginBtn.style.display = 'inline-flex';
             logoutBtn.style.display = 'none';
             userDisplay.style.display = 'none';
