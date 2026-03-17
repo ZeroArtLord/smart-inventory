@@ -19,10 +19,8 @@ const Auth = {
         try {
             await firebase.auth().signInWithPopup(provider);
         } catch (error) {
-            console.error('Error al iniciar sesion:', error);
-            if (window.App && App.showToast) {
-                App.showToast('Error al iniciar sesion', 'error');
-            }
+            console.error('Error en login:', error);
+            throw error;
         }
     },
 
