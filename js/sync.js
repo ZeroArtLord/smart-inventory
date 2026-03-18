@@ -257,6 +257,21 @@ const Sync = {
         return obj;
     },
 
+    normalizeDraftData(draft) {
+        if (!draft || typeof draft !== 'object') return null;
+        if (draft.products && typeof draft.products === 'object') return draft;
+        const looksLikeProducts = Object.values(draft).some(v => v && typeof v === 'object' && ('stock' in v || 'buy' in v || 'order' in v));
+        if (looksLikeProducts) {
+            return {
+                products: draft,
+                lastUpdated: draft.lastUpdated || null,
+                productCount: Object.values(draft).filter(v => v && typeof v === 'object' && ((v.stock || 0) > 0 || (v.buy || 0) > 0 || (v.order || 0) > 0)).length
+            };
+        }
+        return draft;
+    },
+    
+
     normalizeProductsForUpload(rawProducts) {
         const map = new Map();
         const duplicates = [];
@@ -314,7 +329,7 @@ const Sync = {
                 .doc(ownerId)
                 .collection('drafts')
                 .doc(id)
-                .set(cleaned, { merge: true });
+                .set(cleaned, { merge: false });
             return { id, lastUpdated: nowIso };
         } catch (err) {
             console.error('Error guardando borrador en Firebase:', err, {
@@ -336,7 +351,10 @@ const Sync = {
             .collection('drafts')
             .doc(draftId)
             .get();
-        if (doc.exists) return doc.data();
+        if (doc.exists) {
+            const data = doc.data();
+            return this.normalizeDraftData(data);
+        }
         return null;
     },
 
@@ -362,8 +380,30 @@ const Sync = {
                 .collection('drafts')
                 .orderBy('lastUpdated', 'desc')
                 .get();
+            if (snapshot.empty) {
+                const fallback = await window.firebaseDb
+                    .collection('checklist_drafts')
+                    .doc(owner)
+                    .collection('drafts')
+                    .get();
+                const drafts = [];
+                fallback.forEach(doc => {
+                    const data = this.normalizeDraftData(doc.data()) || {};
+                    if (!data.productCount && data.products) {
+                        data.productCount = Object.values(data.products).filter(v => v && typeof v === 'object' && ((v.stock || 0) > 0 || (v.buy || 0) > 0 || (v.order || 0) > 0)).length;
+                    }
+                    drafts.push({ id: doc.id, ...data });
+                });
+                return drafts;
+            }
             const drafts = [];
-            snapshot.forEach(doc => drafts.push({ id: doc.id, ...doc.data() }));
+            snapshot.forEach(doc => {
+                const data = this.normalizeDraftData(doc.data()) || {};
+                if (!data.productCount && data.products) {
+                    data.productCount = Object.values(data.products).filter(v => v && typeof v === 'object' && ((v.stock || 0) > 0 || (v.buy || 0) > 0 || (v.order || 0) > 0)).length;
+                }
+                drafts.push({ id: doc.id, ...data });
+            });
             return drafts;
         } catch (e) {
             const snapshot = await window.firebaseDb
@@ -372,7 +412,13 @@ const Sync = {
                 .collection('drafts')
                 .get();
             const drafts = [];
-            snapshot.forEach(doc => drafts.push({ id: doc.id, ...doc.data() }));
+            snapshot.forEach(doc => {
+                const data = this.normalizeDraftData(doc.data()) || {};
+                if (!data.productCount && data.products) {
+                    data.productCount = Object.values(data.products).filter(v => v && typeof v === 'object' && ((v.stock || 0) > 0 || (v.buy || 0) > 0 || (v.order || 0) > 0)).length;
+                }
+                drafts.push({ id: doc.id, ...data });
+            });
             return drafts;
         }
     },
