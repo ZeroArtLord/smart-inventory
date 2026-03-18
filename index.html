@@ -1,78 +1,722 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Smart Inventory</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f4f6f9;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-    }
-    .card {
-      background: #fff;
-      padding: 2rem;
-      border-radius: 12px;
-      box-shadow: 0 6px 16px rgba(0,0,0,0.1);
-      text-align: center;
-      width: 100%;
-      max-width: 400px;
-    }
-    button {
-      background: #4285f4;
-      color: white;
-      border: none;
-      padding: 0.8rem 1.5rem;
-      font-size: 1rem;
-      border-radius: 8px;
-      cursor: pointer;
-      margin: 0.5rem 0;
-      width: 100%;
-    }
-    button:hover { background: #3367d6; }
-    #logoutBtn {
-      background: #e74c3c;
-      display: none;
-    }
-    #logoutBtn:hover { background: #c0392b; }
-    .user-info {
-      margin-top: 1rem;
-      display: none;
-    }
-    .user-info img {
-      border-radius: 50%;
-      width: 72px;
-      height: 72px;
-      margin-bottom: 0.5rem;
-    }
-    .muted {
-      color: #666;
-      font-size: 0.9rem;
-    }
-  </style>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Inventory - ByteMind Solutions</title>
+    
+    <!-- Estilos CSS -->
+    <link rel="stylesheet" href="css/styles.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Flatpickr -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- SheetJS para Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
+
 <body>
-  <div class="card">
-    <h1>Smart Inventory</h1>
-    <p class="muted">Inicia sesion para continuar</p>
+    <!-- Barra de navegación -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <img src="img/ByteMind Solutions.png" alt="ByteMind Solutions">
+                <div class="nav-brand-text">
+                    <span class="nav-title">Smart Inventory</span>
+                    <span class="nav-subtitle">by ByteMind Solutions</span>
+                </div>
+            </div>
+            <div class="nav-actions">
+                <div id="syncIndicator" class="sync-indicator offline">
+                    <span class="dot"></span>
+                    <span class="label">Firebase: Offline</span>
+                </div>
+                <span id="deviceIdDisplay" class="device-id" title="Identificador de este dispositivo"></span>
+                <button id="loginBtn" class="btn btn-secondary btn-sm">
+                    <i class="fas fa-sign-in-alt"></i> Iniciar sesión
+                </button>
+                <button id="logoutBtn" class="btn btn-secondary btn-sm" style="display: none;">
+                    <i class="fas fa-sign-out-alt"></i> Cerrar sesión
+                </button>
+                <span id="userDisplay" class="user-name" style="display: none;"></span>
+                <button id="syncToFirebase" class="btn btn-secondary btn-sm" title="Subir cambios a Firebase">
+                    <i class="fas fa-cloud-upload-alt"></i> Subir
+                </button>
+                <button id="toggleTheme" class="btn btn-secondary btn-sm theme-toggle" type="button">
+                    <i class="fas fa-moon"></i> Modo oscuro
+                </button>
+            </div>
+            <div class="nav-menu" id="navMenu">
+                <button class="nav-btn active" data-section="checklist">
+                    <i class="fas fa-list-check"></i> Checklist
+                </button>
+                <button class="nav-btn" data-section="dashboard">
+                    <i class="fas fa-chart-bar"></i> Dashboard
+                </button>
+                <button class="nav-btn" data-section="products">
+                    <i class="fas fa-box"></i> Productos
+                </button>
+                <button class="nav-btn" data-section="register">
+                    <i class="fas fa-edit"></i> Registrar
+                </button>
+                <button class="nav-btn" data-section="history">
+                    <i class="fas fa-history"></i> Historial
+                </button>
+                <button class="nav-btn" data-section="reports">
+                    <i class="fas fa-file-lines"></i> Reportes
+                </button>
+            </div>
+            <button class="menu-toggle" id="menuToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+    </nav>
 
-    <button id="google-signin">Iniciar sesion con Google</button>
-    <button id="logoutBtn">Cerrar sesion</button>
-
-    <div class="user-info" id="userInfo">
-      <img id="userPhoto" src="" alt="Foto de usuario"/>
-      <h3 id="userName"></h3>
-      <p id="userEmail" class="muted"></p>
+    <!-- Pantalla de inicio de sesión (visible solo cuando no hay usuario) -->
+    <div id="landingScreen" class="landing-screen">
+        <div class="landing-content">
+            <img src="img/ByteMind Solutions.png" alt="ByteMind Solutions" class="landing-logo">
+            <h1>Smart Inventory</h1>
+            <p class="landing-tagline">Gestiona tu inventario de forma inteligente</p>
+            <p class="landing-description">
+                Controla tus compras, pedidos y stock con predicciones automáticas.<br>
+                Accede desde cualquier dispositivo con tu cuenta de Google.
+            </p>
+            <button id="welcomeLoginBtn" class="btn btn-primary btn-large">
+                <i class="fab fa-google"></i> Iniciar sesión con Google
+            </button>
+            <div class="landing-footer">
+                <p>Desarrollado por Armando Yanez para El Establo</p>
+                <p class="copyright">© 2024 ByteMind Solutions</p>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <script type="module" src="js/firebaseConfig.js"></script>
-  <script type="module" src="js/auth.js"></script>
+    <!-- Contenido principal -->
+    <main class="container" style="display: none;">
+        <!-- Checklist (sección activa) -->
+        <section id="checklist" class="section active">
+            <div class="section-header">
+                <h2>
+                    <i class="fas fa-list-check"></i> Checklist de Inventario
+                    <span id="draftBadge" class="draft-badge hidden">Borrador</span>
+                </h2>
+                <div class="action-buttons">
+                    <button id="toggleComparison" class="btn btn-secondary">
+                        <i class="fas fa-chart-simple"></i> Comparar semana anterior
+                    </button>
+                    <button id="toggleQuickReview" class="btn btn-secondary">
+                        <i class="fas fa-triangle-exclamation"></i> Revisión rápida
+                    </button>
+                    <button id="saveProgressBtn" class="btn btn-secondary">
+                        <i class="fas fa-save"></i> Guardar progreso
+                    </button>
+                    <button id="openDraftsBtn" class="btn btn-secondary">
+                        <i class="fas fa-folder-open"></i> Borradores
+                    </button>
+                    <button id="openSummary" class="btn btn-primary">
+                        <i class="fas fa-chart-pie"></i> Ver Resumen del Día
+                    </button>
+                </div>
+            </div>
+
+            <div class="checklist-progress">
+                <div class="progress-bar" id="checklistProgress" style="width: 0%"></div>
+            </div>
+            
+            <div class="stock-target">
+                <label for="targetDays">Stock objetivo (días):</label>
+                <input type="number" id="targetDays" min="1" max="60" value="10">
+                <div class="target-quick">
+                    <button class="btn btn-secondary btn-sm target-btn" data-days="3">3 días</button>
+                    <button class="btn btn-secondary btn-sm target-btn" data-days="7">7 días</button>
+                    <button class="btn btn-secondary btn-sm target-btn" data-days="10">10 días</button>
+                    <button class="btn btn-secondary btn-sm target-btn" data-days="15">15 días</button>
+                </div>
+            </div>
+            
+            <div class="filters">
+                <button class="filter-btn active" data-category="ALL">Todas</button>
+                <button class="filter-btn" data-category="VIVERES">Víveres</button>
+                <button class="filter-btn" data-category="CARNES">Carnes</button>
+                <button class="filter-btn" data-category="CERVEZAS">Cervezas</button>
+                <button class="filter-btn" data-category="REFRESCOS">Refrescos</button>
+                <button class="filter-btn" data-category="HORTALIZAS">Hortalizas</button>
+                <button class="filter-btn" data-category="POSTRES">Postres</button>
+                <button class="filter-btn" data-category="DESECHABLES">Desechables</button>
+                <button class="filter-btn" data-category="LIMPIEZA">Limpieza</button>
+                <button class="filter-btn" data-category="LICORES">Licores</button>
+                <button class="filter-btn" data-category="CHARCUTERIA">Charcutería</button>
+            </div>
+
+            <div class="checklist-search">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="checklistSearch" placeholder="Buscar en checklist...">
+                </div>
+            </div>
+            
+            <div id="checklistContainer" class="checklist-container">
+                <!-- Cards de checklist -->
+            </div>
+            <button id="loadMoreChecklist" class="btn btn-secondary" style="margin-top: 1rem; display: none;">
+                Cargar más
+            </button>
+        </section>
+
+        <!-- Dashboard -->
+        <section id="dashboard" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-chart-bar"></i> Dashboard</h2>
+                <div class="action-buttons">
+                    <button id="importExcel" class="btn btn-primary">
+                        <i class="fas fa-file-import"></i> Importar Excel
+                    </button>
+                    <button id="exportExcel" class="btn btn-success">
+                        <i class="fas fa-file-export"></i> Exportar Excel
+                    </button>
+                    <button id="verifyFirebase" class="btn btn-secondary">
+                        <i class="fas fa-clipboard-check"></i> Verificar subida
+                    </button>
+                    <button id="clearLocalData" class="btn btn-danger">
+                        <i class="fas fa-trash"></i> Limpiar datos
+                    </button>
+                    <button id="forcePullFirebase" class="btn btn-secondary">
+                        <i class="fas fa-cloud-download-alt"></i> Forzar descarga
+                    </button>
+                    <button id="exportAuditLogs" class="btn btn-secondary">
+                        <i class="fas fa-clipboard-list"></i> Exportar Auditor?a
+                    </button>
+                    <button id="restoreLatestBackup" class="btn btn-danger">
+                        <i class="fas fa-rotate-left"></i> Restaurar Backup
+                    </button>
+                    <input type="file" id="excelFile" accept=".xlsx,.xls,.csv" style="display: none;">
+                </div>
+            </div>
+
+            <!-- Tarjetas de resumen -->
+            <div class="summary-cards">
+                <div class="card">
+                    <div class="card-icon blue">
+                        <i class="fas fa-boxes"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3 id="totalProducts">0</h3>
+                        <p>Total Productos</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon green">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3 id="goodProducts">0</h3>
+                        <p>En buen estado</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon yellow">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3 id="lowProducts">0</h3>
+                        <p>Stock bajo</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon red">
+                        <i class="fas fa-exclamation-circle"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3 id="criticalProducts">0</h3>
+                        <p>Críticos</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filtros Dashboard -->
+            <div class="dashboard-filters">
+                <div class="filters-row">
+                    <div class="filter-group">
+                        <label>Categoría:</label>
+                        <select id="dashboardCategoryFilter" class="filter-select">
+                            <option value="ALL">Todas las categorías</option>
+                            <option value="VIVERES">Víveres</option>
+                            <option value="CARNES">Carnes</option>
+                            <option value="CERVEZAS">Cervezas</option>
+                            <option value="REFRESCOS">Refrescos</option>
+                            <option value="HORTALIZAS">Hortalizas</option>
+                            <option value="POSTRES">Postres</option>
+                            <option value="DESECHABLES">Desechables</option>
+                            <option value="LIMPIEZA">Limpieza</option>
+                            <option value="LICORES">Licores</option>
+                            <option value="CHARCUTERIA">Charcutería</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Buscar:</label>
+                        <input type="text" id="dashboardSearch" placeholder="Buscar producto..." class="search-input">
+                    </div>
+                    <div class="filter-group">
+                        <button id="resetDashboardFilters" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-undo"></i> Resetear filtros
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabla de productos -->
+            <div class="table-container">
+                <table id="productsTable">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-type="string">Producto <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Existencia <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Mínimo <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Máximo <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Unidad <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Consumo Promedio <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Recomendación <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Estado <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Categoría <span class="sort-indicator"></span></th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="productsTableBody">
+                        <!-- Los productos se cargarán aquí -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Predicciones -->
+            <div class="predictions-section">
+                <h3><i class="fas fa-chart-line"></i> Predicciones para Próximas Semanas</h3>
+                <div id="predictionsContainer" class="predictions-grid">
+                    <!-- Se llena con JS -->
+                </div>
+            </div>
+            <div class="prediction-chart">
+                <canvas id="predictionChart"></canvas>
+            </div>
+            <div class="alerts-section">
+                <h3><i class="fas fa-exclamation-triangle"></i> Alertas y Predicciones</h3>
+                <div id="alertsContainer" class="alerts-grid">
+                    <!-- Se llena con JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección de Productos -->
+        <section id="products" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-box"></i> Gestión de Productos</h2>
+                <button id="addProductBtn" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Agregar Producto
+                </button>
+            </div>
+
+            <div class="bulk-actions hidden" id="bulkActions">
+                <button id="bulkEditBtn" class="btn btn-primary">
+                    <i class="fas fa-edit"></i> Editar seleccionados
+                </button>
+            </div>
+
+            <!-- Filtros Productos -->
+            <div class="products-filters">
+                <div class="filters-row">
+                    <div class="filter-group">
+                        <label>Categoría:</label>
+                        <select id="productsCategoryFilter" class="filter-select">
+                            <option value="ALL">Todas las categorías</option>
+                            <option value="VIVERES">Víveres</option>
+                            <option value="CARNES">Carnes</option>
+                            <option value="CERVEZAS">Cervezas</option>
+                            <option value="REFRESCOS">Refrescos</option>
+                            <option value="HORTALIZAS">Hortalizas</option>
+                            <option value="POSTRES">Postres</option>
+                            <option value="DESECHABLES">Desechables</option>
+                            <option value="LIMPIEZA">Limpieza</option>
+                            <option value="LICORES">Licores</option>
+                            <option value="CHARCUTERIA">Charcutería</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Buscar:</label>
+                        <input type="text" id="productsSearch" placeholder="Buscar producto..." class="search-input">
+                    </div>
+                    <div class="filter-group">
+                        <button id="resetProductsFilters" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-undo"></i> Resetear filtros
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Formulario para agregar/editar producto -->
+            <div class="form-container" id="productFormContainer" style="display: none;">
+                <h3><i class="fas fa-edit"></i> <span id="formTitle">Nuevo Producto</span></h3>
+                <form id="productForm">
+                    <input type="hidden" id="productId">
+                    <div class="form-group">
+                        <label for="productName">Nombre del Producto *</label>
+                        <input type="text" id="productName" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="currentStock">Stock Actual</label>
+                            <input type="number" id="currentStock" min="0" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="minStock">Stock Mínimo</label>
+                            <input type="number" id="minStock" min="0" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="maxStock">Stock Máximo</label>
+                            <input type="number" id="maxStock" min="0" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="unit">Unidad</label>
+                            <input type="text" id="unit" list="unitOptions" placeholder="UND, KG, LT...">
+                            <datalist id="unitOptions">
+                                <option value="UND"></option>
+                                <option value="KG"></option>
+                                <option value="LT"></option>
+                                <option value="CAJA"></option>
+                                <option value="BULTOS"></option>
+                            </datalist>
+                        </div>
+                        <div class="form-group">
+                            <label for="category">Categoría</label>
+                            <select id="category">
+                                <option value="VIVERES">Víveres</option>
+                                <option value="CARNES">Carnes</option>
+                                <option value="CERVEZAS">Cervezas</option>
+                                <option value="REFRESCOS">Refrescos</option>
+                                <option value="HORTALIZAS">Hortalizas</option>
+                                <option value="POSTRES">Postres</option>
+                                <option value="DESECHABLES">Desechables</option>
+                                <option value="LIMPIEZA">Limpieza</option>
+                                <option value="LICORES">Licores</option>
+                                <option value="CHARCUTERIA">Charcutería</option>
+                                <option value="OTROS">Otros</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Guardar</button>
+                        <button type="button" id="cancelForm" class="btn btn-secondary">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Lista de productos -->
+            <div class="table-container">
+                <table id="productsListTable">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAllProducts"></th>
+                            <th class="sortable" data-type="string">Producto <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Existencia <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Mínimo <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="unit">Máximo <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Unidad <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Categoría <span class="sort-indicator"></span></th>
+                            <th class="sortable" data-type="string">Estado <span class="sort-indicator"></span></th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="productsListBody">
+                        <!-- Los productos se cargarán aquí -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Sección de Registro Semanal -->
+        <section id="register" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-edit"></i> Registro Semanal</h2>
+                <div class="week-info">
+                    <span id="currentWeek">Semana actual: Cargando...</span>
+                </div>
+            </div>
+
+            <div class="form-container">
+                <form id="weeklyForm">
+                    <div class="form-group">
+                        <label for="registerProduct">Producto *</label>
+                        <select id="registerProduct" required>
+                            <option value="">Seleccionar producto...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="currentStockWeek">Stock actual (hoy)</label>
+                            <input type="number" id="currentStockWeek" min="0" required>
+                            <small id="currentUnitHint" class="unit-hint">UND</small>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="weekDate">Fecha de la semana</label>
+                        <input type="week" id="weekDate" required>
+                    </div>
+
+                    <div class="result-box" id="weeklyResult" style="display: none;">
+                        <h4><i class="fas fa-calculator"></i> Resultado:</h4>
+                        <p>Consumo estimado: <span id="weeklyConsumption">0</span></p>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Guardar Registro
+                        </button>
+                        <button type="button" id="calculateConsumption" class="btn btn-secondary">
+                            <i class="fas fa-calculator"></i> Calcular Consumo
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- Sección de Historial -->
+        <section id="history" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-history"></i> Historial por Producto</h2>
+                <div class="product-selector">
+                    <select id="historyProduct">
+                        <option value="">Seleccionar producto...</option>
+                    </select>
+                </div>
+                <div class="action-buttons">
+                    <button id="exportHistory" class="btn btn-secondary">
+                        <i class="fas fa-file-export"></i> Exportar Historial
+                    </button>
+                </div>
+            </div>
+
+            <div class="history-container">
+                <div class="chart-container">
+                    <canvas id="consumptionChart"></canvas>
+                </div>
+
+                <div class="table-container">
+                    <table id="historyTable">
+                        <thead>
+                            <tr>
+                                <th>Semana</th>
+                                <th>Stock Inicial</th>
+                                <th>Compra</th>
+                                <th>Tipo</th>
+                                <th>Stock Final</th>
+                                <th>Consumo</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="prediction-chart">
+                <canvas id="predictionChart"></canvas>
+            </div>
+            <div class="alerts-section">
+                <h3><i class="fas fa-exclamation-triangle"></i> Alertas y Predicciones</h3>
+                <div id="alertsContainer" class="alerts-grid">
+                    <!-- Se llena con JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección de Reportes -->
+        <section id="reports" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-chart-pie"></i> Reportes</h2>
+                <div class="action-buttons">
+                    <button id="exportReportPdf" class="btn btn-primary">
+                        <i class="fas fa-file-pdf"></i> Exportar PDF
+                    </button>
+                </div>
+            </div>
+
+            <div class="reports-tabs">
+                <button class="btn btn-secondary report-tab active" data-report="compras">
+                    <i class="fas fa-cart-shopping"></i> Compras pendientes
+                </button>
+                <button class="btn btn-secondary report-tab" data-report="pedidos">
+                    <i class="fas fa-truck"></i> Pedidos pendientes
+                </button>
+                <button class="btn btn-secondary report-tab" data-report="movimientos">
+                    <i class="fas fa-clipboard-list"></i> Movimientos
+                </button>
+                <button class="btn btn-secondary report-tab" data-report="realizadas">
+                    <i class="fas fa-check-double"></i> Compras/Pedidos realizados
+                </button>
+                <button class="btn btn-secondary report-tab" data-report="sin-movimiento">
+                    <i class="fas fa-ban"></i> Sin movimiento
+                </button>
+            </div>
+
+            <div id="reportContent" class="report-content">
+                <!-- Se llena con JS -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer con logo y cr?ditos -->
+    <footer class="footer-brand">
+        <div class="footer-logo">
+            <img src="img/ByteMind Solutions.png" alt="ByteMind Solutions">
+        </div>
+        <div class="footer-title">
+            <span class="footer-app">Smart Inventory</span>
+            <span class="footer-badge">v2.0</span>
+        </div>
+        <div class="footer-card">
+            <div class="footer-credits">
+                <div class="footer-person">
+                    <i class="fas fa-user-tie"></i>
+                    <span class="footer-name">Armando Yanez</span>
+                    <div class="footer-role">Desarrollador</div>
+                </div>
+                <div class="footer-divider">|</div>
+                <div class="footer-person">
+                    <i class="fas fa-store"></i>
+                    <span class="footer-name">El Establo</span>
+                    <div class="footer-role">Cliente</div>
+                </div>
+            </div>
+            <div class="footer-year">
+                <i class="fas fa-calendar-alt"></i> 2024 - Presente
+            </div>
+        </div>
+        <div class="footer-rights">
+            <i class="fas fa-copyright"></i> 2024 ByteMind Solutions. Todos los derechos reservados.
+            <br>
+            Desarrollado con <i class="fas fa-heart"></i> para El Establo
+        </div>
+    </footer>
+
+    <!-- Botón flotante resumen -->
+    <button id="floatingSummary" class="floating-summary" title="Resumen del día">
+        <i class="fas fa-clipboard-check"></i>
+    </button>
+
+    <!-- Modal para confirmaciones -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle">Confirmar acción</h3>
+            <p id="modalMessage">¿Está seguro de realizar esta acción?</p>
+            <div class="modal-actions">
+                <button id="modalConfirm" class="btn btn-danger">Confirmar</button>
+                <button id="modalCancel" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para importación -->
+    <div id="importModal" class="modal">
+        <div class="modal-content">
+            <h3><i class="fas fa-file-import"></i> Resultado de Importación</h3>
+            <div id="importResults"></div>
+            <div class="modal-actions">
+                <button id="closeImportModal" class="btn btn-primary">Cerrar</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal resumen del día -->
+    <div id="summaryModal" class="modal">
+        <div class="modal-content summary-modal">
+            <h3><i class="fas fa-clipboard-check"></i> Resumen de Acciones para Hoy</h3>
+            <div id="summaryContent"></div>
+            <div class="modal-actions">
+                <button id="executePurchases" class="btn btn-success">Ya Compré</button>
+                <button id="executeOrders" class="btn btn-primary">Ya Pedí</button>
+                <button id="exportDailyReport" class="btn btn-secondary">Exportar</button>
+                <button id="closeSummaryModal" class="btn btn-danger">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal edición masiva -->
+    <div id="bulkEditModal" class="modal">
+        <div class="modal-content">
+            <h3><i class="fas fa-layer-group"></i> Edición masiva</h3>
+            <p id="selectedCount">0 productos seleccionados</p>
+            
+            <div class="form-group">
+                <label>Cambiar unidad a:</label>
+                <select id="bulkUnit">
+                    <option value="UND">UND - Unidades</option>
+                    <option value="CAJA">CAJA - Cajas</option>
+                    <option value="LT">LT - Litros</option>
+                    <option value="KG">KG - Kilos</option>
+                    <option value="BULTOS">BULTOS - Bultos</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Cambiar categoría a (opcional):</label>
+                <select id="bulkCategory">
+                    <option value="">-- Sin cambios --</option>
+                    <option value="VIVERES">Víveres</option>
+                    <option value="CARNES">Carnes</option>
+                    <option value="CERVEZAS">Cervezas</option>
+                    <option value="REFRESCOS">Refrescos</option>
+                    <option value="HORTALIZAS">Hortalizas</option>
+                    <option value="POSTRES">Postres</option>
+                    <option value="DESECHABLES">Desechables</option>
+                    <option value="LIMPIEZA">Limpieza</option>
+                    <option value="LICORES">Licores</option>
+                    <option value="CHARCUTERIA">Charcutería</option>
+                    <option value="OTROS">Otros</option>
+                </select>
+            </div>
+            
+            <div class="modal-actions">
+                <button id="applyBulkEdit" class="btn btn-success">Aplicar cambios</button>
+                <button id="cancelBulkEdit" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal selector de borradores -->
+    <div id="draftSelectorModal" class="modal">
+        <div class="modal-content">
+            <h3><i class="fas fa-list"></i> Borradores guardados</h3>
+            <div id="draftsListContainer"></div>
+            <div class="modal-actions">
+                <button id="startNewDraft" class="btn btn-primary">Nuevo checklist</button>
+                <button id="closeDraftSelector" class="btn btn-secondary">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="js/firebaseConfig.js"></script>
+    <script src="js/idb.js"></script>
+    <script src="js/sync.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/database.js"></script>
+    <script src="js/security.js"></script>
+    <script src="js/calculator.js"></script>
+    <script src="js/excelHandler.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
