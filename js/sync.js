@@ -278,6 +278,7 @@ const Sync = {
     async saveChecklistDraft(draftData, draftId = null, options = {}) {
         if (!this.isOnline()) throw { code: 'offline', message: 'Sin conexión a internet' };
         if (!window.firebaseDb) throw { code: 'firebase-not-ready', message: 'Firebase no está listo' };
+        const ownerId = options.customId || this.getDraftOwnerId();
         const id = draftId || Date.now().toString();
         const nowIso = new Date().toISOString();
 
