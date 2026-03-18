@@ -2,7 +2,7 @@
 // Nota: No usar el Admin SDK en el navegador.
 
 const firebaseConfig = {
-    apiKey: "AIzaSyDo_pmISvXUbdDTfQwXEybmquMezusMuP4",
+    apiKey: "AIzaSyDSFpufEj4XWz7hoxUmHwxBzSaB7HXDjA4",
     authDomain: "smart-inventory-c296b.firebaseapp.com",
     projectId: "smart-inventory-c296b",
     storageBucket: "smart-inventory-c296b.firebasestorage.app",
