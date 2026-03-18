@@ -2384,19 +2384,31 @@ const App = {
                 console.log('Restaurando borrador:', id);
 
                 if (window.Sync && Sync.loadChecklistDraft) {
-                    const draft = await Sync.loadChecklistDraft(id);
-                    console.log('Borrador cargado:', draft);
+                    try {
+                        const ownerId = (window.Auth && Auth.getCurrentId) ? Auth.getCurrentId() : null;
+                        const draft = await Sync.loadChecklistDraft(id, ownerId);
+                        console.log('Borrador cargado:', draft);
 
-                    if (draft && draft.products) {
-                        this.currentDraftId = id;
-                        this.cachedDraftData = draft.products;
-                        this.draftLastUpdated = draft.lastUpdated || null;
-                        this.lastDraftSnapshot = JSON.stringify(draft.products);
-                        this.restaurarBorradorChecklist(draft.products);
-                        this.cerrarModal('draftSelectorModal');
-                        this.showToast('Borrador restaurado', 'success');
-                    } else {
-                        this.showToast('Error al cargar el borrador', 'error');
+                        let products = draft?.products;
+                        if (!products && draft) {
+                            const looksLikeProducts = Object.values(draft).some(v => v && typeof v === 'object' && ('stock' in v || 'buy' in v || 'order' in v));
+                            if (looksLikeProducts) products = draft;
+                        }
+
+                        if (products) {
+                            this.currentDraftId = id;
+                            this.cachedDraftData = products;
+                            this.draftLastUpdated = draft?.lastUpdated || null;
+                            this.lastDraftSnapshot = JSON.stringify(products);
+                            this.restaurarBorradorChecklist(products);
+                            this.cerrarModal('draftSelectorModal');
+                            this.showToast('Borrador restaurado', 'success');
+                        } else {
+                            this.showToast('Error al cargar el borrador', 'error');
+                        }
+                    } catch (e) {
+                        console.error('Error restaurando borrador:', e);
+                        this.showToast('No se pudo restaurar el borrador', 'error');
                     }
                 }
             });
