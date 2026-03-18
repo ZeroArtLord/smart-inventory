@@ -1216,6 +1216,9 @@ const App = {
         
         container.appendChild(fragment);
         this.attachChecklistEvents(container);
+        if (this.cachedDraftData) {
+            this.applyDraftToInputs(container);
+        }
         if (!append) {
             this.comprobarBorradorChecklist();
         }
@@ -2216,6 +2219,7 @@ const App = {
 
     restaurarBorradorChecklist: function(draftProducts) {
         if (!draftProducts) return;
+        this.cachedDraftData = draftProducts;
         Object.entries(draftProducts).forEach(([productId, values]) => {
             const inputs = document.querySelectorAll(`.checklist-inputs input[data-product-id="${productId}"]`);
             inputs.forEach(input => {
@@ -2238,6 +2242,38 @@ const App = {
             this.showToast('Borrador restaurado', 'success');
         }
         this.updateDraftBadge();
+        this.updateChecklistProgress();
+    },
+
+    applyDraftToInputs: function(scope) {
+        if (!this.cachedDraftData) return;
+        const root = scope || document;
+        const inputs = root.querySelectorAll('.checklist-inputs input[data-product-id]');
+        inputs.forEach(input => {
+            const productId = input.dataset.productId;
+            const values = this.cachedDraftData[productId];
+            if (!values) return;
+            if (input.dataset.field === 'stock' && values.stock !== undefined) {
+                input.value = values.stock;
+            } else if (input.dataset.field === 'buy' && values.buy !== undefined) {
+                input.value = values.buy ? values.buy : '';
+            } else if (input.dataset.field === 'order' && values.order !== undefined) {
+                input.value = values.order ? values.order : '';
+            }
+        });
+        // Update UI for rows present
+        const rows = new Set();
+        inputs.forEach(input => {
+            if (input.dataset.row) rows.add(input.dataset.row);
+        });
+        rows.forEach(row => {
+            const rowInputs = document.querySelectorAll(`.checklist-inputs input[data-row="${row}"]`);
+            if (rowInputs.length === 0) return;
+            this.updateMaxWarningForInputs(rowInputs, false);
+            const anyInput = rowInputs[0];
+            this.updateRecommendationWarningForInput(anyInput);
+            this.actualizarEstadoTarjeta(row);
+        });
     },
 
     comprobarBorradorChecklist: async function() {
