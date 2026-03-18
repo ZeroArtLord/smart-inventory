@@ -396,6 +396,15 @@ const App = {
                 const drafts = await this.refreshDraftsList(ownerId);
                 if (!drafts || drafts.length === 0) {
                     const ownerId = (window.Auth && Auth.getCurrentId) ? Auth.getCurrentId() : Sync.deviceId;
+                    const fallbackId = localStorage.getItem('last_draft_id');
+                    const fallbackOwner = localStorage.getItem('last_draft_owner');
+                    if (fallbackId) {
+                        const draft = await Sync.loadChecklistDraft(fallbackId, fallbackOwner || ownerId);
+                        if (draft && draft.products) {
+                            this.mostrarSelectorBorradores([{ id: fallbackId, ...draft }]);
+                            return;
+                        }
+                    }
                     this.showToast(`No hay borradores guardados (id: ${ownerId})`, 'info');
                     return;
                 }
@@ -2108,6 +2117,11 @@ const App = {
                 } else if (res?.lastUpdated) {
                     this.draftLastUpdated = res.lastUpdated;
                     this.lastDraftSnapshot = JSON.stringify(draftData);
+                    try {
+                        const ownerId = (window.Auth && Auth.getCurrentId) ? Auth.getCurrentId() : Sync.deviceId;
+                        localStorage.setItem('last_draft_id', draftId);
+                        localStorage.setItem('last_draft_owner', ownerId);
+                    } catch (e) {}
                     this.refreshDraftsList();
                     this.showToast(`Borrador guardado en Firebase (${productCount} productos)`, 'success');
                     this.draftSaveErrorShown = false;
@@ -2171,6 +2185,11 @@ const App = {
                 this.showToast(`Borrador guardado con ${numProductos} productos`, 'success');
                 this.draftLastUpdated = result.lastUpdated;
                 this.lastDraftSnapshot = JSON.stringify(draftData);
+                try {
+                    const ownerId = (window.Auth && Auth.getCurrentId) ? Auth.getCurrentId() : Sync.deviceId;
+                    localStorage.setItem('last_draft_id', newId);
+                    localStorage.setItem('last_draft_owner', ownerId);
+                } catch (e) {}
                 await this.refreshDraftsList();
             }
         } catch (error) {
