@@ -55,21 +55,25 @@ const Auth = {
         const assignEvents = () => {
             const welcomeBtn = document.getElementById('welcomeLoginBtn');
             if (welcomeBtn) {
-                welcomeBtn.replaceWith(welcomeBtn.cloneNode(true));
-                const newBtn = document.getElementById('welcomeLoginBtn');
-                newBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    this.login();
-                });
-                console.log('Evento asignado al boton de bienvenida');
+                if (!welcomeBtn.dataset.bound) {
+                    welcomeBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.login();
+                    });
+                    welcomeBtn.dataset.bound = '1';
+                    console.log('Evento asignado al boton de bienvenida');
+                }
             }
 
             const loginBtn = document.getElementById('loginBtn');
             if (loginBtn) {
-                loginBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    this.login();
-                });
+                if (!loginBtn.dataset.bound) {
+                    loginBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.login();
+                    });
+                    loginBtn.dataset.bound = '1';
+                }
             }
         };
 
