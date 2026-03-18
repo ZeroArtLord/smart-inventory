@@ -392,7 +392,8 @@ const App = {
                     this.showToast('Conéctate a internet para ver borradores', 'warning');
                     return;
                 }
-                const drafts = await this.refreshDraftsList();
+                const ownerId = (window.Auth && Auth.user && Auth.user.uid) ? Auth.user.uid : null;
+                const drafts = await this.refreshDraftsList(ownerId);
                 if (!drafts || drafts.length === 0) {
                     const ownerId = (window.Auth && Auth.getCurrentId) ? Auth.getCurrentId() : Sync.deviceId;
                     this.showToast(`No hay borradores guardados (id: ${ownerId})`, 'info');
@@ -2365,16 +2366,19 @@ const App = {
         }
     },
 
-    refreshDraftsList: async function() {
+    refreshDraftsList: async function(ownerId = null) {
         if (!window.Sync) return [];
         try {
-            const drafts = await Sync.listChecklistDrafts();
+            const drafts = await Sync.listChecklistDrafts(ownerId);
             this.draftsList = drafts || [];
             this.updateDraftBadge();
             console.log('Borradores actualizados:', drafts);
             return this.draftsList;
         } catch (e) {
             console.error('Error en refreshDraftsList:', e);
+            if (e && e.code === 'permission-denied') {
+                this.showToast('Permiso denegado para leer borradores', 'error');
+            }
             this.draftsList = [];
             return [];
         }
