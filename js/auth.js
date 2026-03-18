@@ -13,20 +13,70 @@ const Auth = {
                 this.migrateDrafts();
             }
         });
-
-        const welcomeLoginBtn = document.getElementById('welcomeLoginBtn');
-        if (welcomeLoginBtn) {
-            welcomeLoginBtn.addEventListener('click', () => this.login());
-        }
+        this.setupLoginButton();
     },
 
     async login() {
+        if (!firebase.auth) {
+            console.error('Firebase Auth no esta disponible');
+            if (window.App) App.showToast('Error de configuracion de Auth', 'error');
+            return;
+        }
+
         const provider = new firebase.auth.GoogleAuthProvider();
         try {
-            await firebase.auth().signInWithPopup(provider);
+            const result = await firebase.auth().signInWithPopup(provider);
+            console.log('Login exitoso', result.user);
         } catch (error) {
-            console.error('Error en login:', error);
-            throw error;
+            console.error('Error detallado:', error);
+
+            let mensaje = 'Error al iniciar sesion';
+            if (error.code === 'auth/popup-blocked') {
+                mensaje = 'El navegador bloqueo la ventana emergente. Permite popups para este sitio.';
+            } else if (error.code === 'auth/popup-closed-by-user') {
+                mensaje = 'Cerraste la ventana sin completar el login.';
+            } else if (error.code === 'auth/api-key-not-valid') {
+                mensaje = 'API key invalida. Revisa la configuracion.';
+            } else if (error.code === 'auth/unauthorized-domain') {
+                mensaje = 'Dominio no autorizado en Firebase. Agrega zeroartlord.github.io';
+            } else if (error.message) {
+                mensaje = error.message;
+            }
+
+            if (window.App) {
+                window.App.showToast(mensaje, 'error');
+            } else {
+                alert(mensaje);
+            }
+        }
+    },
+
+    setupLoginButton() {
+        const assignEvents = () => {
+            const welcomeBtn = document.getElementById('welcomeLoginBtn');
+            if (welcomeBtn) {
+                welcomeBtn.replaceWith(welcomeBtn.cloneNode(true));
+                const newBtn = document.getElementById('welcomeLoginBtn');
+                newBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.login();
+                });
+                console.log('Evento asignado al boton de bienvenida');
+            }
+
+            const loginBtn = document.getElementById('loginBtn');
+            if (loginBtn) {
+                loginBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.login();
+                });
+            }
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', assignEvents);
+        } else {
+            assignEvents();
         }
     },
 

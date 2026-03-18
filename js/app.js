@@ -57,6 +57,8 @@ const App = {
         }
         if (window.Auth && Auth.init) {
             Auth.init();
+        } else {
+            console.warn('Auth no disponible');
         }
         this.cargarEventos();
         this.actualizarDashboard();
