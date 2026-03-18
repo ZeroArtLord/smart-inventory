@@ -2386,7 +2386,22 @@ const App = {
                 if (window.Sync && Sync.loadChecklistDraft) {
                     try {
                         const ownerId = (window.Auth && Auth.getCurrentId) ? Auth.getCurrentId() : null;
-                        const draft = await Sync.loadChecklistDraft(id, ownerId);
+                        const directFetch = async () => {
+                            if (!window.firebaseDb) return null;
+                            const doc = await window.firebaseDb
+                                .collection('checklist_drafts')
+                                .doc(ownerId || (window.Auth && Auth.getCurrentId ? Auth.getCurrentId() : Sync.deviceId))
+                                .collection('drafts')
+                                .doc(id)
+                                .get();
+                            return doc.exists ? doc.data() : null;
+                        };
+                        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
+                        const draft = await Promise.race([
+                            Sync.loadChecklistDraft(id, ownerId),
+                            directFetch(),
+                            timeout
+                        ]);
                         console.log('Borrador cargado:', draft);
 
                         let products = draft?.products;
