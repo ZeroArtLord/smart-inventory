@@ -35,6 +35,10 @@ app.get('/health', async (_req, res, next) => {
 app.use('/api/v1/dev', devRouter);
 app.use('/api/v1/sync', authContext, syncRouter);
 
+app.use(['/server', '/server/*', '/test', '/test/*', '/docs', '/docs/*'], (_req, res) => {
+  res.status(404).end();
+});
+
 app.use(express.static(publicRoot, {
   index: 'index.html',
   etag: true,
