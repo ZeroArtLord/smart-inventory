@@ -206,9 +206,17 @@ export function parseCatalogMatrix(matrix) {
       );
     }
 
-    const stockParsed = parseQuantityCell(raw[columns.currentStock]);
+    const rawStock = columns.currentStock !== undefined
+      ? raw[columns.currentStock]
+      : undefined;
+    const stockParsed = parseQuantityCell(rawStock);
     const ignoredStock = stockParsed.error ? null : stockParsed.value;
-    if (ignoredStock !== null && ignoredStock !== undefined && columns.currentStock !== undefined) {
+    if (
+      columns.currentStock !== undefined &&
+      normalizeText(rawStock) !== '' &&
+      ignoredStock !== null &&
+      ignoredStock !== undefined
+    ) {
       ignoredStockRows++;
     }
 
@@ -298,24 +306,38 @@ export async function applyCatalogImport(preview) {
         (row.barcode && byBarcode.get(normalizeSearchText(row.barcode))) ||
         byName.get(normalizeSearchText(row.name));
 
-      const data = {
+      const baseData = {
         name: row.name,
-        sku: row.sku,
-        barcode: row.barcode,
-        categoryId,
         inventoryUnitId: row.inventoryUnitId,
         purchaseUnitId: row.inventoryUnitId,
         minStock: row.minStock,
-        maxStock: row.maxStock,
-        replenishmentMethod: row.replenishmentMethod
+        maxStock: row.maxStock
       };
+
+      const hasColumn = field =>
+        preview.detectedHeaders?.[field] !== undefined;
 
       let saved;
       if (existing) {
-        saved = await updateProduct(existing.id, data);
+        const patch = { ...baseData };
+
+        if (hasColumn('sku')) patch.sku = row.sku;
+        if (hasColumn('barcode')) patch.barcode = row.barcode;
+        if (hasColumn('category')) patch.categoryId = categoryId;
+        if (hasColumn('replenishmentMethod')) {
+          patch.replenishmentMethod = row.replenishmentMethod;
+        }
+
+        saved = await updateProduct(existing.id, patch);
         result.updated++;
       } else {
-        saved = await createProduct(data);
+        saved = await createProduct({
+          ...baseData,
+          sku: row.sku,
+          barcode: row.barcode,
+          categoryId,
+          replenishmentMethod: row.replenishmentMethod
+        });
         result.created++;
       }
 
@@ -347,13 +369,24 @@ function detectHeaders(row) {
     const normalized = normalizeSearchText(cell);
     if (!normalized) return;
 
+    let bestMatch = null;
+
     for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
       if (detected[field] !== undefined) continue;
-      if (aliases.some(alias => normalized === alias || normalized.includes(alias))) {
-        detected[field] = index;
-        break;
+
+      for (const alias of aliases) {
+        const exact = normalized === alias;
+        const contains = normalized.includes(alias);
+        if (!exact && !contains) continue;
+
+        const score = (exact ? 1000 : 0) + alias.length;
+        if (!bestMatch || score > bestMatch.score) {
+          bestMatch = { field, score };
+        }
       }
     }
+
+    if (bestMatch) detected[bestMatch.field] = index;
   });
 
   return detected;
