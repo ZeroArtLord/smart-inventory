@@ -105,7 +105,7 @@ export async function readCatalogFile(file, xlsx = globalThis.XLSX) {
   const matrix = xlsx.utils.sheet_to_json(worksheet, {
     header: 1,
     defval: '',
-    raw: false
+    raw: true
   });
 
   return {
