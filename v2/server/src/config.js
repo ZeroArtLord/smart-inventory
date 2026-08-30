@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 function requireEnv(name) {
   const value = process.env[name];
   if (!value) throw new Error(`Falta variable de entorno ${name}`);
