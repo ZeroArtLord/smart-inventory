@@ -834,6 +834,11 @@ function bindSyncLifecycle() {
       syncAndRefresh({ renderAfter: true }).catch(() => {});
     }
   });
+
+  setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    syncAndRefresh({ renderAfter: true }).catch(() => {});
+  }, 15000);
 }
 
 function scheduleSync(delay = 350) {
@@ -851,11 +856,23 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
 
   if (result?.ok && result.pulled > 0) {
     await refreshProducts();
-    if (renderAfter) await render();
+    if (renderAfter && canAutoRefresh()) await render();
   }
 
   await refreshSaveStatus();
   return result;
+}
+
+function canAutoRefresh() {
+  const active = document.activeElement;
+  if (!active) return true;
+
+  const tag = active.tagName?.toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+    return false;
+  }
+
+  return true;
 }
 
 function registerServiceWorker() {
