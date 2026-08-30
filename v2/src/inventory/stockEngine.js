@@ -5,7 +5,7 @@ export function calculateStock(movements, productId, { locationId = null } = {})
     if (movement.productId !== productId) return total;
     if (movement.voided === true) return total;
 
-    if (locationId && movement.locationId && movement.locationId !== locationId) {
+    if (locationId && movement.locationId !== locationId) {
       return total;
     }
 
