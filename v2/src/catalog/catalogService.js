@@ -6,7 +6,14 @@ import {
   normalizeSearchText,
   assertNonNegativeNumber
 } from '../core/catalog.js';
-import { STORES, get, getAll, put, runTransaction } from '../storage/database.js';
+import {
+  STORES,
+  get,
+  getAll,
+  requestToPromise,
+  runTransaction
+} from '../storage/database.js';
+import { SYNC_STATUS } from '../sync/localQueue.js';
 
 export async function seedDefaultUnits() {
   const existing = await getAll(STORES.UNITS);
@@ -23,15 +30,17 @@ export async function createCategory(name) {
   const cleanName = normalizeText(name);
   if (!cleanName) throw new Error('La categoría requiere nombre');
 
+  const now = new Date().toISOString();
   const category = {
     id: createLocalId('cat'),
     name: cleanName,
     nameNormalized: normalizeSearchText(cleanName),
     active: true,
-    createdAt: new Date().toISOString()
+    createdAt: now,
+    updatedAt: now
   };
 
-  await put(STORES.CATEGORIES, category);
+  await writeEntityWithSync(STORES.CATEGORIES, 'category', category, 'CREATE');
   return category;
 }
 
@@ -39,6 +48,7 @@ export async function createSupplier(data = {}) {
   const name = normalizeText(data.name);
   if (!name) throw new Error('El proveedor requiere nombre');
 
+  const now = new Date().toISOString();
   const supplier = {
     id: createLocalId('sup'),
     name,
@@ -47,10 +57,11 @@ export async function createSupplier(data = {}) {
     email: normalizeText(data.email),
     notes: normalizeText(data.notes),
     active: true,
-    createdAt: new Date().toISOString()
+    createdAt: now,
+    updatedAt: now
   };
 
-  await put(STORES.SUPPLIERS, supplier);
+  await writeEntityWithSync(STORES.SUPPLIERS, 'supplier', supplier, 'CREATE');
   return supplier;
 }
 
@@ -58,15 +69,17 @@ export async function createLocation(name) {
   const cleanName = normalizeText(name);
   if (!cleanName) throw new Error('La ubicación requiere nombre');
 
+  const now = new Date().toISOString();
   const location = {
     id: createLocalId('loc'),
     name: cleanName,
     nameNormalized: normalizeSearchText(cleanName),
     active: true,
-    createdAt: new Date().toISOString()
+    createdAt: now,
+    updatedAt: now
   };
 
-  await put(STORES.LOCATIONS, location);
+  await writeEntityWithSync(STORES.LOCATIONS, 'location', location, 'CREATE');
   return location;
 }
 
@@ -108,7 +121,7 @@ export async function createProduct(data = {}) {
     updatedAt: now
   };
 
-  await put(STORES.PRODUCTS, product);
+  await writeEntityWithSync(STORES.PRODUCTS, 'product', product, 'CREATE');
   return product;
 }
 
@@ -129,6 +142,15 @@ export async function updateProduct(productId, patch = {}) {
     next.nameNormalized = normalizeSearchText(next.name);
   }
 
+  if (patch.aliases !== undefined) {
+    next.aliases = Array.isArray(patch.aliases)
+      ? patch.aliases.map(normalizeText).filter(Boolean)
+      : [];
+  }
+
+  if (patch.sku !== undefined) next.sku = normalizeText(patch.sku);
+  if (patch.barcode !== undefined) next.barcode = normalizeText(patch.barcode);
+
   if (patch.minStock !== undefined) {
     next.minStock = assertNonNegativeNumber(patch.minStock, 'Stock mínimo');
   }
@@ -139,7 +161,14 @@ export async function updateProduct(productId, patch = {}) {
     throw new Error('El stock mínimo no puede superar el stock máximo');
   }
 
-  await put(STORES.PRODUCTS, next);
+  if (
+    next.replenishmentMethod &&
+    !Object.values(REPLENISHMENT_METHODS).includes(next.replenishmentMethod)
+  ) {
+    throw new Error('Método de reposición inválido');
+  }
+
+  await writeEntityWithSync(STORES.PRODUCTS, 'product', next, 'UPDATE');
   return next;
 }
 
@@ -168,6 +197,31 @@ export async function searchProducts(query, { limit = 30 } = {}) {
   });
 
   return matches.slice(0, limit);
+}
+
+async function writeEntityWithSync(storeName, entityType, entity, operation) {
+  const now = new Date().toISOString();
+  const syncItem = {
+    id: createLocalId('sync'),
+    entityType,
+    entityId: entity.id,
+    operation,
+    payload: entity,
+    status: SYNC_STATUS.PENDING,
+    attempts: 0,
+    createdAt: now,
+    updatedAt: now,
+    lastError: null
+  };
+
+  await runTransaction(
+    [storeName, STORES.SYNC_QUEUE],
+    'readwrite',
+    async (entityStore, queueStore) => {
+      await requestToPromise(entityStore.put(entity));
+      await requestToPromise(queueStore.add(syncItem));
+    }
+  );
 }
 
 function assertPositiveNumber(value, fieldName) {
