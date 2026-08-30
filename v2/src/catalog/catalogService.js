@@ -1,0 +1,179 @@
+import { createLocalId } from '../core/ids.js';
+import {
+  REPLENISHMENT_METHODS,
+  DEFAULT_UNITS,
+  normalizeText,
+  normalizeSearchText,
+  assertNonNegativeNumber
+} from '../core/catalog.js';
+import { STORES, get, getAll, put, runTransaction } from '../storage/database.js';
+
+export async function seedDefaultUnits() {
+  const existing = await getAll(STORES.UNITS);
+  if (existing.length > 0) return existing;
+
+  await runTransaction(STORES.UNITS, 'readwrite', store => {
+    DEFAULT_UNITS.forEach(unit => store.put(unit));
+  });
+
+  return DEFAULT_UNITS;
+}
+
+export async function createCategory(name) {
+  const cleanName = normalizeText(name);
+  if (!cleanName) throw new Error('La categoría requiere nombre');
+
+  const category = {
+    id: createLocalId('cat'),
+    name: cleanName,
+    nameNormalized: normalizeSearchText(cleanName),
+    active: true,
+    createdAt: new Date().toISOString()
+  };
+
+  await put(STORES.CATEGORIES, category);
+  return category;
+}
+
+export async function createSupplier(data = {}) {
+  const name = normalizeText(data.name);
+  if (!name) throw new Error('El proveedor requiere nombre');
+
+  const supplier = {
+    id: createLocalId('sup'),
+    name,
+    nameNormalized: normalizeSearchText(name),
+    phone: normalizeText(data.phone),
+    email: normalizeText(data.email),
+    notes: normalizeText(data.notes),
+    active: true,
+    createdAt: new Date().toISOString()
+  };
+
+  await put(STORES.SUPPLIERS, supplier);
+  return supplier;
+}
+
+export async function createLocation(name) {
+  const cleanName = normalizeText(name);
+  if (!cleanName) throw new Error('La ubicación requiere nombre');
+
+  const location = {
+    id: createLocalId('loc'),
+    name: cleanName,
+    nameNormalized: normalizeSearchText(cleanName),
+    active: true,
+    createdAt: new Date().toISOString()
+  };
+
+  await put(STORES.LOCATIONS, location);
+  return location;
+}
+
+export async function createProduct(data = {}) {
+  const name = normalizeText(data.name);
+  if (!name) throw new Error('El producto requiere nombre');
+
+  const minStock = assertNonNegativeNumber(data.minStock ?? 0, 'Stock mínimo');
+  const maxStock = assertNonNegativeNumber(data.maxStock ?? 0, 'Stock máximo');
+  if (maxStock > 0 && minStock > maxStock) {
+    throw new Error('El stock mínimo no puede superar el stock máximo');
+  }
+
+  const method = data.replenishmentMethod || REPLENISHMENT_METHODS.BOTH;
+  if (!Object.values(REPLENISHMENT_METHODS).includes(method)) {
+    throw new Error('Método de reposición inválido');
+  }
+
+  const now = new Date().toISOString();
+  const product = {
+    id: data.id || createLocalId('prd'),
+    sku: normalizeText(data.sku),
+    name,
+    nameNormalized: normalizeSearchText(name),
+    aliases: Array.isArray(data.aliases)
+      ? data.aliases.map(normalizeText).filter(Boolean)
+      : [],
+    barcode: normalizeText(data.barcode),
+    categoryId: data.categoryId || null,
+    inventoryUnitId: data.inventoryUnitId || 'unit_und',
+    purchaseUnitId: data.purchaseUnitId || data.inventoryUnitId || 'unit_und',
+    purchaseConversion: assertPositiveNumber(data.purchaseConversion ?? 1, 'Conversión de compra'),
+    minStock,
+    maxStock,
+    replenishmentMethod: method,
+    supplierId: data.supplierId || null,
+    active: data.active !== false,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  await put(STORES.PRODUCTS, product);
+  return product;
+}
+
+export async function updateProduct(productId, patch = {}) {
+  const current = await get(STORES.PRODUCTS, productId);
+  if (!current) throw new Error('Producto no encontrado');
+
+  const next = {
+    ...current,
+    ...patch,
+    id: current.id,
+    updatedAt: new Date().toISOString()
+  };
+
+  if (patch.name !== undefined) {
+    next.name = normalizeText(patch.name);
+    if (!next.name) throw new Error('El producto requiere nombre');
+    next.nameNormalized = normalizeSearchText(next.name);
+  }
+
+  if (patch.minStock !== undefined) {
+    next.minStock = assertNonNegativeNumber(patch.minStock, 'Stock mínimo');
+  }
+  if (patch.maxStock !== undefined) {
+    next.maxStock = assertNonNegativeNumber(patch.maxStock, 'Stock máximo');
+  }
+  if (next.maxStock > 0 && next.minStock > next.maxStock) {
+    throw new Error('El stock mínimo no puede superar el stock máximo');
+  }
+
+  await put(STORES.PRODUCTS, next);
+  return next;
+}
+
+export async function listProducts({ includeInactive = false } = {}) {
+  const products = await getAll(STORES.PRODUCTS);
+  return products
+    .filter(product => includeInactive || product.active !== false)
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+}
+
+export async function searchProducts(query, { limit = 30 } = {}) {
+  const terms = normalizeSearchText(query).split(' ').filter(Boolean);
+  const products = await listProducts();
+
+  if (terms.length === 0) return products.slice(0, limit);
+
+  const matches = products.filter(product => {
+    const haystack = [
+      product.nameNormalized,
+      normalizeSearchText(product.sku),
+      normalizeSearchText(product.barcode),
+      ...(product.aliases || []).map(normalizeSearchText)
+    ].join(' ');
+
+    return terms.every(term => haystack.includes(term));
+  });
+
+  return matches.slice(0, limit);
+}
+
+function assertPositiveNumber(value, fieldName) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    throw new Error(`${fieldName} debe ser mayor que cero`);
+  }
+  return number;
+}
