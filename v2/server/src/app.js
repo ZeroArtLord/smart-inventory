@@ -1,13 +1,21 @@
 import express from 'express';
 import helmet from 'helmet';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { pool } from './db.js';
 import { authContext } from './middleware/authContext.js';
 import { syncRouter } from './routes/sync.js';
+import { devRouter } from './routes/dev.js';
 
 const app = express();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const publicRoot = path.resolve(__dirname, '../..');
 
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'same-origin' }
+}));
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/health', async (_req, res, next) => {
@@ -24,7 +32,14 @@ app.get('/health', async (_req, res, next) => {
   }
 });
 
+app.use('/api/v1/dev', devRouter);
 app.use('/api/v1/sync', authContext, syncRouter);
+
+app.use(express.static(publicRoot, {
+  index: 'index.html',
+  etag: true,
+  maxAge: config.nodeEnv === 'production' ? '5m' : 0
+}));
 
 app.use((error, _req, res, _next) => {
   console.error(error);
@@ -39,7 +54,7 @@ app.use((error, _req, res, _next) => {
 });
 
 const server = app.listen(config.port, () => {
-  console.log(`Smart Inventory V2 API escuchando en puerto ${config.port}`);
+  console.log(`Smart Inventory V2 disponible en http://localhost:${config.port}`);
 });
 
 async function shutdown(signal) {
