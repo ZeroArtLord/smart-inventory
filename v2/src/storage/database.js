@@ -1,8 +1,12 @@
 const DB_NAME = 'smart_inventory_v2';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const STORES = Object.freeze({
   PRODUCTS: 'products',
+  CATEGORIES: 'categories',
+  UNITS: 'units',
+  SUPPLIERS: 'suppliers',
+  LOCATIONS: 'locations',
   MOVEMENTS: 'movements',
   DOCUMENTS: 'documents',
   LOTS: 'lots',
@@ -23,55 +27,74 @@ function createDatabase() {
 
     request.onupgradeneeded = () => {
       const db = request.result;
+      const tx = request.transaction;
 
-      createStore(db, STORES.PRODUCTS, 'id', [
-        ['name', 'name'],
-        ['categoryId', 'categoryId'],
-        ['barcode', 'barcode', { unique: false }]
-      ]);
+      const products = ensureStore(db, tx, STORES.PRODUCTS, 'id');
+      ensureIndex(products, 'name', 'name');
+      ensureIndex(products, 'nameNormalized', 'nameNormalized');
+      ensureIndex(products, 'categoryId', 'categoryId');
+      ensureIndex(products, 'barcode', 'barcode');
+      ensureIndex(products, 'sku', 'sku');
 
-      createStore(db, STORES.MOVEMENTS, 'id', [
-        ['productId', 'productId'],
-        ['createdAt', 'createdAt'],
-        ['documentId', 'documentId'],
-        ['type', 'type']
-      ]);
+      const categories = ensureStore(db, tx, STORES.CATEGORIES, 'id');
+      ensureIndex(categories, 'nameNormalized', 'nameNormalized');
 
-      createStore(db, STORES.DOCUMENTS, 'id', [
-        ['type', 'type'],
-        ['status', 'status'],
-        ['createdAt', 'createdAt'],
-        ['ownerId', 'ownerId']
-      ]);
+      const units = ensureStore(db, tx, STORES.UNITS, 'id');
+      ensureIndex(units, 'code', 'code');
 
-      createStore(db, STORES.LOTS, 'id', [
-        ['productId', 'productId'],
-        ['expiresAt', 'expiresAt']
-      ]);
+      const suppliers = ensureStore(db, tx, STORES.SUPPLIERS, 'id');
+      ensureIndex(suppliers, 'nameNormalized', 'nameNormalized');
 
-      createStore(db, STORES.SYNC_QUEUE, 'id', [
-        ['status', 'status'],
-        ['createdAt', 'createdAt']
-      ]);
+      const locations = ensureStore(db, tx, STORES.LOCATIONS, 'id');
+      ensureIndex(locations, 'nameNormalized', 'nameNormalized');
 
-      if (!db.objectStoreNames.contains(STORES.SETTINGS)) {
-        db.createObjectStore(STORES.SETTINGS, { keyPath: 'key' });
-      }
+      const movements = ensureStore(db, tx, STORES.MOVEMENTS, 'id');
+      ensureIndex(movements, 'productId', 'productId');
+      ensureIndex(movements, 'createdAt', 'createdAt');
+      ensureIndex(movements, 'documentId', 'documentId');
+      ensureIndex(movements, 'type', 'type');
+      ensureIndex(movements, 'reversedMovementId', 'reversedMovementId');
+
+      const documents = ensureStore(db, tx, STORES.DOCUMENTS, 'id');
+      ensureIndex(documents, 'type', 'type');
+      ensureIndex(documents, 'status', 'status');
+      ensureIndex(documents, 'createdAt', 'createdAt');
+      ensureIndex(documents, 'ownerId', 'ownerId');
+
+      const lots = ensureStore(db, tx, STORES.LOTS, 'id');
+      ensureIndex(lots, 'productId', 'productId');
+      ensureIndex(lots, 'expiresAt', 'expiresAt');
+      ensureIndex(lots, 'lotNumber', 'lotNumber');
+
+      const syncQueue = ensureStore(db, tx, STORES.SYNC_QUEUE, 'id');
+      ensureIndex(syncQueue, 'status', 'status');
+      ensureIndex(syncQueue, 'createdAt', 'createdAt');
+      ensureIndex(syncQueue, 'entityId', 'entityId');
+
+      ensureStore(db, tx, STORES.SETTINGS, 'key');
     };
 
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
     request.onerror = () => reject(request.error || new Error('No se pudo abrir IndexedDB'));
     request.onblocked = () => reject(new Error('La actualización de IndexedDB está bloqueada por otra pestaña'));
   });
 }
 
-function createStore(db, name, keyPath, indexes = []) {
-  if (db.objectStoreNames.contains(name)) return;
-  const store = db.createObjectStore(name, { keyPath });
+function ensureStore(db, tx, name, keyPath) {
+  if (!db.objectStoreNames.contains(name)) {
+    return db.createObjectStore(name, { keyPath });
+  }
+  return tx.objectStore(name);
+}
 
-  indexes.forEach(([indexName, key, options = {}]) => {
-    store.createIndex(indexName, key, options);
-  });
+function ensureIndex(store, name, keyPath, options = {}) {
+  if (!store.indexNames.contains(name)) {
+    store.createIndex(name, keyPath, options);
+  }
 }
 
 export async function put(storeName, value) {
@@ -84,6 +107,12 @@ export async function get(storeName, key) {
 
 export async function getAll(storeName) {
   return runTransaction(storeName, 'readonly', store => requestToPromise(store.getAll()));
+}
+
+export async function getAllByIndex(storeName, indexName, key) {
+  return runTransaction(storeName, 'readonly', store => {
+    return requestToPromise(store.index(indexName).getAll(key));
+  });
 }
 
 export async function remove(storeName, key) {
@@ -119,7 +148,7 @@ export async function runTransaction(storeNames, mode, operation) {
   });
 }
 
-function requestToPromise(request) {
+export function requestToPromise(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error('Operación IndexedDB fallida'));
