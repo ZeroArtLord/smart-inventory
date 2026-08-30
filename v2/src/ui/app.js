@@ -231,7 +231,7 @@ async function renderCatalog() {
               <div>
                 <strong>${escapeHtml(product.name)}</strong>
                 <div class="product-meta">
-                  Min ${product.minStock} · Max ${product.maxStock || '—'} · ${escapeHtml(product.replenishmentMethod)}
+                  Min ${product.minStock} · Max ${product.maxStock || '—'} · ${escapeHtml(replenishmentLabel(product.replenishmentMethod))}
                 </div>
               </div>
             `).join('')
@@ -920,6 +920,21 @@ function getLocalOwnerId() {
   }
 
   return id;
+}
+
+function replenishmentLabel(method) {
+  switch (method) {
+    case REPLENISHMENT_METHODS.PURCHASE:
+      return 'Compra';
+    case REPLENISHMENT_METHODS.ORDER:
+      return 'Pedido';
+    case REPLENISHMENT_METHODS.BOTH:
+      return 'Compra o pedido';
+    case REPLENISHMENT_METHODS.NONE:
+      return 'Sin reposición automática';
+    default:
+      return method || '—';
+  }
 }
 
 function documentTitle(type) {
