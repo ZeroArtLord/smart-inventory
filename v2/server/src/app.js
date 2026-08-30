@@ -12,6 +12,10 @@ const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicRoot = path.resolve(__dirname, '../..');
+const xlsxBrowserBundle = path.resolve(
+  __dirname,
+  '../node_modules/xlsx/dist/xlsx.full.min.js'
+);
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'same-origin' }
@@ -34,6 +38,10 @@ app.get('/health', async (_req, res, next) => {
 
 app.use('/api/v1/dev', devRouter);
 app.use('/api/v1/sync', authContext, syncRouter);
+
+app.get('/vendor/xlsx.full.min.js', (_req, res) => {
+  res.sendFile(xlsxBrowserBundle);
+});
 
 app.use((req, res, next) => {
   const blockedPrefixes = ['/server', '/test', '/docs'];
