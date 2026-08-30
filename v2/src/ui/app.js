@@ -727,11 +727,14 @@ async function getPendingSyncCount() {
 }
 
 function getLocalOwnerId() {
-  const key = 'smart_inventory_v2_local_owner';
+  // Identidad lógica temporal para poder continuar el mismo trabajo
+  // desde varios dispositivos durante el desarrollo.
+  // En producción será reemplazada por el UID autenticado.
+  const key = 'smart_inventory_v2_dev_user_key';
   let id = localStorage.getItem(key);
 
   if (!id) {
-    id = createLocalId('usr_local');
+    id = 'almacenista-dev';
     localStorage.setItem(key, id);
   }
 
