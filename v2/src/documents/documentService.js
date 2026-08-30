@@ -165,6 +165,32 @@ export async function listDraftDocuments({ ownerId = null, type = null } = {}) {
     .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
 }
 
+export async function cancelDocument(documentId, { userId = null } = {}) {
+  const current = await get(STORES.DOCUMENTS, documentId);
+  assertDocumentIsDraft(current);
+
+  const now = new Date().toISOString();
+  const cancelled = {
+    ...current,
+    status: DOCUMENT_STATUS.CANCELLED,
+    updatedAt: now,
+    metadata: {
+      ...(current.metadata || {}),
+      cancelledAt: now,
+      cancelledBy: userId
+    }
+  };
+
+  await writeWithSync(
+    STORES.DOCUMENTS,
+    'document',
+    cancelled,
+    'UPDATE'
+  );
+
+  return cancelled;
+}
+
 export async function closeDocument(documentId, { userId = null } = {}) {
   const current = await get(STORES.DOCUMENTS, documentId);
   assertDocumentIsDraft(current);
