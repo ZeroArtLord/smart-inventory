@@ -397,11 +397,13 @@ function createSyncItem(entityType, entityId, operation, payload) {
 }
 
 function defaultLineId(document, productId, data) {
-  if (
-    document.type === DOCUMENT_TYPES.ENTRY &&
-    (data.forceNewLine || data.lotNumber)
-  ) {
+  if (document.type === DOCUMENT_TYPES.ENTRY && data.forceNewLine) {
     return createLocalId('line');
+  }
+
+  if (document.type === DOCUMENT_TYPES.ENTRY && data.lotNumber) {
+    const lotKey = normalizeText(data.lotNumber).toLowerCase();
+    return `line_${document.id}_${productId}_lot_${encodeURIComponent(lotKey)}`;
   }
 
   return `line_${document.id}_${productId}`;
