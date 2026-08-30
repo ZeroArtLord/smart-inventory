@@ -52,18 +52,34 @@
 - Mercancía en tránsito contemplada por el motor.
 - Nivel de confianza según historial.
 
+### Fase 6 — PWA operativa (primera versión)
+- Shell instalable.
+- Catálogo manual.
+- Conteo número + Enter.
+- Teclado matemático auxiliar.
+- Entrada tipo carrito.
+- Surtido tipo carrito.
+- Borradores recuperables.
+- Service Worker para shell offline.
+
+### Fase 7 — Backend propio (fundación)
+- Node.js API.
+- PostgreSQL.
+- Separación por workspace.
+- Movimientos inmutables en servidor.
+- Cola de eventos idempotente.
+- Push/pull de sincronización.
+- Autenticación de desarrollo aislada y no apta para producción.
+
 ## Pendiente inmediato
 
-1. UI PWA V2.
-2. Flujo móvil número + Enter.
-3. Importador Excel V2.
-4. Backend Node.js + PostgreSQL.
-5. Sincronizador cliente-servidor.
-6. Autenticación, roles y permisos.
-7. Gestión real de pedidos/en tránsito.
-8. FEFO y consumo de lotes.
-9. Reportes.
-10. Cámara/códigos de barra.
-11. Pruebas offline multi-dispositivo.
-12. Migrador V1 → V2.
-13. Integración SAINT como fase final.
+1. Conectar la cola local con la API de sincronización.
+2. Importador Excel V2.
+3. Autenticación real, roles y permisos.
+4. Gestión real de pedidos/en tránsito.
+5. FEFO y consumo de lotes.
+6. Reportes.
+7. Cámara/códigos de barra.
+8. Pruebas offline multi-dispositivo.
+9. Migrador V1 → V2.
+10. Integración SAINT como fase final.
