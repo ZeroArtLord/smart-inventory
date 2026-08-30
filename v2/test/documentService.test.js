@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 
 const {
   createDocument,
-  listDraftDocuments
+  listDraftDocuments,
+  cancelDocument
 } = await import('../src/documents/documentService.js');
 
 const {
@@ -44,4 +45,21 @@ test('permite conteos independientes para usuarios distintos', async () => {
   });
 
   assert.notEqual(second.id, first.id);
+});
+
+
+test('cancelar un borrador lo conserva en auditoría pero deja de listarlo como pendiente', async () => {
+  const draft = await createDocument({
+    type: DOCUMENT_TYPES.COUNT,
+    ownerId: 'usuario-cancel'
+  });
+
+  await cancelDocument(draft.id, { userId: 'usuario-cancel' });
+
+  const drafts = await listDraftDocuments({
+    ownerId: 'usuario-cancel',
+    type: DOCUMENT_TYPES.COUNT
+  });
+
+  assert.equal(drafts.length, 0);
 });
