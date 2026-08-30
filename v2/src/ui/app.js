@@ -561,6 +561,22 @@ async function startDocument(type) {
     return render();
   }
 
+  if (type === DOCUMENT_TYPES.COUNT) {
+    const existingDrafts = await listDraftDocuments({
+      ownerId,
+      type: DOCUMENT_TYPES.COUNT
+    });
+
+    if (existingDrafts.length > 0) {
+      const existing = existingDrafts[0];
+      state.activeDocumentId = existing.id;
+      state.activeDocumentType = type;
+      state.selectedProductId = null;
+      showToast('Continuando conteo pendiente');
+      return render();
+    }
+  }
+
   const document = await createDocument({
     type,
     ownerId
