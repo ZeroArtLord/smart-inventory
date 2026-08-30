@@ -25,6 +25,24 @@ import {
 
 export async function createDocument(data = {}) {
   const type = assertDocumentType(data.type);
+
+  // Un conteo físico es una sesión recuperable, no un botón que deba
+  // crear borradores ilimitados. Esta protección vive en el servicio
+  // (además de la UI) para que cualquier llamada local respete la regla.
+  if (type === DOCUMENT_TYPES.COUNT && data.ownerId) {
+    const drafts = await listDraftDocuments({
+      ownerId: data.ownerId,
+      type: DOCUMENT_TYPES.COUNT
+    });
+
+    const requestedLocationId = data.locationId || null;
+    const existing = drafts.find(document =>
+      (document.locationId || null) === requestedLocationId
+    );
+
+    if (existing) return existing;
+  }
+
   const now = new Date().toISOString();
 
   const document = {
