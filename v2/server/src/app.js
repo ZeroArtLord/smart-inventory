@@ -35,8 +35,21 @@ app.get('/health', async (_req, res, next) => {
 app.use('/api/v1/dev', devRouter);
 app.use('/api/v1/sync', authContext, syncRouter);
 
-app.use(['/server', '/server/*', '/test', '/test/*', '/docs', '/docs/*'], (_req, res) => {
-  res.status(404).end();
+app.use((req, res, next) => {
+  const blockedPrefixes = ['/server', '/test', '/docs'];
+  const blockedFiles = ['/package.json', '/.gitignore'];
+
+  if (
+    blockedFiles.includes(req.path) ||
+    blockedPrefixes.some(prefix =>
+      req.path === prefix || req.path.startsWith(prefix + '/')
+    )
+  ) {
+    res.status(404).end();
+    return;
+  }
+
+  next();
 });
 
 app.use(express.static(publicRoot, {
