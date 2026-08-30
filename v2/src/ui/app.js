@@ -25,6 +25,10 @@ import {
 import {
   getReplenishmentSuggestion
 } from '../intelligence/replenishmentEngine.js';
+import {
+  syncNow,
+  onSyncStatus
+} from '../sync/syncEngine.js';
 
 const appRoot = document.getElementById('app');
 const saveStatus = document.getElementById('saveStatus');
@@ -39,6 +43,7 @@ const state = {
 };
 
 const ownerId = getLocalOwnerId();
+let syncTimer = null;
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -49,6 +54,9 @@ async function init() {
     await refreshProducts();
     bindGlobalEvents();
     registerServiceWorker();
+    bindSyncLifecycle();
+    await syncAndRefresh({ renderAfter: false });
+    await refreshProducts();
     await render();
   } catch (error) {
     renderFatal(error);
@@ -494,6 +502,7 @@ async function handleSubmit(event) {
 
     await refreshProducts();
     showToast('Producto guardado');
+    scheduleSync();
     await render();
   } catch (error) {
     showToast(error.message || String(error));
@@ -561,6 +570,7 @@ async function startDocument(type) {
   state.activeDocumentType = type;
   state.selectedProductId = null;
   showToast('Borrador creado');
+  scheduleSync();
   await render();
 }
 
@@ -588,6 +598,7 @@ async function saveCount(productId) {
     showToast('Guardado');
   }
 
+  scheduleSync();
   await render();
 }
 
@@ -631,6 +642,7 @@ async function addOperationLine(type) {
 
   state.selectedProductId = null;
   showToast('Línea guardada');
+  scheduleSync();
   await render();
 }
 
@@ -647,6 +659,7 @@ async function finishDocument() {
   state.selectedProductId = null;
 
   showToast(`Cerrado · ${result.movements?.length || 0} movimientos generados`);
+  scheduleSync();
   await render();
 }
 
@@ -780,6 +793,66 @@ function showToast(message) {
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 2600);
   refreshSaveStatus().catch(() => {});
+}
+
+function bindSyncLifecycle() {
+  onSyncStatus(status => {
+    if (!saveStatus) return;
+
+    switch (status.state) {
+      case 'syncing':
+        saveStatus.textContent = '↻ Sincronizando…';
+        break;
+      case 'synced':
+        saveStatus.textContent = '☁ Sincronizado';
+        break;
+      case 'offline':
+        saveStatus.textContent = '✓ Guardado local · sin conexión';
+        break;
+      case 'disabled':
+        saveStatus.textContent = '✓ Guardado local · sync desactivado';
+        break;
+      case 'error':
+        saveStatus.textContent = '✓ Guardado local · servidor pendiente';
+        break;
+    }
+  });
+
+  window.addEventListener('online', () => {
+    syncAndRefresh({ renderAfter: true }).catch(() => {});
+  });
+
+  window.addEventListener('offline', () => {
+    refreshSaveStatus().catch(() => {});
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      syncAndRefresh({ renderAfter: true }).catch(() => {});
+    }
+  });
+}
+
+function scheduleSync(delay = 350) {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    syncAndRefresh({ renderAfter: false }).catch(() => {});
+  }, delay);
+}
+
+async function syncAndRefresh({ renderAfter = false } = {}) {
+  const result = await syncNow({
+    localUserId: ownerId,
+    displayName: 'Usuario local'
+  });
+
+  if (result?.ok && result.pulled > 0) {
+    await refreshProducts();
+    if (renderAfter) await render();
+  }
+
+  await refreshSaveStatus();
+  return result;
 }
 
 function registerServiceWorker() {
