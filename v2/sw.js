@@ -1,16 +1,18 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-3';
+const CACHE_NAME = 'smart-inventory-v2-shell-4';
 
 const APP_SHELL = [
   './',
   './index.html',
   './css/app.css',
   './manifest.webmanifest',
+  './vendor/xlsx.full.min.js',
   './src/ui/app.js',
   './src/core/mathExpression.js',
   './src/core/ids.js',
   './src/core/catalog.js',
   './src/core/movementTypes.js',
   './src/catalog/catalogService.js',
+  './src/catalog/catalogExcel.js',
   './src/storage/database.js',
   './src/sync/localQueue.js',
   './src/sync/syncSettings.js',
