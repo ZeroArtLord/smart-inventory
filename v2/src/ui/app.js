@@ -17,6 +17,7 @@ import {
   saveDocumentLine,
   listDocumentLines,
   listDraftDocuments,
+  cancelDocument,
   closeDocument
 } from '../documents/documentService.js';
 import {
@@ -235,9 +236,14 @@ async function renderDocumentWorkspace(type) {
               <strong>Continuar trabajo</strong>
               <div class="stack" style="margin-top:8px">
                 ${drafts.map(document => `
-                  <button class="secondary" data-action="open-document" data-id="${escapeHtml(document.id)}" data-type="${type}" type="button">
-                    ${escapeHtml(document.id)} · ${formatDate(document.updatedAt)}
-                  </button>
+                  <div class="row">
+                    <button class="secondary" style="flex:1" data-action="open-document" data-id="${escapeHtml(document.id)}" data-type="${type}" type="button">
+                      ${escapeHtml(document.id)} · ${formatDate(document.updatedAt)}
+                    </button>
+                    <button class="danger" data-action="cancel-document" data-id="${escapeHtml(document.id)}" type="button">
+                      Cancelar
+                    </button>
+                  </div>
                 `).join('')}
               </div>
             </div>
@@ -466,6 +472,8 @@ async function handleClick(event) {
         state.activeDocumentType = button.dataset.type;
         state.selectedProductId = null;
         return render();
+      case 'cancel-document':
+        return cancelDraft(button.dataset.id);
       case 'save-count':
         return saveCount(button.dataset.productId);
       case 'select-product':
@@ -658,6 +666,24 @@ async function addOperationLine(type) {
 
   state.selectedProductId = null;
   showToast('Línea guardada');
+  scheduleSync();
+  await render();
+}
+
+async function cancelDraft(documentId) {
+  if (!confirm('¿Cancelar este borrador? No afectará el inventario y quedará registrado en el historial.')) {
+    return;
+  }
+
+  await cancelDocument(documentId, { userId: ownerId });
+
+  if (state.activeDocumentId === documentId) {
+    state.activeDocumentId = null;
+    state.activeDocumentType = null;
+    state.selectedProductId = null;
+  }
+
+  showToast('Borrador cancelado');
   scheduleSync();
   await render();
 }
