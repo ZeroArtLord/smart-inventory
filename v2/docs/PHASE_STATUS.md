@@ -71,15 +71,29 @@
 - Push/pull de sincronización.
 - Autenticación de desarrollo aislada y no apta para producción.
 
+### Fase 8 — Sincronización cliente-servidor
+- La cola local hace push automático.
+- El cliente hace pull incremental por cursor.
+- Los cambios remotos se aplican sin volver a encolarse.
+- Eventos repetidos son idempotentes.
+- Operaciones SYNCING interrumpidas se recuperan.
+- Reintento automático cada 15 segundos mientras la app está visible.
+- Sincronización al recuperar Internet.
+- Sincronización al volver a la app.
+- La UI no se refresca automáticamente mientras el usuario está escribiendo.
+- Identidad lógica de desarrollo compartida entre dispositivos.
+- Membresía de workspace verificada en servidor.
+
 ## Pendiente inmediato
 
-1. Conectar la cola local con la API de sincronización.
-2. Importador Excel V2.
-3. Autenticación real, roles y permisos.
-4. Gestión real de pedidos/en tránsito.
-5. FEFO y consumo de lotes.
-6. Reportes.
-7. Cámara/códigos de barra.
-8. Pruebas offline multi-dispositivo.
-9. Migrador V1 → V2.
-10. Integración SAINT como fase final.
+1. Instalar PostgreSQL y levantar la API en el servidor de pruebas.
+2. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC.
+3. Importador Excel V2.
+4. Autenticación real, roles y permisos.
+5. Gestión real de pedidos/en tránsito.
+6. FEFO y consumo de lotes.
+7. Reportes.
+8. Cámara/códigos de barra.
+9. Pruebas destructivas multi-dispositivo.
+10. Migrador V1 → V2.
+11. Integración SAINT como fase final.
