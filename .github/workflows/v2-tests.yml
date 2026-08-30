@@ -1,6 +1,7 @@
 name: Smart Inventory V2 Tests
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - feature/smart-inventory-v2
