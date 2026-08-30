@@ -1,5 +1,5 @@
 const DB_NAME = 'smart_inventory_v2';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export const STORES = Object.freeze({
   PRODUCTS: 'products',
@@ -52,6 +52,7 @@ function createDatabase() {
       const movements = ensureStore(db, tx, STORES.MOVEMENTS, 'id');
       ensureIndex(movements, 'productId', 'productId');
       ensureIndex(movements, 'createdAt', 'createdAt');
+      ensureIndex(movements, 'effectiveAt', 'effectiveAt');
       ensureIndex(movements, 'documentId', 'documentId');
       ensureIndex(movements, 'type', 'type');
       ensureIndex(movements, 'reversedMovementId', 'reversedMovementId');
@@ -65,7 +66,14 @@ function createDatabase() {
       const documentLines = ensureStore(db, tx, STORES.DOCUMENT_LINES, 'id');
       ensureIndex(documentLines, 'documentId', 'documentId');
       ensureIndex(documentLines, 'productId', 'productId');
-      ensureIndex(documentLines, 'documentProduct', ['documentId', 'productId'], { unique: true });
+
+      if (documentLines.indexNames.contains('documentProduct')) {
+        const current = documentLines.index('documentProduct');
+        if (current.unique) {
+          documentLines.deleteIndex('documentProduct');
+        }
+      }
+      ensureIndex(documentLines, 'documentProduct', ['documentId', 'productId'], { unique: false });
       ensureIndex(documentLines, 'updatedAt', 'updatedAt');
 
       const lots = ensureStore(db, tx, STORES.LOTS, 'id');
