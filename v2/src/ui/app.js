@@ -8,6 +8,10 @@ import {
   searchProducts
 } from '../catalog/catalogService.js';
 import {
+  readCatalogFile,
+  applyCatalogImport
+} from '../catalog/catalogExcel.js';
+import {
   STORES,
   openDatabase,
   getAll
@@ -40,7 +44,8 @@ const state = {
   activeDocumentId: null,
   activeDocumentType: null,
   selectedProductId: null,
-  searchResults: []
+  searchResults: [],
+  importPreview: null
 };
 
 const ownerId = getLocalOwnerId();
@@ -86,6 +91,7 @@ function bindGlobalEvents() {
   appRoot.addEventListener('click', handleClick);
   appRoot.addEventListener('submit', handleSubmit);
   appRoot.addEventListener('input', handleInput);
+  appRoot.addEventListener('change', handleChange);
   appRoot.addEventListener('keydown', handleKeydown);
 }
 
@@ -146,7 +152,28 @@ async function renderCatalog() {
   appRoot.innerHTML = `
     <section class="hero">
       <h2>Catálogo</h2>
-      <p>Base maestra del inventario. El importador Excel será el siguiente módulo.</p>
+      <p>Base maestra del inventario. Importa Excel con vista previa antes de tocar el catálogo.</p>
+    </section>
+
+    <section class="card stack" style="margin-bottom:16px">
+      <div>
+        <h3 style="margin:0">Importar catálogo desde Excel</h3>
+        <p class="product-meta" style="margin-bottom:0">
+          Acepta .xlsx, .xls y .csv. Detecta Producto, SKU, código de barras, mínimos, máximos, categoría y unidad.
+        </p>
+      </div>
+
+      <label>
+        Archivo
+        <input id="catalogImportFile" type="file" accept=".xlsx,.xls,.csv">
+      </label>
+
+      <div class="product-meta">
+        Seguridad V2: una columna de Existencia puede leerse para validar el archivo, pero <strong>no modifica el stock</strong>.
+        La existencia real entra por Conteo o movimientos trazables.
+      </div>
+
+      ${state.importPreview ? renderCatalogImportPreview(state.importPreview) : ''}
     </section>
 
     <div class="operation-layout">
@@ -484,6 +511,8 @@ async function handleClick(event) {
         return addOperationLine(button.dataset.type);
       case 'close-document':
         return finishDocument();
+      case 'apply-catalog-import':
+        return applyCatalogPreview();
     }
   } catch (error) {
     showToast(error.message || String(error));
@@ -514,6 +543,23 @@ async function handleSubmit(event) {
     await render();
   } catch (error) {
     showToast(error.message || String(error));
+  }
+}
+
+async function handleChange(event) {
+  if (event.target.id !== 'catalogImportFile') return;
+
+  const file = event.target.files?.[0];
+  state.importPreview = null;
+  if (!file) return render();
+
+  try {
+    showToast('Leyendo archivo…');
+    state.importPreview = await readCatalogFile(file);
+    await render();
+  } catch (error) {
+    showToast(error.message || String(error));
+    await render();
   }
 }
 
@@ -560,6 +606,30 @@ async function handleKeydown(event) {
     state.searchResults = [];
     return render();
   }
+}
+
+async function applyCatalogPreview() {
+  const preview = state.importPreview;
+  if (!preview?.rows?.length) {
+    throw new Error('No hay filas válidas para importar');
+  }
+
+  const message =
+    `¿Importar ${preview.rows.length} producto(s)? ` +
+    'Los existentes se actualizarán por SKU, código de barras o nombre.';
+
+  if (!confirm(message)) return;
+
+  const result = await applyCatalogImport(preview);
+  await refreshProducts();
+  state.importPreview = null;
+
+  showToast(
+    `Importación lista · ${result.created} nuevos · ${result.updated} actualizados`
+  );
+
+  scheduleSync(100);
+  await render();
 }
 
 async function startDocument(type) {
@@ -739,6 +809,75 @@ function insertMathSymbol(targetId, symbol) {
   input.focus();
   const cursor = start + symbol.length;
   input.setSelectionRange(cursor, cursor);
+}
+
+function renderCatalogImportPreview(preview) {
+  const rows = preview.rows || [];
+  const errors = preview.errors || [];
+  const warnings = preview.warnings || [];
+
+  return `
+    <div class="stack" style="border-top:1px solid var(--border);padding-top:12px">
+      <div class="row">
+        <div>
+          <strong>${escapeHtml(preview.fileName || 'Archivo')}</strong>
+          <div class="product-meta">
+            Hoja ${escapeHtml(preview.sheetName || '—')}
+          </div>
+        </div>
+        <span class="badge">${rows.length} válidos</span>
+        <span class="badge">${errors.length} errores</span>
+      </div>
+
+      ${warnings.length ? `
+        <div class="stack">
+          ${warnings.slice(0, 8).map(warning => `
+            <div class="status-warning">⚠ ${escapeHtml(warning)}</div>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      ${errors.length ? `
+        <details>
+          <summary><strong>Ver errores (${errors.length})</strong></summary>
+          <div class="stack" style="margin-top:8px">
+            ${errors.slice(0, 20).map(error => `
+              <div class="status-danger">${escapeHtml(error)}</div>
+            `).join('')}
+            ${errors.length > 20
+              ? `<div class="product-meta">…y ${errors.length - 20} errores más.</div>`
+              : ''}
+          </div>
+        </details>
+      ` : ''}
+
+      ${rows.length ? `
+        <div>
+          <strong>Vista previa</strong>
+          <div class="stack" style="margin-top:8px">
+            ${rows.slice(0, 10).map(row => `
+              <div class="cart-line">
+                <div>
+                  <strong>${escapeHtml(row.name)}</strong>
+                  <div class="product-meta">
+                    ${row.sku ? 'SKU ' + escapeHtml(row.sku) + ' · ' : ''}
+                    Min ${row.minStock} · Max ${row.maxStock || '—'} ·
+                    ${escapeHtml(row.unitCode)}
+                    ${row.categoryName ? ' · ' + escapeHtml(row.categoryName) : ''}
+                  </div>
+                </div>
+                <span class="badge">Fila ${row.excelRow}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <button class="success" data-action="apply-catalog-import" type="button">
+          Importar ${rows.length} producto(s)
+        </button>
+      ` : '<div class="empty">No hay filas válidas para importar.</div>'}
+    </div>
+  `;
 }
 
 function actionCard(view, title, subtitle) {
