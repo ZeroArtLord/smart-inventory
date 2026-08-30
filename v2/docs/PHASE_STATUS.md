@@ -21,6 +21,10 @@
 - Ubicaciones.
 - Búsqueda por nombre, alias, SKU y código de barras.
 - Cambios de catálogo guardados localmente y encolados para sincronización.
+- Importador Excel/CSV con detección flexible de columnas.
+- Vista previa antes de aplicar.
+- Actualización por SKU, código de barras o nombre.
+- La columna Existencia nunca altera stock directamente; queda reservada a Conteos/Entradas trazables.
 
 ### Fase 3 — Inventario transaccional
 - ENTRY.
@@ -86,9 +90,9 @@
 
 ## Pendiente inmediato
 
-1. Instalar PostgreSQL y levantar la API en el servidor de pruebas.
-2. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC.
-3. Importador Excel V2.
+1. Probar el importador Excel V2 con archivos reales y validar sincronización masiva.
+2. Instalar PostgreSQL y levantar la API en el servidor de pruebas definitivo.
+3. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC.
 4. Autenticación real, roles y permisos.
 5. Gestión real de pedidos/en tránsito.
 6. FEFO y consumo de lotes.
