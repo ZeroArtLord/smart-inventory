@@ -1,5 +1,5 @@
 const DB_NAME = 'smart_inventory_v2';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const STORES = Object.freeze({
   PRODUCTS: 'products',
@@ -9,6 +9,7 @@ export const STORES = Object.freeze({
   LOCATIONS: 'locations',
   MOVEMENTS: 'movements',
   DOCUMENTS: 'documents',
+  DOCUMENT_LINES: 'documentLines',
   LOTS: 'lots',
   SYNC_QUEUE: 'syncQueue',
   SETTINGS: 'settings'
@@ -60,6 +61,12 @@ function createDatabase() {
       ensureIndex(documents, 'status', 'status');
       ensureIndex(documents, 'createdAt', 'createdAt');
       ensureIndex(documents, 'ownerId', 'ownerId');
+
+      const documentLines = ensureStore(db, tx, STORES.DOCUMENT_LINES, 'id');
+      ensureIndex(documentLines, 'documentId', 'documentId');
+      ensureIndex(documentLines, 'productId', 'productId');
+      ensureIndex(documentLines, 'documentProduct', ['documentId', 'productId'], { unique: true });
+      ensureIndex(documentLines, 'updatedAt', 'updatedAt');
 
       const lots = ensureStore(db, tx, STORES.LOTS, 'id');
       ensureIndex(lots, 'productId', 'productId');
@@ -125,26 +132,44 @@ export async function runTransaction(storeNames, mode, operation) {
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(names, mode);
-    let operationResult;
+    const stores = names.map(name => tx.objectStore(name));
+
+    let resultPromise;
+    let operationError = null;
 
     try {
-      const stores = names.map(name => tx.objectStore(name));
-      operationResult = operation(...stores, tx);
+      resultPromise = Promise.resolve(operation(...stores, tx));
     } catch (error) {
-      tx.abort();
+      operationError = error;
+      try {
+        tx.abort();
+      } catch (_) {}
       reject(error);
       return;
     }
 
-    tx.oncomplete = async () => {
+    resultPromise.catch(error => {
+      operationError = error;
       try {
-        resolve(await operationResult);
+        tx.abort();
+      } catch (_) {}
+    });
+
+    tx.oncomplete = async () => {
+      if (operationError) {
+        reject(operationError);
+        return;
+      }
+
+      try {
+        resolve(await resultPromise);
       } catch (error) {
         reject(error);
       }
     };
-    tx.onerror = () => reject(tx.error || new Error('Error de transacción IndexedDB'));
-    tx.onabort = () => reject(tx.error || new Error('Transacción IndexedDB cancelada'));
+
+    tx.onerror = () => reject(operationError || tx.error || new Error('Error de transacción IndexedDB'));
+    tx.onabort = () => reject(operationError || tx.error || new Error('Transacción IndexedDB cancelada'));
   });
 }
 
