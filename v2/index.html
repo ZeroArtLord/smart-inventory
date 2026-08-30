@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <title>Smart Inventory V2</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <strong>Smart Inventory V2</strong>
+      <small id="saveStatus">Iniciando…</small>
+    </div>
+    <button id="homeButton" class="ghost-button" type="button">Inicio</button>
+  </header>
+
+  <main id="app" class="app-shell" aria-live="polite"></main>
+
+  <nav class="bottom-nav" aria-label="Navegación principal">
+    <button data-view="count" type="button">Conteo</button>
+    <button data-view="supply" type="button">Surtido</button>
+    <button data-view="entry" type="button">Entrada</button>
+    <button data-view="catalog" type="button">Catálogo</button>
+  </nav>
+
+  <script type="module" src="./src/ui/app.js"></script>
+</body>
+</html>
