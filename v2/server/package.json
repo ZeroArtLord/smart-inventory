@@ -4,11 +4,13 @@
   "type": "module",
   "scripts": {
     "start": "node src/app.js",
-    "dev": "node --watch src/app.js"
+    "dev": "node --watch src/app.js",
+    "migrate": "node scripts/migrate.js"
   },
   "dependencies": {
     "express": "^5.0.0",
     "helmet": "^8.0.0",
-    "pg": "^8.0.0"
+    "pg": "^8.0.0",
+    "dotenv": "^16.0.0"
   }
 }
