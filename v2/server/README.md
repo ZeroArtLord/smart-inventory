@@ -13,10 +13,13 @@ Backend pensado para alojarse en el servidor propio del negocio, aislado de otro
 ## Desarrollo local
 
 1. Crear una base PostgreSQL dedicada.
-2. Ejecutar `migrations/001_init.sql`.
-3. Copiar `.env.example` a un entorno seguro y definir las variables.
-4. Instalar dependencias con `npm install`.
+2. Copiar `.env.example` a `.env` y definir `DATABASE_URL`.
+3. Instalar dependencias con `npm install`.
+4. Ejecutar `npm run migrate`.
 5. Ejecutar `npm start`.
+6. Abrir `http://localhost:5190`.
+
+El runner de migraciones registra cada archivo aplicado y puede ejecutarse de nuevo sin repetir migraciones ya registradas.
 
 ## Seguridad
 
