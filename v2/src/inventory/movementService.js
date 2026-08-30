@@ -59,6 +59,7 @@ export async function reverseMovement(movementId, metadata = {}) {
     lotId: original.lotId || null,
     locationId: original.locationId || null,
     userId: metadata.userId || null,
+    effectiveAt: metadata.effectiveAt || new Date().toISOString(),
     reversedMovementId: original.id,
     metadata: {
       reason: metadata.reason || 'Corrección de movimiento',
@@ -69,7 +70,11 @@ export async function reverseMovement(movementId, metadata = {}) {
 
 export async function getProductMovements(productId) {
   const movements = await getAllByIndex(STORES.MOVEMENTS, 'productId', productId);
-  return movements.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  return movements.sort((a, b) =>
+    String(a.effectiveAt || a.createdAt).localeCompare(
+      String(b.effectiveAt || b.createdAt)
+    )
+  );
 }
 
 export async function getCurrentStock(productId, options = {}) {
@@ -77,7 +82,7 @@ export async function getCurrentStock(productId, options = {}) {
   return calculateStock(movements, productId, options);
 }
 
-function buildMovement(data) {
+export function buildMovement(data) {
   const type = data.type;
   if (!Object.values(MOVEMENT_TYPES).includes(type)) {
     throw new Error('Tipo de movimiento inválido');
@@ -111,11 +116,12 @@ function buildMovement(data) {
     reversedMovementId: data.reversedMovementId || null,
     metadata: data.metadata || {},
     createdAt: data.createdAt || now,
+    effectiveAt: data.effectiveAt || data.createdAt || now,
     syncedAt: null
   };
 }
 
-function buildSyncItem(movement) {
+export function buildMovementSyncItem(movement) {
   const now = new Date().toISOString();
   return {
     id: createLocalId('sync'),
@@ -129,4 +135,8 @@ function buildSyncItem(movement) {
     updatedAt: now,
     lastError: null
   };
+}
+
+function buildSyncItem(movement) {
+  return buildMovementSyncItem(movement);
 }
