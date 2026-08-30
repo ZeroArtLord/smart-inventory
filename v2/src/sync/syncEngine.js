@@ -41,7 +41,7 @@ export async function syncNow({
   emit({ state: 'syncing' });
 
   try {
-    await recoverInterruptedOperations({ olderThanMs: 0 });
+    await recoverInterruptedOperations({ olderThanMs: 30000 });
 
     let config = await getSyncConfig();
     if (!config.enabled) {
