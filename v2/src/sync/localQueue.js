@@ -34,6 +34,27 @@ export async function listPendingOperations() {
     .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 }
 
+export async function recoverInterruptedOperations({ olderThanMs = 30000 } = {}) {
+  const items = await getAll(STORES.SYNC_QUEUE);
+  const now = Date.now();
+  const interrupted = items.filter(item => {
+    if (item.status !== SYNC_STATUS.SYNCING) return false;
+    const updatedAt = new Date(item.updatedAt || item.createdAt || 0).getTime();
+    return !Number.isFinite(updatedAt) || (now - updatedAt) >= olderThanMs;
+  });
+
+  for (const item of interrupted) {
+    await updateQueueItem(item.id, current => ({
+      ...current,
+      status: SYNC_STATUS.PENDING,
+      updatedAt: new Date().toISOString(),
+      lastError: 'Sincronización interrumpida; se reintentará.'
+    }));
+  }
+
+  return interrupted.length;
+}
+
 export async function markSyncing(id) {
   return updateQueueItem(id, item => ({
     ...item,
@@ -59,6 +80,22 @@ export async function markFailed(id, error) {
     updatedAt: new Date().toISOString(),
     lastError: String(error?.message || error || 'Error desconocido')
   }));
+}
+
+export async function pruneSyncedOperations({ keepLatest = 250 } = {}) {
+  const items = await getAll(STORES.SYNC_QUEUE);
+  const synced = items
+    .filter(item => item.status === SYNC_STATUS.SYNCED)
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+
+  const toDelete = synced.slice(keepLatest);
+  if (toDelete.length === 0) return 0;
+
+  await runTransaction(STORES.SYNC_QUEUE, 'readwrite', store => {
+    toDelete.forEach(item => store.delete(item.id));
+  });
+
+  return toDelete.length;
 }
 
 async function updateQueueItem(id, updater) {
