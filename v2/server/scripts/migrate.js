@@ -40,10 +40,11 @@ try {
       continue;
     }
 
-    const sql = await fs.readFile(
+    const rawSql = await fs.readFile(
       path.join(migrationsDir, filename),
       'utf8'
     );
+    const sql = stripOuterTransaction(rawSql);
 
     console.log(`→ aplicando ${filename}`);
 
@@ -65,4 +66,11 @@ try {
   console.log('Migraciones completadas.');
 } finally {
   await client.end();
+}
+
+function stripOuterTransaction(sql) {
+  return String(sql)
+    .replace(/^\s*BEGIN\s*;?/i, '')
+    .replace(/COMMIT\s*;?\s*$/i, '')
+    .trim();
 }
