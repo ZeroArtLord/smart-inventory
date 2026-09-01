@@ -230,6 +230,198 @@ try {
     );
   }
 
+  const concurrentProductId = `prd_ci_concurrent_${stamp}`;
+  const concurrentEntryDocumentId = `ent_ci_concurrent_${stamp}`;
+  const concurrentSupplyA = `sur_ci_concurrent_a_${stamp}`;
+  const concurrentSupplyB = `sur_ci_concurrent_b_${stamp}`;
+
+  await pushEvent({
+    id: `evt_product_concurrent_${stamp}`,
+    entityType: 'product',
+    entityId: concurrentProductId,
+    operation: 'CREATE',
+    payload: {
+      id: concurrentProductId,
+      sku: `CI-CONCURRENT-${stamp}`,
+      name: 'CI CONCURRENT PRODUCT',
+      nameNormalized: 'ci concurrent product',
+      aliases: [],
+      barcode: '',
+      categoryId: null,
+      inventoryUnitId: 'unit_und',
+      purchaseUnitId: 'unit_und',
+      purchaseConversion: 1,
+      minStock: 0,
+      maxStock: 50,
+      replenishmentMethod: 'BOTH',
+      supplierId: null,
+      active: true,
+      version: 1,
+      createdAt: now,
+      updatedAt: now
+    }
+  });
+
+  await pushEvent({
+    id: `evt_entry_doc_concurrent_${stamp}`,
+    entityType: 'document',
+    entityId: concurrentEntryDocumentId,
+    operation: 'CREATE',
+    payload: baseDocument(
+      concurrentEntryDocumentId,
+      'ENTRY'
+    )
+  });
+
+  await pushEvent({
+    id: `evt_entry_concurrent_${stamp}`,
+    entityType: 'movement',
+    entityId: `mov_entry_concurrent_${stamp}`,
+    operation: 'CREATE',
+    payload: {
+      id: `mov_entry_concurrent_${stamp}`,
+      productId: concurrentProductId,
+      type: 'ENTRY',
+      quantity: 6,
+      delta: null,
+      documentId: concurrentEntryDocumentId,
+      lotId: null,
+      locationId: null,
+      userId: 'forged-client-user',
+      reversedMovementId: null,
+      metadata: { concurrency: true },
+      effectiveAt: now,
+      createdAt: now
+    }
+  });
+
+  await pushEvent({
+    id: `evt_supply_doc_a_${stamp}`,
+    entityType: 'document',
+    entityId: concurrentSupplyA,
+    operation: 'CREATE',
+    payload: baseDocument(concurrentSupplyA, 'SUPPLY')
+  });
+
+  await pushEvent({
+    id: `evt_supply_doc_b_${stamp}`,
+    entityType: 'document',
+    entityId: concurrentSupplyB,
+    operation: 'CREATE',
+    payload: baseDocument(concurrentSupplyB, 'SUPPLY')
+  });
+
+  const concurrentEvents = [
+    {
+      id: `evt_concurrent_a_${stamp}`,
+      entityType: 'movement',
+      entityId: `mov_concurrent_a_${stamp}`,
+      operation: 'CREATE',
+      payload: {
+        id: `mov_concurrent_a_${stamp}`,
+        productId: concurrentProductId,
+        type: 'SUPPLY',
+        quantity: 4,
+        delta: null,
+        documentId: concurrentSupplyA,
+        lotId: null,
+        locationId: null,
+        userId: 'forged-client-user',
+        reversedMovementId: null,
+        metadata: { concurrency: 'A' },
+        effectiveAt: now,
+        createdAt: now
+      }
+    },
+    {
+      id: `evt_concurrent_b_${stamp}`,
+      entityType: 'movement',
+      entityId: `mov_concurrent_b_${stamp}`,
+      operation: 'CREATE',
+      payload: {
+        id: `mov_concurrent_b_${stamp}`,
+        productId: concurrentProductId,
+        type: 'SUPPLY',
+        quantity: 4,
+        delta: null,
+        documentId: concurrentSupplyB,
+        lotId: null,
+        locationId: null,
+        userId: 'forged-client-user',
+        reversedMovementId: null,
+        metadata: { concurrency: 'B' },
+        effectiveAt: now,
+        createdAt: now
+      }
+    }
+  ];
+
+  const concurrentResults = await Promise.all(
+    concurrentEvents.map(event =>
+      rawPushEvent(event)
+    )
+  );
+
+  const successes = concurrentResults.filter(
+    result => result.response.status === 200
+  );
+  const stockBlocks = concurrentResults.filter(
+    result =>
+      result.response.status === 409 &&
+      result.body?.code === 'STOCK_NEGATIVE'
+  );
+
+  if (successes.length !== 1 || stockBlocks.length !== 1) {
+    throw new Error(
+      `Concurrencia insegura: se esperaba 1 salida aceptada y 1 bloqueada. ${JSON.stringify(
+        concurrentResults.map(item => ({
+          status: item.response.status,
+          body: item.body
+        }))
+      )}`
+    );
+  }
+
+  await assertStock(
+    db,
+    bootstrap.workspace.id,
+    concurrentProductId,
+    2
+  );
+
+  const successfulEvent = concurrentEvents.find(
+    event =>
+      successes[0].body?.applied?.some(
+        item => item.id === event.id
+      )
+  );
+
+  if (!successfulEvent) {
+    throw new Error(
+      'No se pudo identificar el evento concurrente aceptado.'
+    );
+  }
+
+  const duplicateResult = await rawPushEvent(
+    successfulEvent
+  );
+
+  if (
+    duplicateResult.response.status !== 200 ||
+    duplicateResult.body?.applied?.[0]?.duplicate !== true
+  ) {
+    throw new Error(
+      'La repetición idempotente del evento concurrente no fue reconocida como duplicada.'
+    );
+  }
+
+  await assertStock(
+    db,
+    bootstrap.workspace.id,
+    concurrentProductId,
+    2
+  );
+
   const pull = await jsonFetch(
     '/api/v1/sync/pull?cursor=0&limit=100',
     {
@@ -241,7 +433,7 @@ try {
     throw new Error('El pull incremental no devolvió los eventos esperados.');
   }
 
-  console.log('✓ integration smoke: stock, auth, sync, reversal e invariantes correctos');
+  console.log('✓ integration smoke: stock, auth, sync, reversals, idempotencia y concurrencia correctos');
 } finally {
   await db.end();
 }
@@ -274,6 +466,28 @@ async function pushEvent(event) {
       events: [event]
     })
   });
+}
+
+async function rawPushEvent(event) {
+  const response = await fetch(
+    `${baseUrl}/api/v1/sync/push`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        events: [event]
+      })
+    }
+  );
+
+  let body;
+  try {
+    body = await response.json();
+  } catch (_) {
+    body = null;
+  }
+
+  return { response, body };
 }
 
 async function jsonFetch(path, options = {}) {
