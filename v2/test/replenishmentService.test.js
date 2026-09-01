@@ -11,8 +11,19 @@ const {
   changeReplenishmentStatus,
   registerReplenishmentReceipt,
   calculatePendingInboundByProduct,
+  reconcileReplenishmentReceipts,
   REPLENISHMENT_STATUS
 } = await import('../src/replenishment/replenishmentService.js');
+
+const {
+  createDocument,
+  saveDocumentLine,
+  closeDocument
+} = await import('../src/documents/documentService.js');
+
+const {
+  DOCUMENT_TYPES
+} = await import('../src/documents/documentTypes.js');
 
 test('pedido en tránsito cuenta como pendiente sin alterar stock', async () => {
   const product = await createProduct({
@@ -152,5 +163,96 @@ test('un producto BOTH exige elegir compra o pedido', async () => {
       requestedQuantity: 5
     }),
     /indica si será Compra o Pedido/i
+  );
+});
+
+
+test('registrar dos veces la misma Entrada no duplica la recepción', async () => {
+  const product = await createProduct({
+    name: 'RECEPCION IDEMPOTENTE TEST',
+    sku: 'REP-IDEMP',
+    minStock: 0,
+    maxStock: 20,
+    replenishmentMethod: 'ORDER'
+  });
+
+  const item = await createReplenishment({
+    productId: product.id,
+    requestedQuantity: 10
+  });
+
+  await changeReplenishmentStatus(
+    item.id,
+    REPLENISHMENT_STATUS.ORDERED
+  );
+
+  const first = await registerReplenishmentReceipt(item.id, {
+    quantity: 4,
+    entryDocumentId: 'ent-idempotent-001'
+  });
+
+  const second = await registerReplenishmentReceipt(item.id, {
+    quantity: 4,
+    entryDocumentId: 'ent-idempotent-001'
+  });
+
+  assert.equal(first.receivedQuantity, 4);
+  assert.equal(second.receivedQuantity, 4);
+  assert.equal(second.pendingQuantity, 6);
+  assert.equal(second.receiptDocuments.length, 1);
+});
+
+test('reconciliación recupera una Entrada cerrada vinculada a un pedido', async () => {
+  const product = await createProduct({
+    name: 'RECONCILIACION PEDIDO TEST',
+    sku: 'REP-RECON',
+    minStock: 0,
+    maxStock: 30,
+    replenishmentMethod: 'PURCHASE'
+  });
+
+  const item = await createReplenishment({
+    productId: product.id,
+    method: 'PURCHASE',
+    requestedQuantity: 9
+  });
+
+  await changeReplenishmentStatus(
+    item.id,
+    REPLENISHMENT_STATUS.ORDERED
+  );
+
+  const entry = await createDocument({
+    type: DOCUMENT_TYPES.ENTRY,
+    ownerId: 'almacenista-reconcile',
+    metadata: {
+      replenishmentId: item.id,
+      replenishmentProductId: product.id
+    }
+  });
+
+  await saveDocumentLine({
+    documentId: entry.id,
+    productId: product.id,
+    quantity: 5
+  });
+
+  await closeDocument(entry.id, {
+    userId: 'almacenista-reconcile'
+  });
+
+  const reconciled = await reconcileReplenishmentReceipts();
+
+  const match = reconciled.find(
+    row => row.replenishmentId === item.id
+  );
+
+  assert.equal(match.quantity, 5);
+  assert.equal(match.status, REPLENISHMENT_STATUS.PARTIALLY_RECEIVED);
+
+  const secondPass = await reconcileReplenishmentReceipts();
+  assert.equal(
+    secondPass.some(row => row.replenishmentId === item.id),
+    false
   );
 });
