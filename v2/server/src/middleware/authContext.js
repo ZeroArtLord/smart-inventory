@@ -15,6 +15,14 @@ export async function authContext(req, res, next) {
       });
     }
 
+    if (!isUuid(workspaceId)) {
+      return res.status(400).json({
+        ok: false,
+        code: 'WORKSPACE_INVALID',
+        message: 'x-workspace-id no es un UUID válido.'
+      });
+    }
+
     const identity = await resolveIdentity(req);
 
     if (!identity?.userId) {
@@ -26,11 +34,16 @@ export async function authContext(req, res, next) {
     }
 
     const membership = await pool.query(
-      `SELECT role_code, permissions
-       FROM workspace_members
-       WHERE workspace_id = $1
-         AND user_id = $2
-         AND active = true`,
+      `SELECT
+         wm.role_code,
+         wm.permissions
+       FROM workspace_members wm
+       JOIN workspaces w
+         ON w.id = wm.workspace_id
+       WHERE wm.workspace_id = $1
+         AND wm.user_id = $2
+         AND wm.active = true
+         AND w.active = true`,
       [workspaceId, identity.userId]
     );
 
@@ -110,4 +123,10 @@ async function resolveIdentity(req) {
     ...identity,
     authMode: 'firebase'
   };
+}
+
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(String(value || '').trim());
 }
