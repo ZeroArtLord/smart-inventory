@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { pool } from '../db.js';
+import { pool, withTransaction } from '../db.js';
 import { extractBearerToken } from '../security/authTokens.js';
 import { verifyFirebaseIdToken } from '../security/firebaseAuth.js';
 
@@ -114,21 +114,7 @@ async function resolveIdentity(req) {
     throw error;
   }
 
-  const userResult = await pool.query(
-    `SELECT id, external_auth_id, email
-     FROM users
-     WHERE external_auth_id = $1
-       AND active = true`,
-    [decoded.uid]
-  );
-
-  if (userResult.rowCount === 0) {
-    const error = new Error('Usuario autenticado no provisionado');
-    error.code = 'AUTH_TOKEN_INVALID';
-    throw error;
-  }
-
-  const user = userResult.rows[0];
+  const user = await resolveProvisionedUser(decoded);
 
   return {
     userId: user.id,
@@ -136,4 +122,73 @@ async function resolveIdentity(req) {
     email: user.email || decoded.email || null,
     authMode: 'firebase'
   };
+}
+
+async function resolveProvisionedUser(decoded) {
+  const byUid = await pool.query(
+    `SELECT id, external_auth_id, email
+     FROM users
+     WHERE external_auth_id = $1
+       AND active = true`,
+    [decoded.uid]
+  );
+
+  if (byUid.rowCount > 0) {
+    return byUid.rows[0];
+  }
+
+  const normalizedEmail = String(decoded.email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    throw authError('Usuario autenticado no provisionado');
+  }
+
+  try {
+    return await withTransaction(async client => {
+      const byEmail = await client.query(
+        `SELECT id, external_auth_id, email
+         FROM users
+         WHERE lower(email) = lower($1)
+           AND active = true
+         ORDER BY created_at ASC
+         LIMIT 1
+         FOR UPDATE`,
+        [normalizedEmail]
+      );
+
+      if (byEmail.rowCount === 0) {
+        throw authError('Usuario autenticado no provisionado');
+      }
+
+      const user = byEmail.rows[0];
+
+      if (
+        user.external_auth_id &&
+        user.external_auth_id !== decoded.uid
+      ) {
+        throw authError('La cuenta ya está vinculada a otra identidad');
+      }
+
+      const linked = await client.query(
+        `UPDATE users
+         SET external_auth_id = $2,
+             email = COALESCE(email, $3)
+         WHERE id = $1
+         RETURNING id, external_auth_id, email`,
+        [user.id, decoded.uid, normalizedEmail]
+      );
+
+      return linked.rows[0];
+    });
+  } catch (error) {
+    if (error?.code === '23505') {
+      throw authError('La identidad Firebase ya pertenece a otro usuario');
+    }
+    throw error;
+  }
+}
+
+function authError(message) {
+  const error = new Error(message);
+  error.code = 'AUTH_TOKEN_INVALID';
+  return error;
 }
