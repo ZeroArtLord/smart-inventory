@@ -7,6 +7,7 @@ import { resolveFirebaseIdentity } from '../security/firebaseIdentity.js';
 export const authRouter = Router();
 
 authRouter.post('/bootstrap', async (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     if (config.authMode !== 'firebase') {
       return res.status(409).json({
