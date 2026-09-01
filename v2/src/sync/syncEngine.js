@@ -17,6 +17,10 @@ import {
 } from './syncSettings.js';
 import { applyRemoteEvents } from './remoteApply.js';
 import { getAuthToken } from '../auth/authProvider.js';
+import {
+  ensureWorkspaceCache,
+  switchWorkspaceCacheAndConfig
+} from './workspaceCache.js';
 
 const listeners = new Set();
 let syncing = false;
@@ -56,6 +60,13 @@ export async function syncNow({
       localUserId,
       displayName
     });
+
+    await ensureWorkspaceCache(
+      config.workspaceId,
+      {
+        adoptUnbound: config.authMode === 'dev'
+      }
+    );
 
     let pushed;
 
@@ -153,10 +164,18 @@ async function ensureServerIdentity(config, { localUserId, displayName }) {
     throw new Error(data.message || 'No se pudo preparar la identidad del servidor');
   }
 
-  return saveSyncConfig({
-    workspaceId: data.workspace.id,
-    serverUserId: data.user.id
-  });
+  const switched = await switchWorkspaceCacheAndConfig(
+    data.workspace.id,
+    {
+      serverUserId: data.user.id,
+      authMode: 'dev'
+    },
+    {
+      adoptUnbound: true
+    }
+  );
+
+  return switched.config;
 }
 
 async function pushPending(config) {
