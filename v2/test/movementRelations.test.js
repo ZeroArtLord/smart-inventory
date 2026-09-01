@@ -134,6 +134,9 @@ test('acepta reverso exacto y sin duplicados', async () => {
           rows: [{ type: 'SUPPLY', status: 'CLOSED' }]
         };
       }
+      if (sql.includes('reversed_movement_id = $2')) {
+        return { rowCount: 0, rows: [] };
+      }
       if (
         sql.includes('FROM movements') &&
         sql.includes('id = $2')
@@ -149,9 +152,6 @@ test('acepta reverso exacto y sin duplicados', async () => {
             location_id: null
           }]
         };
-      }
-      if (sql.includes('reversed_movement_id = $2')) {
-        return { rowCount: 0, rows: [] };
       }
       throw new Error('Consulta inesperada');
     }
