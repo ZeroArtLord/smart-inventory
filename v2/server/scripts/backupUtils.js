@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { readdir, stat } from 'node:fs/promises';
 
 export function parsePostgresUrl(databaseUrl) {
   const url = new URL(databaseUrl);
@@ -42,4 +43,37 @@ export function isExpiredBackup(stat, {
 } = {}) {
   const ageMs = now - Number(stat?.mtimeMs || 0);
   return ageMs > Math.max(1, Number(retentionDays) || 14) * 86400000;
+}
+
+
+export async function findNewestBackup(dir) {
+  const names = (await readdir(dir))
+    .filter(name =>
+      /^smart_inventory_.*\.dump$/i.test(name)
+    );
+
+  if (!names.length) {
+    throw new Error(
+      'No hay backups .dump para verificar'
+    );
+  }
+
+  const entries = await Promise.all(
+    names.map(async name => ({
+      name,
+      info: await stat(
+        path.join(dir, name)
+      )
+    }))
+  );
+
+  entries.sort(
+    (a, b) =>
+      b.info.mtimeMs - a.info.mtimeMs
+  );
+
+  return path.join(
+    dir,
+    entries[0].name
+  );
 }
