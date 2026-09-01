@@ -3,6 +3,7 @@ import { Router } from 'express';
 export const sessionRouter = Router();
 
 sessionRouter.get('/', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   res.json({
     ok: true,
     session: {
