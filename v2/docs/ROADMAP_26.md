@@ -18,7 +18,7 @@ Este documento traduce el Plan Maestro a 26 checkpoints ejecutables. Cada etapa 
 14. **Inteligencia avanzada: tendencia, rotación y recomendación futura** — LISTO
 15. **Dashboard + motor de reportes operativos** — LISTO
 16. **Usuarios, roles y permisos granulares** — LISTO
-17. **Autenticación real por token firmado** — EN CURSO
+17. **Autenticación real por token firmado** — EN CURSO (código listo; falta validación real con Firebase/Google)
 18. **Conflictos/versionado multi-dispositivo** — LISTO
 19. **Prueba real PC ↔ servidor ↔ teléfono** — PENDIENTE
 20. **PWA móvil final + UX una mano/offline** — LISTO
