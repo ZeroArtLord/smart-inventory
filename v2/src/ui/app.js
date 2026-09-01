@@ -43,6 +43,15 @@ import {
   onSyncStatus
 } from '../sync/syncEngine.js';
 import {
+  getSyncConfig
+} from '../sync/syncSettings.js';
+import {
+  initializeFirebaseClient,
+  loginWithGoogle,
+  logoutFirebase,
+  firebaseUserSummary
+} from '../auth/firebaseClient.js';
+import {
   listSyncConflicts
 } from '../sync/localQueue.js';
 import {
@@ -102,10 +111,12 @@ const state = {
   reportRows: [],
   session: null,
   members: [],
-  auditEvents: []
+  auditEvents: [],
+  authMode: 'dev',
+  authUser: null
 };
 
-const ownerId = getLocalOwnerId();
+const devOwnerId = getLocalOwnerId();
 let syncTimer = null;
 let barcodeScannerSession = null;
 let installPromptEvent = null;
@@ -116,21 +127,28 @@ async function init() {
   try {
     await openDatabase();
     await seedDefaultUnits();
-    await refreshProducts();
     bindGlobalEvents();
     bindInstallPrompt();
     registerServiceWorker();
     bindSyncLifecycle();
-    await syncAndRefresh({ renderAfter: false });
-    await refreshProducts();
-    await refreshSession({ silent: true });
-    await render();
+
+    const authenticated = await initializeApplicationAuth();
+    if (!authenticated) {
+      updateAuthUi();
+      return renderAuthGate();
+    }
+
+    await startAuthenticatedApp();
   } catch (error) {
     renderFatal(error);
   }
 }
 
 function bindGlobalEvents() {
+  document.getElementById('authButton')?.addEventListener('click', () => {
+    handleAuthButton().catch(error => showToast(error.message || String(error)));
+  });
+
   document.getElementById('homeButton').addEventListener('click', () => {
     state.view = 'home';
     state.activeDocumentId = null;
@@ -154,6 +172,128 @@ function bindGlobalEvents() {
   appRoot.addEventListener('input', handleInput);
   appRoot.addEventListener('change', handleChange);
   appRoot.addEventListener('keydown', handleKeydown);
+}
+
+async function initializeApplicationAuth() {
+  const config = await getSyncConfig();
+  state.authMode = config.authMode || 'dev';
+
+  if (state.authMode !== 'firebase') {
+    state.authUser = null;
+    updateAuthUi();
+    return true;
+  }
+
+  const user = await initializeFirebaseClient();
+  state.authUser = firebaseUserSummary(user);
+  updateAuthUi();
+
+  return Boolean(state.authUser);
+}
+
+async function startAuthenticatedApp() {
+  await refreshProducts();
+  await syncAndRefresh({ renderAfter: false });
+  await refreshProducts();
+  await refreshSession({ silent: true });
+  updateAuthUi();
+  await render();
+}
+
+function renderAuthGate() {
+  appRoot.innerHTML = `
+    <section class="auth-gate">
+      <article class="card auth-card stack">
+        <div class="auth-mark">S2</div>
+        <div>
+          <h1>Smart Inventory V2</h1>
+          <p class="product-meta">
+            Inicia sesión con una cuenta autorizada para este almacén.
+          </p>
+        </div>
+
+        <button
+          class="primary auth-login-button"
+          data-action="login-google"
+          type="button"
+        >Continuar con Google</button>
+
+        <div class="product-meta">
+          El acceso al inventario y a la sincronización se valida otra vez en el servidor.
+        </div>
+      </article>
+    </section>
+  `;
+}
+
+async function signInWithGoogle() {
+  const user = await loginWithGoogle();
+  state.authUser = firebaseUserSummary(user);
+
+  if (!state.authUser) {
+    throw new Error('No se completó el inicio de sesión');
+  }
+
+  updateAuthUi();
+  showToast('Sesión iniciada');
+  await startAuthenticatedApp();
+}
+
+async function handleAuthButton() {
+  if (state.authMode !== 'firebase') return;
+
+  if (!state.authUser) {
+    return signInWithGoogle();
+  }
+
+  await logoutFirebase();
+  state.authUser = null;
+  state.session = null;
+  state.products = [];
+  state.activeDocumentId = null;
+  state.activeDocumentType = null;
+  state.selectedProductId = null;
+  updateAuthUi();
+  showToast('Sesión cerrada');
+  renderAuthGate();
+}
+
+function updateAuthUi() {
+  const userStatus = document.getElementById('authUserStatus');
+  const authButton = document.getElementById('authButton');
+
+  if (!userStatus || !authButton) return;
+
+  if (state.authMode !== 'firebase') {
+    userStatus.hidden = true;
+    authButton.hidden = true;
+    return;
+  }
+
+  authButton.hidden = false;
+
+  if (state.authUser) {
+    userStatus.hidden = false;
+    userStatus.textContent =
+      state.authUser.displayName ||
+      state.authUser.email ||
+      'Usuario';
+    authButton.textContent = 'Salir';
+  } else {
+    userStatus.hidden = true;
+    authButton.textContent = 'Iniciar sesión';
+  }
+}
+
+function currentOwnerId() {
+  if (state.authMode === 'firebase') {
+    if (!state.authUser?.uid) {
+      throw new Error('Sesión autenticada requerida');
+    }
+    return state.authUser.uid;
+  }
+
+  return devOwnerId;
 }
 
 async function render() {
@@ -1042,7 +1182,10 @@ async function renderReplenishmentWorkspace() {
 
 async function renderDocumentWorkspace(type) {
   if (!state.activeDocumentId || state.activeDocumentType !== type) {
-    const drafts = await listDraftDocuments({ ownerId, type });
+    const drafts = await listDraftDocuments({
+      ownerId: currentOwnerId(),
+      type
+    });
     const allDocuments = await getAll(STORES.DOCUMENTS);
     const closedDocuments = allDocuments
       .filter(document => document.type === type)
@@ -1415,6 +1558,8 @@ async function handleClick(event) {
         return installPwa();
       case 'reverse-adjustment':
         return reverseAdjustment(button.dataset.id);
+      case 'login-google':
+        return signInWithGoogle();
     }
   } catch (error) {
     showToast(error.message || String(error));
@@ -1763,7 +1908,7 @@ async function reverseAdjustment(movementId) {
   }
 
   await reverseMovement(movementId, {
-    userId: ownerId,
+    userId: currentOwnerId(),
     reason: reason.trim()
   });
 
@@ -1891,7 +2036,7 @@ async function createReplenishmentFromSuggestion(button) {
     productId: button.dataset.productId,
     method: button.dataset.method,
     requestedQuantity,
-    ownerId,
+    ownerId: currentOwnerId(),
     sourceSuggestion: {
       quantity: requestedQuantity,
       createdAt: new Date().toISOString()
@@ -1923,7 +2068,7 @@ async function startReplenishmentEntry(replenishmentId) {
 
   const document = await createDocument({
     type: DOCUMENT_TYPES.ENTRY,
-    ownerId,
+    ownerId: currentOwnerId(),
     supplierId: item.supplierId || null,
     metadata: {
       replenishmentId: item.id,
@@ -1950,7 +2095,7 @@ async function startDocument(type) {
 
   if (type === DOCUMENT_TYPES.COUNT) {
     const existingDrafts = await listDraftDocuments({
-      ownerId,
+      ownerId: currentOwnerId(),
       type: DOCUMENT_TYPES.COUNT
     });
 
@@ -1966,7 +2111,7 @@ async function startDocument(type) {
 
   const document = await createDocument({
     type,
-    ownerId
+    ownerId: currentOwnerId()
   });
 
   state.activeDocumentId = document.id;
@@ -2077,7 +2222,7 @@ async function cancelDraft(documentId) {
     return;
   }
 
-  await cancelDocument(documentId, { userId: ownerId });
+  await cancelDocument(documentId, { userId: currentOwnerId() });
 
   if (state.activeDocumentId === documentId) {
     state.activeDocumentId = null;
@@ -2096,7 +2241,9 @@ async function finishDocument() {
     return;
   }
 
-  const result = await closeDocument(state.activeDocumentId, { userId: ownerId });
+  const result = await closeDocument(state.activeDocumentId, {
+    userId: currentOwnerId()
+  });
 
   if (
     result.document?.type === DOCUMENT_TYPES.ENTRY &&
@@ -2597,8 +2744,11 @@ function scheduleSync(delay = 350) {
 
 async function syncAndRefresh({ renderAfter = false } = {}) {
   const result = await syncNow({
-    localUserId: ownerId,
-    displayName: 'Usuario local'
+    localUserId: currentOwnerId(),
+    displayName:
+      state.authUser?.displayName ||
+      state.authUser?.email ||
+      'Usuario local'
   });
 
   if (result?.ok && result.pulled > 0) {
