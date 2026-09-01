@@ -11,6 +11,7 @@ import {
 } from '../storage/database.js';
 import { SYNC_STATUS } from '../sync/localQueue.js';
 import { calculateStock } from '../inventory/stockEngine.js';
+import { allocateLotsFefo } from '../inventory/lotEngine.js';
 import {
   buildMovement,
   buildMovementSyncItem,
@@ -257,11 +258,86 @@ async function closeInventoryDocument(documentId, userId) {
           }
         }
 
+        if (document.type === DOCUMENT_TYPES.SUPPLY) {
+          const productLots = await requestToPromise(
+            lotStore.index('productId').getAll(line.productId)
+          );
+
+          const allocation = allocateLotsFefo(productLots, quantity, {
+            locationId: document.locationId
+          });
+
+          for (const item of allocation.allocations) {
+            const currentLot = productLots.find(lot => lot.id === item.lotId);
+            if (!currentLot) continue;
+
+            const updatedLot = {
+              ...currentLot,
+              remainingQuantity: item.afterRemaining,
+              updatedAt: now
+            };
+
+            await requestToPromise(lotStore.put(updatedLot));
+            await requestToPromise(
+              queueStore.add(
+                createSyncItem('lot', updatedLot.id, 'UPDATE', updatedLot)
+              )
+            );
+
+            const movement = buildMovement({
+              productId: line.productId,
+              type: MOVEMENT_TYPES.SUPPLY,
+              quantity: item.quantity,
+              documentId: document.id,
+              lotId: item.lotId,
+              locationId: document.locationId,
+              userId,
+              effectiveAt: now,
+              metadata: {
+                destinationId: document.destinationId || null,
+                lineId: line.id,
+                lotNumber: item.lotNumber || null,
+                expiresAt: item.expiresAt || null,
+                allocation: 'FEFO'
+              }
+            });
+
+            await requestToPromise(movementStore.add(movement));
+            await requestToPromise(
+              queueStore.add(buildMovementSyncItem(movement))
+            );
+            movements.push(movement);
+          }
+
+          if (allocation.untrackedQuantity > 0) {
+            const movement = buildMovement({
+              productId: line.productId,
+              type: MOVEMENT_TYPES.SUPPLY,
+              quantity: allocation.untrackedQuantity,
+              documentId: document.id,
+              lotId: null,
+              locationId: document.locationId,
+              userId,
+              effectiveAt: now,
+              metadata: {
+                destinationId: document.destinationId || null,
+                lineId: line.id,
+                allocation: 'UNTRACKED'
+              }
+            });
+
+            await requestToPromise(movementStore.add(movement));
+            await requestToPromise(
+              queueStore.add(buildMovementSyncItem(movement))
+            );
+            movements.push(movement);
+          }
+
+          continue;
+        }
+
         let lot = null;
-        if (
-          document.type === DOCUMENT_TYPES.ENTRY &&
-          (line.lotNumber || line.expiresAt)
-        ) {
+        if (line.lotNumber || line.expiresAt) {
           lot = {
             id: createLocalId('lot'),
             productId: line.productId,
@@ -272,6 +348,7 @@ async function closeInventoryDocument(documentId, userId) {
             remainingQuantity: quantity,
             unitCost: line.unitCost ?? null,
             supplierId: line.supplierId || document.supplierId || null,
+            locationId: document.locationId || null,
             documentId: document.id,
             createdAt: now,
             updatedAt: now
@@ -286,9 +363,7 @@ async function closeInventoryDocument(documentId, userId) {
 
         const movement = buildMovement({
           productId: line.productId,
-          type: document.type === DOCUMENT_TYPES.ENTRY
-            ? MOVEMENT_TYPES.ENTRY
-            : MOVEMENT_TYPES.SUPPLY,
+          type: MOVEMENT_TYPES.ENTRY,
           quantity,
           documentId: document.id,
           lotId: lot?.id || null,
@@ -296,7 +371,6 @@ async function closeInventoryDocument(documentId, userId) {
           userId,
           effectiveAt: now,
           metadata: {
-            destinationId: document.destinationId || null,
             supplierId: line.supplierId || document.supplierId || null,
             unitCost: line.unitCost ?? null,
             lineId: line.id
