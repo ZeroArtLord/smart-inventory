@@ -12,7 +12,8 @@
     "smoke:restart": "node scripts/postRestartSmoke.js",
     "preflight:production": "node scripts/preflightProduction.js",
     "backup:restore-smoke": "node scripts/restoreSmoke.js",
-    "admin:provision": "node scripts/provisionAdmin.js"
+    "admin:provision": "node scripts/provisionAdmin.js",
+    "integrity:check": "node scripts/integrityCheck.js"
   },
   "dependencies": {
     "express": "^5.0.0",
