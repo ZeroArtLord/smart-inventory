@@ -8,6 +8,7 @@ const APP_SHELL = [
   './vendor/xlsx.full.min.js',
   './src/ui/app.js',
   './src/auth/authProvider.js',
+  './src/api/apiClient.js',
   './src/core/mathExpression.js',
   './src/core/ids.js',
   './src/core/catalog.js',
@@ -30,6 +31,7 @@ const APP_SHELL = [
   './src/export/exportService.js',
   './src/reporting/reportingEngine.js',
   './src/ui/dashboardService.js',
+  './src/admin/adminClient.js',
   './src/documents/documentTypes.js',
   './src/documents/documentService.js'
 ];
