@@ -82,3 +82,26 @@ test('línea usa documentType para permiso granular', () => {
     PERMISSIONS.COUNT_WRITE
   );
 });
+
+
+test('permiso denegado se expone como 403 y no como error interno', () => {
+  const event = {
+    entityType: 'product',
+    operation: 'UPDATE',
+    payload: {}
+  };
+
+  assert.throws(
+    () => assertEventPermission(
+      {
+        permissions: [
+          PERMISSIONS.CATALOG_VIEW
+        ]
+      },
+      event
+    ),
+    error =>
+      error.code === 'PERMISSION_DENIED' &&
+      error.statusCode === 403
+  );
+});
