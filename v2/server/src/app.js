@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { pool } from './db.js';
+import { getReadiness } from './readiness.js';
 import { authContext } from './middleware/authContext.js';
 import { syncRouter } from './routes/sync.js';
 import { devRouter } from './routes/dev.js';
@@ -33,6 +34,18 @@ app.get('/health', async (_req, res, next) => {
       service: 'smart-inventory-v2',
       database: 'ok',
       now: result.rows[0].now
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/ready', async (_req, res, next) => {
+  try {
+    const readiness = await getReadiness();
+    res.status(readiness.ok ? 200 : 503).json({
+      service: 'smart-inventory-v2',
+      ...readiness
     });
   } catch (error) {
     next(error);
