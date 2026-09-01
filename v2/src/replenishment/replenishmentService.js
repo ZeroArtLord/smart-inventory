@@ -181,6 +181,14 @@ export async function registerReplenishmentReceipt(
         );
       }
 
+      const existingReceipt = (current.receiptDocuments || []).find(
+        receipt => receipt.entryDocumentId === entryDocumentId
+      );
+
+      if (existingReceipt) {
+        return current;
+      }
+
       const pending = Number(current.pendingQuantity || 0);
       if (receivedNow > pending) {
         throw new Error(
@@ -233,6 +241,62 @@ export async function registerReplenishmentReceipt(
       return updated;
     }
   );
+}
+
+export async function reconcileReplenishmentReceipts() {
+  const [documents, movements, replenishments] = await Promise.all([
+    getAll(STORES.DOCUMENTS),
+    getAll(STORES.MOVEMENTS),
+    getAll(STORES.REPLENISHMENTS)
+  ]);
+
+  const replenishmentById = new Map(
+    replenishments.map(item => [item.id, item])
+  );
+
+  const results = [];
+
+  for (const document of documents) {
+    if (document.type !== 'ENTRY' || document.status !== 'CLOSED') continue;
+
+    const replenishmentId = document.metadata?.replenishmentId;
+    if (!replenishmentId) continue;
+
+    const item = replenishmentById.get(replenishmentId);
+    if (!item) continue;
+
+    const alreadyRegistered = (item.receiptDocuments || []).some(
+      receipt => receipt.entryDocumentId === document.id
+    );
+    if (alreadyRegistered) continue;
+
+    const quantity = movements
+      .filter(movement => movement.documentId === document.id)
+      .filter(movement => movement.type === 'ENTRY')
+      .filter(movement => movement.productId === item.productId)
+      .reduce((sum, movement) => sum + Number(movement.quantity || 0), 0);
+
+    if (!(quantity > 0)) continue;
+
+    const updated = await registerReplenishmentReceipt(
+      replenishmentId,
+      {
+        quantity,
+        entryDocumentId: document.id,
+        userId: document.closedBy || document.ownerId || null
+      }
+    );
+
+    replenishmentById.set(replenishmentId, updated);
+    results.push({
+      replenishmentId,
+      entryDocumentId: document.id,
+      quantity,
+      status: updated.status
+    });
+  }
+
+  return results;
 }
 
 export async function listReplenishments({
