@@ -34,6 +34,9 @@ import {
   syncNow,
   onSyncStatus
 } from '../sync/syncEngine.js';
+import {
+  getDashboardSnapshot
+} from './dashboardService.js';
 
 const appRoot = document.getElementById('app');
 const saveStatus = document.getElementById('saveStatus');
@@ -113,35 +116,147 @@ async function render() {
 }
 
 async function renderHome() {
-  const drafts = await listDraftDocuments({ ownerId });
-  const pending = await getPendingSyncCount();
+  const snapshot = await getDashboardSnapshot();
+  const productById = new Map(
+    state.products.map(product => [product.id, product])
+  );
 
   appRoot.innerHTML = `
-    <section class="hero">
-      <h1>Almacén</h1>
-      <p>Trabajo local-first. Cada operación se guarda antes de continuar.</p>
+    <section class="hero dashboard-hero">
+      <div>
+        <h1>Almacén</h1>
+        <p>Resumen operativo calculado desde movimientos, lotes y trabajo local.</p>
+      </div>
+      <div class="dashboard-sync">
+        ${snapshot.pendingSyncCount
+          ? `<span class="badge status-warning">${snapshot.pendingSyncCount} pendientes</span>`
+          : '<span class="badge status-good">Todo sincronizado</span>'}
+      </div>
     </section>
 
     <section class="grid dashboard-grid">
-      <div class="card">
-        <strong>${state.products.length}</strong>
-        <div class="product-meta">Productos activos</div>
-      </div>
-      <div class="card">
-        <strong>${drafts.length}</strong>
-        <div class="product-meta">Borradores recuperables</div>
-      </div>
-      <div class="card">
-        <strong>${pending}</strong>
-        <div class="product-meta">Cambios pendientes de servidor</div>
-      </div>
+      ${dashboardMetric(
+        snapshot.inventorySummary.products,
+        'Productos activos',
+        'Catálogo'
+      )}
+      ${dashboardMetric(
+        snapshot.inventorySummary.critical + snapshot.inventorySummary.low,
+        'Stock con atención',
+        'Mínimos + consumo'
+      )}
+      ${dashboardMetric(
+        snapshot.expiringLots.length,
+        'Lotes por vencer',
+        'Próximos 30 días'
+      )}
+      ${dashboardMetric(
+        snapshot.movementSummaryToday.supplyCount,
+        'Surtidos hoy',
+        `${snapshot.movementSummaryToday.movementCount} movimientos hoy`
+      )}
+    </section>
+
+    <section class="grid dashboard-detail-grid" style="margin-top:16px">
+      <article class="card">
+        <div class="row">
+          <div>
+            <h3 style="margin:0">Sugerencias de reposición</h3>
+            <div class="product-meta">Prioridad calculada con stock real y mínimos.</div>
+          </div>
+          <span class="badge">${snapshot.inventorySummary.replenishmentNeeded}</span>
+        </div>
+
+        <div class="stack" style="margin-top:12px">
+          ${snapshot.lowStock.length
+            ? snapshot.lowStock.map(row => `
+              <div class="dashboard-list-row">
+                <div>
+                  <strong>${escapeHtml(row.name)}</strong>
+                  <div class="product-meta">
+                    Stock ${formatNumber(row.stock)} · Min ${formatNumber(row.minStock)} · Max ${formatNumber(row.maxStock)}
+                  </div>
+                </div>
+                <div class="dashboard-list-end">
+                  <strong>${formatNumber(row.suggestedQuantity)}</strong>
+                  <small>reponer</small>
+                </div>
+              </div>
+            `).join('')
+            : '<div class="empty compact-empty">Sin productos que requieran reposición.</div>'}
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="row">
+          <div>
+            <h3 style="margin:0">Vencimientos próximos</h3>
+            <div class="product-meta">Lotes con existencia restante.</div>
+          </div>
+          <span class="badge">${snapshot.expiringLots.length}</span>
+        </div>
+
+        <div class="stack" style="margin-top:12px">
+          ${snapshot.expiringLots.length
+            ? snapshot.expiringLots.slice(0, 6).map(lot => {
+                const product = productById.get(lot.productId);
+                return `
+                  <div class="dashboard-list-row">
+                    <div>
+                      <strong>${escapeHtml(product?.name || lot.productId)}</strong>
+                      <div class="product-meta">
+                        Lote ${escapeHtml(lot.lotNumber || '—')} · ${formatNumber(lot.remainingQuantity)} restantes
+                      </div>
+                    </div>
+                    <div class="dashboard-list-end ${lot.expired ? 'status-danger' : lot.daysRemaining <= 7 ? 'status-warning' : ''}">
+                      <strong>${lot.expired ? 'Vencido' : lot.daysRemaining + ' d'}</strong>
+                      <small>${formatShortDate(lot.expiresAt)}</small>
+                    </div>
+                  </div>
+                `;
+              }).join('')
+            : '<div class="empty compact-empty">Sin vencimientos próximos.</div>'}
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="row">
+          <div>
+            <h3 style="margin:0">Movimientos recientes</h3>
+            <div class="product-meta">El stock se deriva de este historial.</div>
+          </div>
+          <span class="badge">${snapshot.recentMovements.length}</span>
+        </div>
+
+        <div class="stack" style="margin-top:12px">
+          ${snapshot.recentMovements.length
+            ? snapshot.recentMovements.map(movement => {
+                const product = productById.get(movement.productId);
+                return `
+                  <div class="dashboard-list-row">
+                    <div>
+                      <strong>${escapeHtml(product?.name || movement.productId)}</strong>
+                      <div class="product-meta">
+                        ${movementTypeLabel(movement.type)} · ${formatDate(movement.effectiveAt || movement.createdAt)}
+                      </div>
+                    </div>
+                    <div class="dashboard-list-end">
+                      <strong>${movementDisplayQuantity(movement)}</strong>
+                      <small>${escapeHtml(movement.type)}</small>
+                    </div>
+                  </div>
+                `;
+              }).join('')
+            : '<div class="empty compact-empty">Todavía no hay movimientos.</div>'}
+        </div>
+      </article>
     </section>
 
     <section class="grid dashboard-grid" style="margin-top:16px">
       ${actionCard('count', 'Conteo físico', 'Número + Enter. Ajustes trazables.')}
-      ${actionCard('supply', 'Surtido', 'Carrito de salida con validación de stock.')}
+      ${actionCard('supply', 'Surtido', 'Salida validada y FEFO por lotes cuando aplica.')}
       ${actionCard('entry', 'Entrada', 'Recepción, costo, lote y vencimiento opcionales.')}
-      ${actionCard('catalog', 'Catálogo', 'Productos, mínimos, máximos y reposición.')}
+      ${actionCard('catalog', 'Catálogo', 'Excel, mínimos, máximos y reposición.')}
     </section>
   `;
 }
@@ -878,6 +993,64 @@ function renderCatalogImportPreview(preview) {
       ` : '<div class="empty">No hay filas válidas para importar.</div>'}
     </div>
   `;
+}
+
+function dashboardMetric(value, label, detail) {
+  return `
+    <div class="card dashboard-metric">
+      <strong>${formatNumber(value)}</strong>
+      <div class="dashboard-metric-label">${escapeHtml(label)}</div>
+      <div class="product-meta">${escapeHtml(detail)}</div>
+    </div>
+  `;
+}
+
+function movementTypeLabel(type) {
+  switch (type) {
+    case 'ENTRY':
+      return 'Entrada';
+    case 'SUPPLY':
+      return 'Surtido';
+    case 'ADJUSTMENT':
+      return 'Ajuste';
+    case 'REVERSAL':
+      return 'Reverso';
+    case 'TRANSFER':
+      return 'Transferencia';
+    default:
+      return type || 'Movimiento';
+  }
+}
+
+function movementDisplayQuantity(movement) {
+  if (movement.type === 'ADJUSTMENT' || movement.type === 'REVERSAL') {
+    return formatSigned(movement.delta);
+  }
+
+  const quantity = Number(movement.quantity || 0);
+  if (movement.type === 'SUPPLY') return '-' + formatNumber(quantity);
+  return '+' + formatNumber(quantity);
+}
+
+function formatNumber(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return '0';
+
+  return new Intl.NumberFormat('es', {
+    maximumFractionDigits: 3
+  }).format(number);
+}
+
+function formatShortDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+
+  return date.toLocaleDateString('es', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
 }
 
 function actionCard(view, title, subtitle) {
