@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-8';
+const CACHE_NAME = 'smart-inventory-v2-shell-9';
 
 const APP_SHELL = [
   './',
@@ -11,6 +11,7 @@ const APP_SHELL = [
   './src/core/ids.js',
   './src/core/catalog.js',
   './src/core/movementTypes.js',
+  './src/core/versioning.js',
   './src/catalog/catalogService.js',
   './src/catalog/catalogExcel.js',
   './src/storage/database.js',
@@ -18,11 +19,13 @@ const APP_SHELL = [
   './src/sync/syncSettings.js',
   './src/sync/remoteApply.js',
   './src/sync/syncEngine.js',
+  './src/sync/conflictResolver.js',
   './src/inventory/stockEngine.js',
   './src/inventory/movementService.js',
   './src/inventory/lotEngine.js',
   './src/intelligence/replenishmentEngine.js',
   './src/replenishment/replenishmentService.js',
+  './src/scanner/barcodeScanner.js',
   './src/reporting/reportingEngine.js',
   './src/ui/dashboardService.js',
   './src/documents/documentTypes.js',
