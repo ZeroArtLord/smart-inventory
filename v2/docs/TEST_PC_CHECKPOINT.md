@@ -111,3 +111,20 @@ npm run preflight:production
 ```
 
 No abrir el puerto PostgreSQL al exterior y no publicar la credencial de service account.
+
+## Verificaciones antes del piloto o producción
+
+Desde `v2\server`:
+
+```powershell
+npm run integrity:check
+npm run preflight:production
+```
+
+Después de migrar V1 y sincronizar:
+
+```powershell
+npm run migration:verify -- --workspace-key establo2026
+```
+
+No continuar con producción si `integrity:check`, `preflight:production` o `migration:verify` terminan con error.
