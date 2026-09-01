@@ -11,6 +11,7 @@ const ENTITY_TABLES = Object.freeze({
 
 export async function assertMutableEntityVersion(
   client,
+  workspaceId,
   event,
   { allowLegacy = false } = {}
 ) {
@@ -24,7 +25,7 @@ export async function assertMutableEntityVersion(
      WHERE workspace_id = $1
        AND id = $2
      FOR UPDATE`,
-    [event.workspaceId, entityId]
+    [workspaceId, entityId]
   );
 
   const exists = result.rowCount > 0;
