@@ -68,3 +68,15 @@ Después, cuando Armando tenga tiempo para pruebas manuales:
 - DEV_ALLOW_HEADER_AUTH es solo para desarrollo/LAN.
 - PostgreSQL no debe publicarse a Internet.
 - La prueba PC ↔ teléfono ↔ servidor queda pendiente para una sesión posterior.
+
+
+## Backups
+
+Después de actualizar y comprobar que el servidor funciona, los comandos disponibles serán:
+
+```powershell
+npm run backup
+npm run backup:verify
+```
+
+No ejecutarlos como tarea automática todavía. Primero validaremos manualmente la ruta de PostgreSQL y el destino de backup en la PC/servidor de pruebas.
