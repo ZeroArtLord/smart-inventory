@@ -4,7 +4,8 @@ export const PERMISSIONS = Object.freeze({
   COUNT_WRITE: 'count.write',
   ENTRY_WRITE: 'entry.write',
   SUPPLY_WRITE: 'supply.write',
-  ADJUSTMENT_WRITE: 'adjustment.write'
+  ADJUSTMENT_WRITE: 'adjustment.write',
+  PURCHASE_WRITE: 'purchases.write'
 });
 
 export function hasPermission(auth, permission) {
@@ -62,6 +63,10 @@ export function permissionForEvent(event) {
     return operation === 'CREATE'
       ? PERMISSIONS.ENTRY_WRITE
       : PERMISSIONS.SUPPLY_WRITE;
+  }
+
+  if (entityType === 'replenishment') {
+    return PERMISSIONS.PURCHASE_WRITE;
   }
 
   if (entityType === 'movement') {
