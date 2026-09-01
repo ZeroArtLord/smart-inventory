@@ -2,6 +2,7 @@ import { validateSyncEvent } from './validateEvent.js';
 import { assertEventPermission } from '../security/permissions.js';
 import { config } from '../config.js';
 import { assertMovementKeepsStockNonNegative } from './stockInvariant.js';
+import { assertMovementRelations } from './movementRelations.js';
 import {
   assertMutableEntityVersion,
   persistMutableEntityVersion
@@ -268,6 +269,12 @@ async function upsertReplenishment(client, workspaceId, userId, p) {
 }
 
 async function insertMovement(client, workspaceId, userId, p) {
+  await assertMovementRelations(
+    client,
+    workspaceId,
+    p
+  );
+
   const invariant = await assertMovementKeepsStockNonNegative(
     client,
     workspaceId,
