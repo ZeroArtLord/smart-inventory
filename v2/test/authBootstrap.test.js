@@ -267,3 +267,60 @@ test('rechaza servidor configurado con otro proyecto Firebase', async () => {
       'FIREBASE_PROJECT_MISMATCH'
   );
 });
+
+
+test('Firebase exige contexto seguro cuando el navegador lo reporta inseguro', async () => {
+  Object.defineProperty(
+    globalThis,
+    'navigator',
+    {
+      value: { onLine: true },
+      configurable: true
+    }
+  );
+
+  Object.defineProperty(
+    globalThis,
+    'isSecureContext',
+    {
+      value: false,
+      configurable: true
+    }
+  );
+
+  await saveSyncConfig({
+    authMode: 'dev',
+    apiBaseUrl: '',
+    workspaceId: null,
+    serverUserId: null
+  });
+
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async json() {
+      return {
+        ok: true,
+        authMode: 'firebase',
+        firebaseProjectId:
+          'smart-inventory-c296b'
+      };
+    }
+  });
+
+  await assert.rejects(
+    discoverServerAuthMode(),
+    error =>
+      error.code ===
+      'AUTH_SECURE_CONTEXT_REQUIRED'
+  );
+
+  Object.defineProperty(
+    globalThis,
+    'isSecureContext',
+    {
+      value: true,
+      configurable: true
+    }
+  );
+});
