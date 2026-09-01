@@ -468,3 +468,19 @@ input, select {
 .report-table tbody tr:last-child td {
   border-bottom: 0;
 }
+
+
+.conflict-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #f59e0b;
+  border-radius: 14px;
+  background: #fffbeb;
+}
+
+.conflict-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
