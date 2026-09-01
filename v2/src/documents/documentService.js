@@ -89,6 +89,7 @@ export async function saveDocumentLine(data = {}) {
     documentId: document.id,
     productId: product.id,
     productName: product.name,
+    documentType: document.type,
     updatedAt: now,
     createdAt: existing?.createdAt || now
   };
