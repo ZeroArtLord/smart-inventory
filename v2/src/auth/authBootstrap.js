@@ -57,6 +57,18 @@ export async function discoverServerAuthMode() {
       throw error;
     }
 
+    if (
+      data.authMode === 'firebase' &&
+      globalThis.isSecureContext === false
+    ) {
+      const error = new Error(
+        'Firebase Authentication requiere un contexto seguro (HTTPS o localhost).'
+      );
+      error.code =
+        'AUTH_SECURE_CONTEXT_REQUIRED';
+      throw error;
+    }
+
     if (data.authMode === current.authMode) {
       return current;
     }
@@ -69,8 +81,10 @@ export async function discoverServerAuthMode() {
     });
   } catch (error) {
     if (
-      error?.code ===
-      'FIREBASE_PROJECT_MISMATCH'
+      [
+        'FIREBASE_PROJECT_MISMATCH',
+        'AUTH_SECURE_CONTEXT_REQUIRED'
+      ].includes(error?.code)
     ) {
       throw error;
     }
