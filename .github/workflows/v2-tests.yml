@@ -58,3 +58,72 @@ jobs:
 
       - name: Check server JavaScript syntax
         run: find src scripts -name "*.js" -print0 | xargs -0 -n1 node --check
+
+
+  server-integration:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: smart_inventory
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: smart_inventory
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smart_inventory -d smart_inventory"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    defaults:
+      run:
+        working-directory: v2/server
+
+    env:
+      PORT: 5190
+      DATABASE_URL: postgres://smart_inventory:ci_password@127.0.0.1:5432/smart_inventory
+      NODE_ENV: test
+      AUTH_MODE: dev
+      DEV_ALLOW_HEADER_AUTH: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install server dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Apply PostgreSQL migrations
+        run: npm run migrate
+
+      - name: Start API
+        run: |
+          npm start > /tmp/smart-inventory-v2.log 2>&1 &
+          echo $! > /tmp/smart-inventory-v2.pid
+
+      - name: Wait for readiness
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:5190/ready > /tmp/ready.json; then
+              cat /tmp/ready.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/smart-inventory-v2.log
+          exit 1
+
+      - name: Run real sync and stock smoke
+        run: npm run smoke:integration
+
+      - name: Show server log on failure
+        if: failure()
+        run: cat /tmp/smart-inventory-v2.log
