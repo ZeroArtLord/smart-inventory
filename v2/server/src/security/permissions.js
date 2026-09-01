@@ -36,6 +36,7 @@ export function assertEventPermission(auth, event) {
       `Permiso requerido: ${required}`
     );
     error.code = 'PERMISSION_DENIED';
+    error.statusCode = 403;
     throw error;
   }
 
