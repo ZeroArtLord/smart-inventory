@@ -24,7 +24,7 @@ export async function applyEvent(client, auth, event) {
     case 'lot':
       return upsertLot(client, workspaceId, payload);
     case 'replenishment':
-      return upsertReplenishment(client, workspaceId, payload);
+      return upsertReplenishment(client, workspaceId, userId, payload);
     case 'movement':
       if (operation !== 'CREATE') {
         throw new Error('Los movimientos solo admiten CREATE');
@@ -181,7 +181,7 @@ async function upsertLot(client, workspaceId, p) {
   );
 }
 
-async function upsertReplenishment(client, workspaceId, p) {
+async function upsertReplenishment(client, workspaceId, userId, p) {
   await client.query(
     `INSERT INTO replenishments (
       workspace_id,id,product_id,product_name,supplier_id,method,status,
@@ -217,7 +217,7 @@ async function upsertReplenishment(client, workspaceId, p) {
       p.pendingQuantity,p.expectedAt || null,p.reference || null,p.notes || null,
       p.ownerId || null,JSON.stringify(p.sourceSuggestion || null),
       JSON.stringify(p.receiptDocuments || []),p.orderedAt || null,
-      p.receivedAt || null,p.cancelledAt || null,p.updatedBy || null,
+      p.receivedAt || null,p.cancelledAt || null,userId || null,
       p.createdAt,p.updatedAt
     ]
   );
