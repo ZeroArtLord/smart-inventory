@@ -11,6 +11,7 @@ import { devRouter } from './routes/dev.js';
 import { adminRouter } from './routes/admin.js';
 import { auditRouter } from './routes/audit.js';
 import { sessionRouter } from './routes/session.js';
+import { authRouter } from './routes/auth.js';
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -50,6 +51,18 @@ app.use(helmet({
 }));
 app.use(express.json({ limit: '2mb' }));
 
+app.get('/api/v1/public/config', (_req, res) => {
+  res.json({
+    ok: true,
+    service: 'smart-inventory-v2',
+    authMode: config.authMode,
+    firebaseProjectId:
+      config.authMode === 'firebase'
+        ? config.firebaseProjectId
+        : null
+  });
+});
+
 app.get('/health', async (_req, res, next) => {
   try {
     const result = await pool.query('SELECT now() AS now');
@@ -77,6 +90,7 @@ app.get('/ready', async (_req, res, next) => {
 });
 
 app.use('/api/v1/dev', devRouter);
+app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/sync', authContext, syncRouter);
 app.use('/api/v1/admin', authContext, adminRouter);
 app.use('/api/v1/audit', authContext, auditRouter);
