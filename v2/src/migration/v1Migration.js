@@ -255,6 +255,7 @@ export async function applyV1Migration(
 
     if (Math.abs(delta) > 0.000001) {
       await createMovement({
+        id: migrationMovementId(row),
         productId: product.id,
         type: MOVEMENT_TYPES.ADJUSTMENT,
         quantity: 0,
@@ -432,4 +433,21 @@ function roundQuantity(value) {
   return Math.round(
     (Number(value) + Number.EPSILON) * 1000000
   ) / 1000000;
+}
+
+
+function migrationMovementId(row) {
+  const source = [
+    row.legacyId || '',
+    row.nameNormalized || ''
+  ].join('|');
+
+  let hash = 2166136261;
+
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return `mov_v1_${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
