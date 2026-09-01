@@ -59,6 +59,11 @@ import {
   reconcileReplenishmentReceipts,
   REPLENISHMENT_STATUS
 } from '../replenishment/replenishmentService.js';
+import {
+  findProductByBarcode,
+  supportsCameraBarcodeScanner,
+  startCameraBarcodeScanner
+} from '../scanner/barcodeScanner.js';
 
 const appRoot = document.getElementById('app');
 const saveStatus = document.getElementById('saveStatus');
@@ -76,6 +81,7 @@ const state = {
 
 const ownerId = getLocalOwnerId();
 let syncTimer = null;
+let barcodeScannerSession = null;
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -870,11 +876,26 @@ async function renderCartWorkspace(type) {
             Solo puede recibirse ${escapeHtml(linkedReplenishment.productName || linkedReplenishment.productId)}.
           </div>
         ` : `
-          <label>
-            Buscar producto
-            <input id="productSearch" autocomplete="off" placeholder="Nombre, alias, SKU o código">
-          </label>
+          <div class="scanner-search-row">
+            <label>
+              Buscar producto
+              <input id="productSearch" autocomplete="off" placeholder="Nombre, alias, SKU o código">
+            </label>
 
+            <button
+              class="secondary scanner-button"
+              data-action="open-barcode-scanner"
+              type="button"
+              ${supportsCameraBarcodeScanner() ? '' : 'disabled'}
+              title="${supportsCameraBarcodeScanner()
+                ? 'Abrir cámara'
+                : 'La cámara requiere HTTPS y navegador compatible'}"
+            >▣ Escanear</button>
+          </div>
+
+          <div class="product-meta">
+            Los lectores USB/Bluetooth también funcionan: escanea y presiona Enter.
+          </div>
           <div id="searchResults" class="search-results"></div>
         `}
 
@@ -1001,10 +1022,100 @@ async function handleClick(event) {
         return resolveConflict(button.dataset.id, 'SERVER');
       case 'reapply-local-conflict':
         return resolveConflict(button.dataset.id, 'LOCAL');
+      case 'open-barcode-scanner':
+        return openBarcodeScanner();
+      case 'close-barcode-scanner':
+        return closeBarcodeScanner();
     }
   } catch (error) {
     showToast(error.message || String(error));
   }
+}
+
+async function openBarcodeScanner() {
+  closeBarcodeScanner();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'scanner-overlay';
+  overlay.id = 'barcodeScannerOverlay';
+  overlay.innerHTML = `
+    <section class="scanner-dialog" role="dialog" aria-modal="true" aria-label="Escáner de código de barras">
+      <div class="row">
+        <div>
+          <strong>Escanear código</strong>
+          <div class="product-meta">Apunta la cámara al código de barras.</div>
+        </div>
+        <button
+          class="danger scanner-close"
+          data-action="close-barcode-scanner"
+          type="button"
+        >Cerrar</button>
+      </div>
+
+      <div class="scanner-video-wrap">
+        <video id="barcodeScannerVideo"></video>
+        <div class="scanner-guide"></div>
+      </div>
+
+      <div id="scannerStatus" class="product-meta">
+        Iniciando cámara…
+      </div>
+    </section>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const video = document.getElementById('barcodeScannerVideo');
+  const status = document.getElementById('scannerStatus');
+
+  try {
+    barcodeScannerSession = await startCameraBarcodeScanner({
+      videoElement: video,
+      onCode: async code => {
+        const product = findProductByBarcode(state.products, code);
+
+        if (!product) {
+          if (status) {
+            status.textContent = `Código ${code} no existe en el catálogo.`;
+            status.className = 'status-warning';
+          }
+          return;
+        }
+
+        state.selectedProductId = product.id;
+        state.searchResults = [];
+        closeBarcodeScanner();
+        showToast(`Escaneado: ${product.name}`);
+        await render();
+      },
+      onError: error => {
+        if (status) {
+          status.textContent =
+            error?.message || 'No se pudo leer el código.';
+          status.className = 'status-warning';
+        }
+      }
+    });
+
+    if (status) {
+      status.textContent = 'Cámara activa · buscando código…';
+      status.className = 'status-good';
+    }
+  } catch (error) {
+    if (status) {
+      status.textContent = error?.message || String(error);
+      status.className = 'status-danger';
+    }
+  }
+}
+
+function closeBarcodeScanner() {
+  try {
+    barcodeScannerSession?.stop?.();
+  } catch (_) {}
+
+  barcodeScannerSession = null;
+  document.getElementById('barcodeScannerOverlay')?.remove();
 }
 
 async function handleSubmit(event) {
