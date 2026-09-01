@@ -1,5 +1,5 @@
 const DB_NAME = 'smart_inventory_v2';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 export const STORES = Object.freeze({
   PRODUCTS: 'products',
@@ -96,6 +96,17 @@ function createDatabase() {
       ensureIndex(syncQueue, 'entityId', 'entityId');
 
       ensureStore(db, tx, STORES.SETTINGS, 'key');
+
+      [
+        products,
+        categories,
+        suppliers,
+        locations,
+        documents,
+        documentLines,
+        lots,
+        replenishments
+      ].forEach(ensureExistingEntityVersions);
     };
 
     request.onsuccess = () => {
@@ -113,6 +124,27 @@ function ensureStore(db, tx, name, keyPath) {
     return db.createObjectStore(name, { keyPath });
   }
   return tx.objectStore(name);
+}
+
+function ensureExistingEntityVersions(store) {
+  const request = store.openCursor();
+
+  request.onsuccess = () => {
+    const cursor = request.result;
+    if (!cursor) return;
+
+    const value = cursor.value;
+    const version = Number(value?.version);
+
+    if (!Number.isInteger(version) || version < 1) {
+      cursor.update({
+        ...value,
+        version: 1
+      });
+    }
+
+    cursor.continue();
+  };
 }
 
 function ensureIndex(store, name, keyPath, options = {}) {
