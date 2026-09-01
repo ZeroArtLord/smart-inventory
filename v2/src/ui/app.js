@@ -33,6 +33,12 @@ import {
   getReplenishmentSuggestion
 } from '../intelligence/replenishmentEngine.js';
 import {
+  reverseMovement
+} from '../inventory/movementService.js';
+import {
+  listAuditEvents
+} from '../audit/auditClient.js';
+import {
   syncNow,
   onSyncStatus
 } from '../sync/syncEngine.js';
@@ -95,7 +101,8 @@ const state = {
   reportDays: 30,
   reportRows: [],
   session: null,
-  members: []
+  members: [],
+  auditEvents: []
 };
 
 const ownerId = getLocalOwnerId();
@@ -169,6 +176,8 @@ async function render() {
       return renderConflicts();
     case 'users':
       return renderUsers();
+    case 'audit':
+      return renderAudit();
     default:
       return renderHome();
   }
@@ -328,9 +337,133 @@ async function renderHome() {
       ${can(state.session, 'users.manage')
         ? actionCard('users', 'Usuarios y permisos', 'Roles, visibilidad y permisos granulares.')
         : ''}
+      ${can(state.session, 'audit.view')
+        ? actionCard('audit', 'Auditoría', 'Quién hizo qué, cuándo y desde qué operación.')
+        : ''}
       ${actionCard('catalog', 'Catálogo', 'Excel, mínimos, máximos y reposición.')}
     </section>
   `;
+}
+
+async function renderAudit() {
+  if (!state.session) {
+    await refreshSession({ silent: true });
+  }
+
+  if (!can(state.session, 'audit.view')) {
+    appRoot.innerHTML = `
+      <section class="hero">
+        <h2>Auditoría</h2>
+        <p>Esta sección requiere el permiso audit.view.</p>
+      </section>
+      <section class="card"><div class="empty">Sin permiso de auditoría.</div></section>
+    `;
+    return;
+  }
+
+  try {
+    state.auditEvents = await listAuditEvents({ limit: 150 });
+  } catch (error) {
+    appRoot.innerHTML = `
+      <section class="hero">
+        <h2>Auditoría</h2>
+        <p>Historial protegido por el servidor.</p>
+      </section>
+      <section class="card"><div class="status-danger">${escapeHtml(error.message || String(error))}</div></section>
+    `;
+    return;
+  }
+
+  const localMovements = await getAll(STORES.MOVEMENTS);
+  const reversedIds = new Set(
+    localMovements
+      .filter(movement => movement.reversedMovementId)
+      .map(movement => movement.reversedMovementId)
+  );
+  const reversibleAdjustments = localMovements
+    .filter(movement => movement.type === 'ADJUSTMENT')
+    .filter(movement => !reversedIds.has(movement.id))
+    .sort((a, b) =>
+      String(b.effectiveAt || b.createdAt).localeCompare(
+        String(a.effectiveAt || a.createdAt)
+      )
+    )
+    .slice(0, 12);
+
+  appRoot.innerHTML = `
+    <section class="hero dashboard-hero">
+      <div>
+        <h2>Auditoría</h2>
+        <p>Registro del servidor y compensaciones controladas de ajustes.</p>
+      </div>
+      <span class="badge">${state.auditEvents.length} eventos</span>
+    </section>
+
+    <div class="operation-layout">
+      <section class="card stack">
+        <div>
+          <h3 style="margin:0">Eventos recientes</h3>
+          <div class="product-meta">La API registra escrituras sincronizadas y operaciones administrativas.</div>
+        </div>
+
+        ${state.auditEvents.length
+          ? state.auditEvents.map(item => `
+            <div class="audit-row">
+              <div>
+                <strong>${escapeHtml(auditActionLabel(item.action))}</strong>
+                <div class="product-meta">
+                  ${escapeHtml(item.entityType || 'sistema')}
+                  ${item.entityId ? ' · ' + escapeHtml(item.entityId) : ''}
+                </div>
+              </div>
+              <div class="audit-row-end">
+                <strong>${formatDate(item.createdAt)}</strong>
+                <small>${escapeHtml(item.userId || 'sistema')}</small>
+              </div>
+            </div>
+          `).join('')
+          : '<div class="empty">Todavía no hay eventos auditados.</div>'}
+      </section>
+
+      <section class="card stack">
+        <div>
+          <h3 style="margin:0">Compensar ajustes</h3>
+          <div class="product-meta">
+            No se edita el movimiento original. Se crea un REVERSAL trazable.
+          </div>
+        </div>
+
+        ${reversibleAdjustments.length
+          ? reversibleAdjustments.map(movement => {
+              const product = state.products.find(item => item.id === movement.productId);
+              return `
+                <div class="audit-adjustment-row">
+                  <div>
+                    <strong>${escapeHtml(product?.name || movement.productId)}</strong>
+                    <div class="product-meta">
+                      ${formatSigned(movement.delta)} · ${formatDate(movement.effectiveAt || movement.createdAt)}
+                    </div>
+                  </div>
+                  <button
+                    class="danger"
+                    data-action="reverse-adjustment"
+                    data-id="${escapeHtml(movement.id)}"
+                    type="button"
+                  >Compensar</button>
+                </div>
+              `;
+            }).join('')
+          : '<div class="empty">No hay ajustes pendientes de compensación.</div>'}
+      </section>
+    </div>
+  `;
+}
+
+function auditActionLabel(action) {
+  if (!action) return 'Evento';
+  return String(action)
+    .replace(/^SYNC_/, 'Sincronización ')
+    .replace(/_/g, ' ');
 }
 
 async function renderUsers() {
@@ -1280,6 +1413,8 @@ async function handleClick(event) {
         return saveMemberPermissions(button.dataset.userId);
       case 'install-pwa':
         return installPwa();
+      case 'reverse-adjustment':
+        return reverseAdjustment(button.dataset.id);
     }
   } catch (error) {
     showToast(error.message || String(error));
@@ -1610,6 +1745,31 @@ async function handleKeydown(event) {
     state.searchResults = [];
     return render();
   }
+}
+
+async function reverseAdjustment(movementId) {
+  const reason = prompt(
+    'Motivo de la compensación del ajuste:',
+    'Corrección autorizada'
+  );
+
+  if (reason === null) return;
+  if (reason.trim().length < 4) {
+    throw new Error('Indica un motivo de al menos 4 caracteres');
+  }
+
+  if (!confirm('¿Crear un movimiento compensatorio? El original permanecerá intacto.')) {
+    return;
+  }
+
+  await reverseMovement(movementId, {
+    userId: ownerId,
+    reason: reason.trim()
+  });
+
+  showToast('Compensación creada');
+  scheduleSync(100);
+  await render();
 }
 
 async function saveMemberRole(userId) {
