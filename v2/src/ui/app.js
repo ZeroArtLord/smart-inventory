@@ -43,8 +43,10 @@ import {
   onSyncStatus
 } from '../sync/syncEngine.js';
 import {
-  getSyncConfig
-} from '../sync/syncSettings.js';
+  discoverServerAuthMode,
+  bootstrapFirebaseAccess,
+  selectFirebaseWorkspace
+} from '../auth/authBootstrap.js';
 import {
   initializeFirebaseClient,
   loginWithGoogle,
@@ -113,7 +115,8 @@ const state = {
   members: [],
   auditEvents: [],
   authMode: 'dev',
-  authUser: null
+  authUser: null,
+  availableWorkspaces: []
 };
 
 const devOwnerId = getLocalOwnerId();
@@ -132,10 +135,16 @@ async function init() {
     registerServiceWorker();
     bindSyncLifecycle();
 
-    const authenticated = await initializeApplicationAuth();
-    if (!authenticated) {
+    const authState = await initializeApplicationAuth();
+
+    if (authState === 'signed-out') {
       updateAuthUi();
       return renderAuthGate();
+    }
+
+    if (authState === 'workspace-required') {
+      updateAuthUi();
+      return renderWorkspaceGate();
     }
 
     await startAuthenticatedApp();
@@ -175,20 +184,31 @@ function bindGlobalEvents() {
 }
 
 async function initializeApplicationAuth() {
-  const config = await getSyncConfig();
+  const config = await discoverServerAuthMode();
   state.authMode = config.authMode || 'dev';
 
   if (state.authMode !== 'firebase') {
     state.authUser = null;
+    state.availableWorkspaces = [];
     updateAuthUi();
-    return true;
+    return 'authenticated';
   }
 
   const user = await initializeFirebaseClient();
   state.authUser = firebaseUserSummary(user);
   updateAuthUi();
 
-  return Boolean(state.authUser);
+  if (!state.authUser) {
+    state.availableWorkspaces = [];
+    return 'signed-out';
+  }
+
+  const access = await bootstrapFirebaseAccess();
+  state.availableWorkspaces = access.workspaces || [];
+
+  return access.selectedWorkspace
+    ? 'authenticated'
+    : 'workspace-required';
 }
 
 async function startAuthenticatedApp() {
@@ -226,6 +246,45 @@ function renderAuthGate() {
   `;
 }
 
+function renderWorkspaceGate() {
+  appRoot.innerHTML = `
+    <section class="auth-gate">
+      <article class="card auth-card stack">
+        <div class="auth-mark">S2</div>
+        <div>
+          <h1>Selecciona el almacén</h1>
+          <p class="product-meta">
+            Tu cuenta tiene acceso a más de un workspace.
+          </p>
+        </div>
+
+        <div class="stack">
+          ${state.availableWorkspaces.map(workspace => `
+            <button
+              class="secondary workspace-choice"
+              data-action="select-workspace"
+              data-workspace-id="${escapeHtml(workspace.id)}"
+              type="button"
+            >
+              <strong>${escapeHtml(workspace.name || workspace.workspaceKey || workspace.id)}</strong>
+              <span>
+                ${escapeHtml(workspace.roleCode || '')}
+                ${workspace.workspaceKey ? ' · ' + escapeHtml(workspace.workspaceKey) : ''}
+              </span>
+            </button>
+          `).join('')}
+        </div>
+
+        <button
+          class="ghost-button auth-secondary-action"
+          data-action="logout-auth"
+          type="button"
+        >Usar otra cuenta</button>
+      </article>
+    </section>
+  `;
+}
+
 async function signInWithGoogle() {
   const user = await loginWithGoogle();
   state.authUser = firebaseUserSummary(user);
@@ -234,8 +293,30 @@ async function signInWithGoogle() {
     throw new Error('No se completó el inicio de sesión');
   }
 
+  const access = await bootstrapFirebaseAccess();
+  state.availableWorkspaces = access.workspaces || [];
+
   updateAuthUi();
   showToast('Sesión iniciada');
+
+  if (!access.selectedWorkspace) {
+    return renderWorkspaceGate();
+  }
+
+  await startAuthenticatedApp();
+}
+
+async function chooseWorkspace(workspaceId) {
+  const allowed = state.availableWorkspaces.some(
+    workspace => workspace.id === workspaceId
+  );
+
+  if (!allowed) {
+    throw new Error('Ese almacén no está autorizado para tu cuenta');
+  }
+
+  await selectFirebaseWorkspace(workspaceId);
+  showToast('Almacén seleccionado');
   await startAuthenticatedApp();
 }
 
@@ -249,6 +330,7 @@ async function handleAuthButton() {
   await logoutFirebase();
   state.authUser = null;
   state.session = null;
+  state.availableWorkspaces = [];
   state.products = [];
   state.activeDocumentId = null;
   state.activeDocumentType = null;
@@ -1560,6 +1642,10 @@ async function handleClick(event) {
         return reverseAdjustment(button.dataset.id);
       case 'login-google':
         return signInWithGoogle();
+      case 'logout-auth':
+        return handleAuthButton();
+      case 'select-workspace':
+        return chooseWorkspace(button.dataset.workspaceId);
     }
   } catch (error) {
     showToast(error.message || String(error));
