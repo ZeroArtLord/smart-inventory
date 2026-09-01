@@ -158,20 +158,21 @@ async function upsertLot(client, workspaceId, p) {
     `INSERT INTO lots (
       workspace_id,id,product_id,lot_number,received_at,expires_at,
       original_quantity,remaining_quantity,unit_cost,supplier_id,
-      document_id,created_at,updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      location_id,document_id,created_at,updated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     ON CONFLICT (workspace_id,id) DO UPDATE SET
       lot_number=EXCLUDED.lot_number,
       expires_at=EXCLUDED.expires_at,
       remaining_quantity=EXCLUDED.remaining_quantity,
       unit_cost=EXCLUDED.unit_cost,
       supplier_id=EXCLUDED.supplier_id,
+      location_id=EXCLUDED.location_id,
       updated_at=EXCLUDED.updated_at`,
     [
       workspaceId,p.id,p.productId,p.lotNumber || null,p.receivedAt,
       p.expiresAt || null,p.originalQuantity,p.remainingQuantity,
-      p.unitCost ?? null,p.supplierId || null,p.documentId || null,
-      p.createdAt,p.updatedAt
+      p.unitCost ?? null,p.supplierId || null,p.locationId || null,
+      p.documentId || null,p.createdAt,p.updatedAt
     ]
   );
 }
