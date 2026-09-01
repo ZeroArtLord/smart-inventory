@@ -25,6 +25,9 @@ const xlsxBrowserBundle = path.resolve(
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'same-origin' },
+  crossOriginOpenerPolicy: {
+    policy: 'same-origin-allow-popups'
+  },
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
