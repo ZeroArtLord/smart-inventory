@@ -22,7 +22,31 @@ const xlsxBrowserBundle = path.resolve(
 );
 
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'same-origin' }
+  crossOriginResourcePolicy: { policy: 'same-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        'https://www.gstatic.com',
+        'https://apis.google.com'
+      ],
+      connectSrc: [
+        "'self'",
+        'https://*.googleapis.com',
+        'https://*.firebaseapp.com'
+      ],
+      frameSrc: [
+        "'self'",
+        'https://accounts.google.com',
+        'https://*.firebaseapp.com'
+      ],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      fontSrc: ["'self'", 'data:'],
+      workerSrc: ["'self'", 'blob:']
+    }
+  }
 }));
 app.use(express.json({ limit: '2mb' }));
 
