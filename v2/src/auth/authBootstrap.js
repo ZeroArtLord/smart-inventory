@@ -10,6 +10,7 @@ import {
   put
 } from '../storage/database.js';
 import {
+  ensureWorkspaceCache,
   switchWorkspaceCacheAndConfig
 } from '../sync/workspaceCache.js';
 
@@ -174,6 +175,10 @@ export async function getCachedFirebaseAccess({
       'Selecciona el almacén una vez con conexión antes de usarlo offline.'
     );
   }
+
+  await ensureWorkspaceCache(
+    selectedWorkspace.id
+  );
 
   return {
     user: cached.user,
