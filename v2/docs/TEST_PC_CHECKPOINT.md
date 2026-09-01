@@ -82,3 +82,32 @@ npm run backup:verify
 ```
 
 No ejecutarlos como tarea automática todavía. Primero validaremos manualmente la ruta de PostgreSQL y el destino de backup en la PC/servidor de pruebas.
+
+## Autenticación de producción — cuando llegue el momento
+
+No activar Firebase en la PC de pruebas hasta terminar primero la prueba DEV/LAN.
+
+Después, para el primer administrador:
+
+```powershell
+cd .\v2\server
+npm run admin:provision -- --email TU_EMAIL --workspace-key establo2026 --workspace-name "Almacén principal"
+```
+
+Luego cambiar el `.env` a:
+
+```env
+NODE_ENV=production
+AUTH_MODE=firebase
+DEV_ALLOW_HEADER_AUTH=false
+FIREBASE_PROJECT_ID=smart-inventory-c296b
+GOOGLE_APPLICATION_CREDENTIALS=C:\RUTA\SEGURA\service-account.json
+```
+
+Antes de arrancar producción:
+
+```powershell
+npm run preflight:production
+```
+
+No abrir el puerto PostgreSQL al exterior y no publicar la credencial de service account.
