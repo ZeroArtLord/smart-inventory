@@ -152,6 +152,15 @@ jobs:
       - name: Verify restart durability
         run: npm run smoke:restart
 
+      - name: Run production preflight against migrated database
+        env:
+          NODE_ENV: production
+          AUTH_MODE: firebase
+          DEV_ALLOW_HEADER_AUTH: "false"
+          FIREBASE_PROJECT_ID: smart-inventory-c296b
+          BACKUP_DIR: /tmp/smart-inventory-backups
+        run: npm run preflight:production
+
       - name: Show server log on failure
         if: failure()
         run: cat /tmp/smart-inventory-v2.log
