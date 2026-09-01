@@ -720,3 +720,50 @@ input, select {
     grid-template-columns: 1fr;
   }
 }
+
+.audit-row,
+.audit-adjustment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.audit-row:last-child,
+.audit-adjustment-row:last-child {
+  border-bottom: 0;
+}
+
+.audit-row-end {
+  text-align: right;
+  min-width: 150px;
+}
+
+.audit-row-end strong,
+.audit-row-end small {
+  display: block;
+}
+
+.audit-row-end small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: .75rem;
+}
+
+@media (max-width: 640px) {
+  .audit-row,
+  .audit-adjustment-row {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-row-end {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .audit-adjustment-row button {
+    width: 100%;
+  }
+}
