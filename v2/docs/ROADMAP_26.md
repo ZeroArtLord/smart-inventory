@@ -26,7 +26,7 @@ Este documento traduce el Plan Maestro a 26 checkpoints ejecutables. Cada etapa 
 22. **PDF/Excel/CSV + impresión de documentos/reportes** — LISTO
 23. **Auditoría, reapertura autorizada y compensaciones** — LISTO
 24. **Hardening: seguridad, caída, concurrencia, carga y backups** — EN CURSO
-25. **Migración V1 + piloto + despliegue/producción** — PENDIENTE
+25. **Migración V1 + piloto + despliegue/producción** — EN CURSO
 26. **SAINT Enterprise Bridge** — PENDIENTE
 
 ## Regla de comunicación
