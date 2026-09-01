@@ -1082,10 +1082,143 @@ async function handleClick(event) {
         return openBarcodeScanner();
       case 'close-barcode-scanner':
         return closeBarcodeScanner();
+      case 'export-report':
+        return exportCurrentReport(button.dataset.format);
+      case 'export-document':
+        return exportClosedDocument(
+          button.dataset.id,
+          button.dataset.format
+        );
     }
   } catch (error) {
     showToast(error.message || String(error));
   }
+}
+
+function exportCurrentReport(format) {
+  const rows = (state.reportRows || []).map(row => ({
+    Producto: row.name,
+    SKU: row.sku || '',
+    Stock: row.stock,
+    Mínimo: row.minStock,
+    Máximo: row.maxStock,
+    'En tránsito': row.pendingInbound,
+    Sugerencia: row.suggestedQuantity,
+    'Cobertura días': row.coverageDays ?? '',
+    'Consumo diario': row.estimatedDailyConsumption,
+    'Consumo ajustado': row.adjustedDailyConsumption,
+    Tendencia: row.trendDirection,
+    'Cambio tendencia %': row.trendPercentChange ?? '',
+    Confianza: row.consumptionConfidence
+  }));
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  const filename = `smart_inventory_inventario_${stamp}`;
+
+  if (format === 'csv') {
+    downloadCsv(rows, filename);
+    showToast('Reporte CSV generado');
+    return;
+  }
+
+  if (format === 'xlsx') {
+    downloadXlsx(rows, filename, {
+      sheetName: 'Inventario'
+    });
+    showToast('Reporte Excel generado');
+    return;
+  }
+
+  if (format === 'print') {
+    printRows({
+      title: 'Smart Inventory V2 · Inventario actual',
+      subtitle: `Periodo analítico: últimos ${state.reportDays} días`,
+      rows,
+      meta: [
+        {
+          label: 'Generado',
+          value: formatDate(new Date().toISOString())
+        },
+        {
+          label: 'Productos',
+          value: rows.length
+        }
+      ]
+    });
+    return;
+  }
+
+  throw new Error('Formato de exportación no soportado');
+}
+
+async function exportClosedDocument(documentId, format) {
+  const documentRecord = await get(
+    STORES.DOCUMENTS,
+    documentId
+  );
+
+  if (!documentRecord) {
+    throw new Error('Documento no encontrado');
+  }
+
+  if (documentRecord.status === DOCUMENT_STATUS.DRAFT) {
+    throw new Error('Primero debes cerrar el documento');
+  }
+
+  const lines = await listDocumentLines(documentId);
+  const rows = buildDocumentExportRows(
+    documentRecord,
+    lines
+  );
+  const prefix = documentTitle(documentRecord.type)
+    .toLowerCase()
+    .replace(/\s+/g, '-');
+  const filename = `smart_inventory_${prefix}_${documentId}`;
+
+  if (format === 'csv') {
+    downloadCsv(rows, filename);
+    showToast('Documento CSV generado');
+    return;
+  }
+
+  if (format === 'xlsx') {
+    downloadXlsx(rows, filename, {
+      sheetName: documentTitle(documentRecord.type)
+    });
+    showToast('Documento Excel generado');
+    return;
+  }
+
+  if (format === 'print') {
+    printRows({
+      title: `Smart Inventory V2 · ${documentTitle(documentRecord.type)}`,
+      subtitle: documentRecord.id,
+      rows,
+      meta: [
+        {
+          label: 'Estado',
+          value: documentRecord.status
+        },
+        {
+          label: 'Cerrado',
+          value: formatDate(
+            documentRecord.closedAt || documentRecord.updatedAt
+          )
+        },
+        {
+          label: 'Referencia',
+          value: documentRecord.reference || '—'
+        },
+        {
+          label: 'Destino',
+          value: documentRecord.destinationId || '—'
+        }
+      ]
+    });
+    return;
+  }
+
+  throw new Error('Formato de exportación no soportado');
 }
 
 async function openBarcodeScanner() {
