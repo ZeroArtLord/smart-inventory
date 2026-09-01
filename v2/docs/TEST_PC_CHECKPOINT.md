@@ -28,6 +28,7 @@ La migración pendiente incluye como mínimo:
 
 - `003_lot_location.sql` — ubicación de lotes para FEFO.
 - `004_replenishments.sql` — compras, pedidos y mercancía en tránsito.
+- `005_entity_versions.sql` — control optimista de versiones y conflictos multi-dispositivo.
 - Las migraciones posteriores que existan en la rama al momento de actualizar.
 
 `npm run migrate` es incremental: solo aplica migraciones que aún no estén registradas.
