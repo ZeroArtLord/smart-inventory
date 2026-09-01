@@ -24,12 +24,13 @@ npm run migrate
 npm start
 ```
 
-La migración pendiente incluye como mínimo:
+Las migraciones pendientes incluyen como mínimo:
 
 - `003_lot_location.sql` — ubicación de lotes para FEFO.
 - `004_replenishments.sql` — compras, pedidos y mercancía en tránsito.
 - `005_entity_versions.sql` — control optimista de versiones y conflictos multi-dispositivo.
-- Las migraciones posteriores que existan en la rama al momento de actualizar.
+- `006_audit_events.sql` — auditoría persistente de operaciones.
+- Cualquier migración posterior que exista en la rama al momento de actualizar.
 
 `npm run migrate` es incremental: solo aplica migraciones que aún no estén registradas.
 
@@ -45,6 +46,20 @@ Esperado:
 
 - `ok: true`
 - `database: ok`
+
+Después, cuando Armando tenga tiempo para pruebas manuales:
+
+1. Entrada con lote/costo/vencimiento.
+2. Surtido con validación de stock y FEFO.
+3. Sincronización real PC ↔ servidor ↔ teléfono.
+4. Pruebas de conflicto simultáneo entre dos dispositivos.
+5. Probar usuario con permisos restringidos y rechazo de API.
+
+## Autenticación
+
+- Desarrollo local/LAN continúa con `AUTH_MODE=dev` y `DEV_ALLOW_HEADER_AUTH=true`.
+- Producción quedará en `AUTH_MODE=firebase` con token firmado.
+- El cliente ya tiene proveedor de token preparado, pero no activar producción hasta configurar Firebase y probarla.
 
 ## Importante
 
