@@ -259,3 +259,72 @@ test('un documento cerrado no puede cerrarse dos veces ni duplicar movimientos',
   assert.equal(movements.length, 1);
   assert.equal(await getCurrentStock(product.id), 4);
 });
+
+
+test('surtido con lotes aplica FEFO y actualiza cantidades restantes', async () => {
+  const product = await createProduct({
+    name: 'FEFO INTEGRADO TEST',
+    sku: 'FEFO-INTEGRATED',
+    minStock: 0,
+    maxStock: 50
+  });
+
+  const entry = await createDocument({
+    type: DOCUMENT_TYPES.ENTRY,
+    ownerId: 'operador-fefo'
+  });
+
+  await saveDocumentLine({
+    documentId: entry.id,
+    productId: product.id,
+    quantity: 5,
+    lotNumber: 'LOTE-VENCE-ANTES',
+    expiresAt: '2027-01-01'
+  });
+
+  await saveDocumentLine({
+    documentId: entry.id,
+    productId: product.id,
+    quantity: 10,
+    lotNumber: 'LOTE-VENCE-DESPUES',
+    expiresAt: '2027-06-01'
+  });
+
+  await closeDocument(entry.id, { userId: 'operador-fefo' });
+
+  const supply = await createDocument({
+    type: DOCUMENT_TYPES.SUPPLY,
+    ownerId: 'operador-fefo',
+    destinationId: 'cocina-fefo'
+  });
+
+  await saveDocumentLine({
+    documentId: supply.id,
+    productId: product.id,
+    quantity: 8
+  });
+
+  const result = await closeDocument(supply.id, {
+    userId: 'operador-fefo'
+  });
+
+  assert.equal(result.movements.length, 2);
+  assert.deepEqual(
+    result.movements.map(movement => [movement.metadata.lotNumber, movement.quantity]),
+    [
+      ['LOTE-VENCE-ANTES', 5],
+      ['LOTE-VENCE-DESPUES', 3]
+    ]
+  );
+
+  const lots = await getAllByIndex(
+    STORES.LOTS,
+    'productId',
+    product.id
+  );
+
+  const byNumber = new Map(lots.map(lot => [lot.lotNumber, lot]));
+  assert.equal(byNumber.get('LOTE-VENCE-ANTES').remainingQuantity, 0);
+  assert.equal(byNumber.get('LOTE-VENCE-DESPUES').remainingQuantity, 7);
+  assert.equal(await getCurrentStock(product.id), 7);
+});
