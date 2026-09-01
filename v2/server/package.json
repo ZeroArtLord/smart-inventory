@@ -15,7 +15,8 @@
     "admin:provision": "node scripts/provisionAdmin.js",
     "integrity:check": "node scripts/integrityCheck.js",
     "migration:verify": "node scripts/verifyV1Migration.js",
-    "smoke:firebase-identity": "node scripts/firebaseIdentitySmoke.js"
+    "smoke:firebase-identity": "node scripts/firebaseIdentitySmoke.js",
+    "auth:firebase-check": "node scripts/firebaseAdminCheck.js"
   },
   "dependencies": {
     "express": "^5.0.0",
