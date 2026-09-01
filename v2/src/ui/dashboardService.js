@@ -63,6 +63,10 @@ export async function getDashboardSnapshot({
       String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))
     );
 
+  const conflicts = syncQueue.filter(
+    item => item.status === 'CONFLICT'
+  );
+
   const pendingSync = syncQueue.filter(item =>
     item.status === 'PENDING' ||
     item.status === 'FAILED' ||
@@ -90,6 +94,7 @@ export async function getDashboardSnapshot({
     replenishments,
     drafts,
     pendingSyncCount: pendingSync.length,
+    syncConflictCount: conflicts.length,
     recentMovements
   };
 }
