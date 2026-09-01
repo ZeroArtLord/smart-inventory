@@ -35,6 +35,9 @@ jobs:
       - name: Run V2 tests
         run: npm test
 
+      - name: Check client JavaScript syntax
+        run: find src test -name "*.js" -print0 | xargs -0 -n1 node --check
+
   server-syntax:
     runs-on: ubuntu-latest
     defaults:
