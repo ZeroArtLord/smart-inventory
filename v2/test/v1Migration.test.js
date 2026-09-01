@@ -7,7 +7,8 @@ const {
   buildV1MigrationPreview,
   applyV1Migration,
   getV1MigrationStatus,
-  serializeV1Archive
+  serializeV1Archive,
+  parseV1ArchiveText
 } = await import('../src/migration/v1Migration.js');
 
 const {
@@ -161,5 +162,35 @@ test('archivo V1 serializado conserva snapshot sin transformarlo en movimientos 
   assert.equal(
     archive.snapshot.history[0].consumption,
     9
+  );
+});
+
+
+test('parseV1ArchiveText acepta archivo portable y snapshot directo', () => {
+  const portable = parseV1ArchiveText(JSON.stringify({
+    schema: 'smart-inventory-v1-archive',
+    snapshot: {
+      products: [{ id: 'p1' }],
+      history: [{ id: 'h1' }],
+      daily: [],
+      audit: []
+    }
+  }));
+
+  assert.equal(portable.products.length, 1);
+  assert.equal(portable.history.length, 1);
+
+  const direct = parseV1ArchiveText(JSON.stringify({
+    products: [{ id: 'p2' }],
+    history: [],
+    daily: [],
+    audit: []
+  }));
+
+  assert.equal(direct.products[0].id, 'p2');
+
+  assert.throws(
+    () => parseV1ArchiveText('{mal json'),
+    /JSON válido/i
   );
 });
