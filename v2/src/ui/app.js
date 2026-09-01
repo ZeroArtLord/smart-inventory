@@ -324,10 +324,20 @@ function renderWorkspaceGate() {
 
 async function signInWithGoogle() {
   const user = await loginWithGoogle();
+
+  if (!user) {
+    showToast(
+      'Abriendo inicio de sesión seguro…'
+    );
+    return;
+  }
+
   state.authUser = firebaseUserSummary(user);
 
   if (!state.authUser) {
-    throw new Error('No se completó el inicio de sesión');
+    throw new Error(
+      'No se completó el inicio de sesión'
+    );
   }
 
   const access = await bootstrapFirebaseAccess({
