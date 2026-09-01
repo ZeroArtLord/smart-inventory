@@ -1,11 +1,18 @@
 export const PERMISSIONS = Object.freeze({
+  CATALOG_VIEW: 'catalog.view',
   CATALOG_WRITE: 'catalog.write',
   INVENTORY_WRITE: 'inventory.write',
   COUNT_WRITE: 'count.write',
   ENTRY_WRITE: 'entry.write',
   SUPPLY_WRITE: 'supply.write',
   ADJUSTMENT_WRITE: 'adjustment.write',
-  PURCHASE_WRITE: 'purchases.write'
+  PURCHASE_WRITE: 'purchases.write',
+  COST_VIEW: 'costs.view',
+  REPORT_VIEW: 'reports.view',
+  REPORT_EXPORT: 'reports.export',
+  USERS_MANAGE: 'users.manage',
+  AUDIT_VIEW: 'audit.view',
+  SAINT_SEND: 'saint.send'
 });
 
 export function hasPermission(auth, permission) {
