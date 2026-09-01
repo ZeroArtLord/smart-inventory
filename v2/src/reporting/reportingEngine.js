@@ -2,6 +2,8 @@ import { MOVEMENT_TYPES, stockDeltaForMovement } from '../core/movementTypes.js'
 import { calculateStocksByProduct } from '../inventory/stockEngine.js';
 import {
   buildConsumptionProfile,
+  buildDemandTrend,
+  getTrendAwareReplenishmentSuggestion,
   classifyStockRisk
 } from '../intelligence/replenishmentEngine.js';
 
@@ -13,7 +15,8 @@ export function buildInventoryReport(
   {
     pendingInboundByProduct = new Map(),
     now = new Date(),
-    targetDays = 7
+    targetDays = 7,
+    safetyDays = 1
   } = {}
 ) {
   const productList = Array.isArray(products) ? products : [];
@@ -32,6 +35,24 @@ export function buildInventoryReport(
       const pendingInbound = lookupNumber(
         pendingInboundByProduct,
         product.id
+      );
+
+      const trend = buildDemandTrend(
+        movementList,
+        product.id,
+        now
+      );
+
+      const trendSuggestion = getTrendAwareReplenishmentSuggestion(
+        product,
+        {
+          stock,
+          pendingInbound,
+          dailyConsumption: profile.estimatedDailyConsumption,
+          targetDays,
+          safetyDays,
+          trend
+        }
       );
 
       const risk = classifyStockRisk(product, {
@@ -53,11 +74,17 @@ export function buildInventoryReport(
         maxStock: Number(product.maxStock || 0),
         pendingInbound,
         riskLevel: risk.level,
-        suggestedQuantity: risk.suggestion.suggestedQuantity,
+        suggestedQuantity: trendSuggestion.suggestedQuantity,
+        targetStock: trendSuggestion.targetStock,
         coverageDays: risk.suggestion.coverageDays,
         consumptionConfidence: profile.confidence,
         estimatedDailyConsumption: profile.estimatedDailyConsumption,
-        estimatedWeeklyConsumption: profile.estimatedWeeklyConsumption
+        adjustedDailyConsumption: trendSuggestion.adjustedDailyConsumption,
+        estimatedWeeklyConsumption: profile.estimatedWeeklyConsumption,
+        trendDirection: trend.direction,
+        trendPercentChange: trend.percentChange,
+        trendConfidence: trend.confidence,
+        safetyDays: trendSuggestion.safetyDays
       };
     })
     .sort(compareInventoryRows);
