@@ -195,15 +195,22 @@ async function pushPending(config) {
     let data;
 
     try {
-      response = await fetch(
-        buildApiUrl(config.apiBaseUrl, '/api/v1/sync/push'),
+      ({
+        response,
+        data
+      } = await authenticatedSyncFetch(
+        config,
+        buildApiUrl(
+          config.apiBaseUrl,
+          '/api/v1/sync/push'
+        ),
         {
           method: 'POST',
-          headers: await authHeaders(config),
-          body: JSON.stringify({ events: batch })
+          body: JSON.stringify({
+            events: batch
+          })
         }
-      );
-      data = await readJson(response);
+      ));
     } catch (error) {
       for (const item of batch) await markFailed(item.id, error);
       throw error;
@@ -270,10 +277,19 @@ async function pullRemote(config) {
     url.searchParams.set('cursor', String(cursor));
     url.searchParams.set('limit', '250');
 
-    const response = await fetch(url, {
-      headers: await authHeaders(config, false)
-    });
-    const data = await readJson(response);
+    const {
+      response,
+      data
+    } = await authenticatedSyncFetch(
+      config,
+      url,
+      {
+        method: 'GET'
+      },
+      {
+        includeJson: false
+      }
+    );
 
     if (!response.ok || !data.ok) {
       throw new Error(data.message || 'Error descargando cambios del servidor');
@@ -294,13 +310,22 @@ async function pullRemote(config) {
   return { count, cursor };
 }
 
-async function authHeaders(config, includeJson = true) {
+async function authHeaders(
+  config,
+  includeJson = true,
+  {
+    forceRefresh = false
+  } = {}
+) {
   const headers = {
     'x-workspace-id': config.workspaceId
   };
 
   if (config.authMode === 'firebase') {
-    const token = await getAuthToken({ required: true });
+    const token = await getAuthToken({
+      required: true,
+      forceRefresh
+    });
     headers.authorization = `Bearer ${token}`;
   } else {
     headers['x-user-id'] = config.serverUserId;
@@ -311,6 +336,56 @@ async function authHeaders(config, includeJson = true) {
   }
 
   return headers;
+}
+
+async function authenticatedSyncFetch(
+  config,
+  url,
+  options = {},
+  {
+    includeJson = true
+  } = {}
+) {
+  const execute = async ({
+    forceRefresh = false
+  } = {}) => {
+    const response = await fetch(
+      url,
+      {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          ...(await authHeaders(
+            config,
+            includeJson,
+            { forceRefresh }
+          ))
+        }
+      }
+    );
+
+    const data = await readJson(response);
+
+    return {
+      response,
+      data
+    };
+  };
+
+  let result = await execute();
+
+  if (
+    config.authMode === 'firebase' &&
+    result.response.status === 401 &&
+    result.data?.code ===
+      'AUTH_TOKEN_INVALID'
+  ) {
+    result = await execute({
+      forceRefresh: true
+    });
+  }
+
+  return result;
 }
 
 async function readJson(response) {
