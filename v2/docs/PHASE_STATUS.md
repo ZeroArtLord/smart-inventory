@@ -59,7 +59,7 @@
 - Mercancía en tránsito contemplada por el motor.
 - Nivel de confianza según historial.
 
-### Fase 6 — PWA operativa (primera versión)
+### Fase 6 — PWA operativa
 - Shell instalable.
 - Catálogo manual.
 - Conteo número + Enter.
@@ -68,6 +68,12 @@
 - Surtido tipo carrito.
 - Borradores recuperables.
 - Service Worker para shell offline.
+- Las rutas /api nunca se cachean.
+- Firebase Auth runtime se conserva para arranque offline después de una autenticación previa.
+- Autorización Firebase/workspace verificada se cachea por dispositivo para modo offline.
+- La UI queda bloqueada si no hay sesión/workspace válido.
+- El cache operativo local queda ligado a un único workspace y el cambio de almacén limpia datos locales solo si no existen operaciones pendientes.
+- Navegación móvil optimizada para uso con una mano y entradas numéricas grandes.
 - Dashboard operativo conectado a datos locales reales: stock con atención, lotes por vencer, movimientos recientes y sugerencias de reposición.
 
 ### Fase 7 — Backend propio (fundación)
@@ -95,6 +101,8 @@
 - El usuario de movimientos lo impone el contexto autenticado del servidor; no se confía en el payload del cliente.
 - Modelo de permisos de escritura por catálogo/conteo/entrada/surtido/ajuste.
 - Los eventos de sincronización son rechazados si el miembro no tiene el permiso requerido.
+- Vistas y acciones locales se ocultan/bloquean según permisos; catálogo puede quedar en modo consulta y la exportación de reportes exige reports.export.
+- Cache local aislado por workspace con bloqueo de cambio cuando existen PENDING/FAILED/SYNCING/CONFLICT.
 
 ### Fase 9 — Reportes / Dashboard (fundación)
 - Motor de reporte de inventario desde movimientos.
@@ -103,14 +111,36 @@
 - Resumen de movimientos por periodo y por producto.
 - Sin mezclar cantidades de unidades distintas en un total engañoso.
 
+### Fase 10 — Hardening y despliegue seguro
+- Rate limiting de APIs sensibles.
+- Timeouts de conexión y consultas PostgreSQL.
+- Validación relacional de movimientos, documentos, productos, lotes y reversos.
+- Protección contra stock negativo en servidor con lock transaccional por producto/ubicación.
+- Prueba concurrente automática: dos surtidos simultáneos no pueden sobre-descargar stock.
+- Prueba de idempotencia de eventos repetidos.
+- Prueba de carga de lote de sincronización.
+- Reinicio de API con verificación de persistencia.
+- Preflight de producción.
+- Backup PostgreSQL custom-format.
+- Verificación por pg_restore.
+- Restore real automático a una base temporal y comparación de conteos críticos.
+
+### Fase 11 — Migración V1
+- Lectura de localStorage V1.
+- Fallback seguro a IndexedDB V1.
+- Snapshot portable JSON.
+- Preview con errores/advertencias.
+- Detección de productos duplicados por nombre normalizado.
+- Archivo legado preservado.
+- Stock V1 convertido en ADJUSTMENT trazable.
+- IDs deterministas de movimientos de migración.
+- Estado y archivo de migración aislados por workspace.
+- Bloqueo de segunda migración accidental.
+
 ## Pendiente inmediato
 
-1. Aplicar migración 003 de ubicación de lotes en el servidor local/de pruebas.
-2. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC.
-3. Autenticación real por token firmado; el motor de permisos ya está preparado.
-4. Gestión real de pedidos/en tránsito.
-5. Pantallas completas de reportes y alertas sobre el motor ya implementado.
-6. Cámara/códigos de barra.
-7. Pruebas destructivas multi-dispositivo.
-8. Migrador V1 → V2.
-9. Integración SAINT como fase final.
+1. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC.
+2. Probar Firebase real con token firmado y usuarios provisionados.
+3. Ejecutar el piloto de migración V1 con una copia real.
+4. Preparar despliegue controlado en el servidor definitivo.
+5. Integración SAINT Enterprise como última etapa.
