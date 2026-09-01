@@ -4,6 +4,7 @@ import { MOVEMENT_TYPES } from '../src/core/movementTypes.js';
 import {
   buildConsumptionProfile,
   buildDemandTrend,
+  buildWeeklySeasonality,
   getReplenishmentSuggestion,
   getTrendAwareReplenishmentSuggestion,
   classifyStockRisk
@@ -174,4 +175,78 @@ test('sin confianza suficiente no modifica el consumo base', () => {
   );
 
   assert.equal(result.adjustedDailyConsumption, 5);
+});
+
+
+test('estacionalidad semanal exige suficiente historial antes de opinar', () => {
+  const now = new Date('2026-09-01T12:00:00Z');
+  const movements = [
+    {
+      productId: 'season-short',
+      type: MOVEMENT_TYPES.SUPPLY,
+      quantity: 5,
+      effectiveAt: '2026-08-28T12:00:00Z'
+    },
+    {
+      productId: 'season-short',
+      type: MOVEMENT_TYPES.SUPPLY,
+      quantity: 5,
+      effectiveAt: '2026-08-25T12:00:00Z'
+    }
+  ];
+
+  const result = buildWeeklySeasonality(
+    movements,
+    'season-short',
+    now
+  );
+
+  assert.equal(result.confidence, 'INSUFFICIENT');
+  assert.deepEqual(result.weekdayFactors, [1,1,1,1,1,1,1]);
+});
+
+test('estacionalidad detecta un día consistentemente más fuerte', () => {
+  const now = new Date('2026-09-01T12:00:00Z');
+  const movements = [];
+
+  for (let week = 1; week <= 12; week++) {
+    const monday = new Date(
+      now.getTime() - (week * 7 * 86400000)
+    );
+    monday.setUTCDate(
+      monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7)
+    );
+
+    movements.push({
+      productId: 'season-long',
+      type: MOVEMENT_TYPES.SUPPLY,
+      quantity: 20,
+      effectiveAt: monday.toISOString()
+    });
+
+    const wednesday = new Date(monday);
+    wednesday.setUTCDate(wednesday.getUTCDate() + 2);
+
+    movements.push({
+      productId: 'season-long',
+      type: MOVEMENT_TYPES.SUPPLY,
+      quantity: 5,
+      effectiveAt: wednesday.toISOString()
+    });
+  }
+
+  const result = buildWeeklySeasonality(
+    movements,
+    'season-long',
+    now,
+    {
+      lookbackDays: 90,
+      minHistoryDays: 56,
+      minMovements: 12
+    }
+  );
+
+  assert.notEqual(result.confidence, 'INSUFFICIENT');
+  assert.equal(result.strongestDay, 1);
+  assert.ok(result.weekdayFactors[1] > result.weekdayFactors[3]);
 });
