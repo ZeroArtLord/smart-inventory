@@ -71,12 +71,19 @@ app.use(express.static(publicRoot, {
 app.use((error, _req, res, _next) => {
   console.error(error);
 
-  res.status(500).json({
+  const status = Number(error?.statusCode || 500);
+  const safeStatus = status >= 400 && status < 600
+    ? status
+    : 500;
+
+  res.status(safeStatus).json({
     ok: false,
-    code: 'INTERNAL_ERROR',
-    message: config.nodeEnv === 'production'
-      ? 'Error interno'
-      : error.message
+    code: error?.code || 'INTERNAL_ERROR',
+    message:
+      safeStatus >= 500 && config.nodeEnv === 'production'
+        ? 'Error interno'
+        : error?.message || 'Error interno',
+    ...(error?.details ? { details: error.details } : {})
   });
 });
 
