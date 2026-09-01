@@ -767,3 +767,73 @@ input, select {
     width: 100%;
   }
 }
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-user {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .84rem;
+  font-weight: 700;
+}
+
+.auth-gate {
+  min-height: calc(100vh - 180px);
+  display: grid;
+  place-items: center;
+  padding: 24px 0;
+}
+
+.auth-card {
+  width: min(440px, 100%);
+  text-align: center;
+  padding: 28px;
+}
+
+.auth-card h1 {
+  margin: 0 0 6px;
+}
+
+.auth-mark {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+  border-radius: 18px;
+  background: var(--accent);
+  color: white;
+  font-size: 1.35rem;
+  font-weight: 900;
+}
+
+.auth-login-button {
+  width: 100%;
+  min-height: 52px;
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    align-items: flex-start;
+  }
+
+  .topbar-actions {
+    gap: 6px;
+  }
+
+  .topbar-user {
+    display: none;
+  }
+
+  .topbar-actions .ghost-button {
+    min-height: 38px;
+    padding: 6px 9px;
+    font-size: .78rem;
+  }
+}
