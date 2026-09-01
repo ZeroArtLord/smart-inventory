@@ -23,6 +23,8 @@ export async function applyEvent(client, auth, event) {
       return upsertDocumentLine(client, workspaceId, payload);
     case 'lot':
       return upsertLot(client, workspaceId, payload);
+    case 'replenishment':
+      return upsertReplenishment(client, workspaceId, payload);
     case 'movement':
       if (operation !== 'CREATE') {
         throw new Error('Los movimientos solo admiten CREATE');
@@ -175,6 +177,48 @@ async function upsertLot(client, workspaceId, p) {
       p.expiresAt || null,p.originalQuantity,p.remainingQuantity,
       p.unitCost ?? null,p.supplierId || null,p.locationId || null,
       p.documentId || null,p.createdAt,p.updatedAt
+    ]
+  );
+}
+
+async function upsertReplenishment(client, workspaceId, p) {
+  await client.query(
+    `INSERT INTO replenishments (
+      workspace_id,id,product_id,product_name,supplier_id,method,status,
+      requested_quantity,received_quantity,pending_quantity,expected_at,
+      reference,notes,owner_id,source_suggestion,receipt_documents,
+      ordered_at,received_at,cancelled_at,updated_by,created_at,updated_at
+    ) VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,
+      $16::jsonb,$17,$18,$19,$20,$21,$22
+    )
+    ON CONFLICT (workspace_id,id) DO UPDATE SET
+      product_name=EXCLUDED.product_name,
+      supplier_id=EXCLUDED.supplier_id,
+      method=EXCLUDED.method,
+      status=EXCLUDED.status,
+      requested_quantity=EXCLUDED.requested_quantity,
+      received_quantity=EXCLUDED.received_quantity,
+      pending_quantity=EXCLUDED.pending_quantity,
+      expected_at=EXCLUDED.expected_at,
+      reference=EXCLUDED.reference,
+      notes=EXCLUDED.notes,
+      owner_id=EXCLUDED.owner_id,
+      source_suggestion=EXCLUDED.source_suggestion,
+      receipt_documents=EXCLUDED.receipt_documents,
+      ordered_at=EXCLUDED.ordered_at,
+      received_at=EXCLUDED.received_at,
+      cancelled_at=EXCLUDED.cancelled_at,
+      updated_by=EXCLUDED.updated_by,
+      updated_at=EXCLUDED.updated_at`,
+    [
+      workspaceId,p.id,p.productId,p.productName || null,p.supplierId || null,
+      p.method,p.status,p.requestedQuantity,p.receivedQuantity || 0,
+      p.pendingQuantity,p.expectedAt || null,p.reference || null,p.notes || null,
+      p.ownerId || null,JSON.stringify(p.sourceSuggestion || null),
+      JSON.stringify(p.receiptDocuments || []),p.orderedAt || null,
+      p.receivedAt || null,p.cancelledAt || null,p.updatedBy || null,
+      p.createdAt,p.updatedAt
     ]
   );
 }
