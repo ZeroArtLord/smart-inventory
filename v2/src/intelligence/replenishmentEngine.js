@@ -54,6 +54,121 @@ export function buildConsumptionProfile(movements, productId, now = new Date()) 
   };
 }
 
+export function buildDemandTrend(
+  movements,
+  productId,
+  now = new Date(),
+  { windowDays = 14 } = {}
+) {
+  const days = Math.max(3, Math.floor(Number(windowDays) || 14));
+  const end = now.getTime();
+  const recentStart = end - (days * DAY_MS);
+  const previousStart = end - (days * 2 * DAY_MS);
+
+  const relevant = movements
+    .filter(movement => movement.productId === productId)
+    .filter(movement => movement.type === MOVEMENT_TYPES.SUPPLY)
+    .filter(movement => movement.voided !== true)
+    .map(movement => ({
+      quantity: Number(movement.quantity || 0),
+      at: new Date(movement.effectiveAt || movement.createdAt).getTime()
+    }))
+    .filter(item =>
+      Number.isFinite(item.quantity) &&
+      item.quantity > 0 &&
+      !Number.isNaN(item.at) &&
+      item.at <= end &&
+      item.at > previousStart
+    );
+
+  const recentTotal = relevant
+    .filter(item => item.at > recentStart)
+    .reduce((sum, item) => sum + item.quantity, 0);
+
+  const previousTotal = relevant
+    .filter(item => item.at <= recentStart)
+    .reduce((sum, item) => sum + item.quantity, 0);
+
+  const recentDaily = recentTotal / days;
+  const previousDaily = previousTotal / days;
+
+  let percentChange = null;
+  if (previousDaily > 0) {
+    percentChange = ((recentDaily - previousDaily) / previousDaily) * 100;
+  } else if (recentDaily > 0) {
+    percentChange = 100;
+  }
+
+  let direction = 'STABLE';
+  if (percentChange !== null && percentChange >= 15) direction = 'UP';
+  if (percentChange !== null && percentChange <= -15) direction = 'DOWN';
+
+  const confidence = relevant.length >= 8
+    ? 'MEDIUM'
+    : relevant.length >= 4
+      ? 'LOW'
+      : 'INSUFFICIENT';
+
+  return {
+    windowDays: days,
+    recentTotal: round(recentTotal),
+    previousTotal: round(previousTotal),
+    recentDailyAverage: round(recentDaily),
+    previousDailyAverage: round(previousDaily),
+    percentChange: percentChange === null ? null : round(percentChange),
+    direction,
+    movementCount: relevant.length,
+    confidence
+  };
+}
+
+export function getTrendAwareReplenishmentSuggestion(
+  product,
+  context = {}
+) {
+  const baseDaily = nonNegative(context.dailyConsumption);
+  const trend = context.trend || null;
+  const safetyDays = nonNegative(context.safetyDays ?? 0);
+
+  let adjustedDailyConsumption = baseDaily;
+
+  if (
+    trend &&
+    trend.confidence !== 'INSUFFICIENT' &&
+    Number.isFinite(Number(trend.percentChange))
+  ) {
+    const change = Number(trend.percentChange) / 100;
+
+    if (trend.direction === 'UP') {
+      adjustedDailyConsumption =
+        baseDaily * Math.min(1.5, 1 + (change * 0.5));
+    } else if (trend.direction === 'DOWN') {
+      adjustedDailyConsumption =
+        baseDaily * Math.max(0.85, 1 + (change * 0.25));
+    }
+  }
+
+  const targetDays = positiveOr(context.targetDays, 7);
+  const demandDays = targetDays + safetyDays;
+
+  const suggestion = getReplenishmentSuggestion(product, {
+    ...context,
+    dailyConsumption: adjustedDailyConsumption,
+    targetDays: demandDays
+  });
+
+  return {
+    ...suggestion,
+    baseDailyConsumption: round(baseDaily),
+    adjustedDailyConsumption: round(adjustedDailyConsumption),
+    safetyDays: round(safetyDays),
+    originalTargetDays: targetDays,
+    trendDirection: trend?.direction || 'STABLE',
+    trendConfidence: trend?.confidence || 'INSUFFICIENT',
+    trendPercentChange: trend?.percentChange ?? null
+  };
+}
+
 export function getReplenishmentSuggestion(product, context = {}) {
   const stock = nonNegative(context.stock);
   const pendingInbound = nonNegative(context.pendingInbound);
