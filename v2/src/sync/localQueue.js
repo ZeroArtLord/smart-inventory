@@ -5,7 +5,8 @@ export const SYNC_STATUS = Object.freeze({
   PENDING: 'PENDING',
   SYNCING: 'SYNCING',
   SYNCED: 'SYNCED',
-  FAILED: 'FAILED'
+  FAILED: 'FAILED',
+  CONFLICT: 'CONFLICT'
 });
 
 export async function enqueueSyncOperation({ entityType, entityId, operation, payload }) {
@@ -71,6 +72,41 @@ export async function markSynced(id) {
     updatedAt: new Date().toISOString(),
     lastError: null
   }));
+}
+
+export async function markPending(id, message = null) {
+  return updateQueueItem(id, item => ({
+    ...item,
+    status: SYNC_STATUS.PENDING,
+    updatedAt: new Date().toISOString(),
+    lastError: message
+  }));
+}
+
+export async function markConflict(id, details = {}) {
+  return updateQueueItem(id, item => ({
+    ...item,
+    status: SYNC_STATUS.CONFLICT,
+    updatedAt: new Date().toISOString(),
+    lastError: details.message || 'Conflicto de sincronización',
+    conflict: {
+      entityType: details.entityType || item.entityType,
+      entityId: details.entityId || item.entityId,
+      serverVersion: details.serverVersion ?? null,
+      clientVersion: details.clientVersion ?? item.payload?.version ?? null,
+      reason: details.reason || 'STALE_WRITE',
+      detectedAt: new Date().toISOString()
+    }
+  }));
+}
+
+export async function listSyncConflicts() {
+  const items = await getAll(STORES.SYNC_QUEUE);
+  return items
+    .filter(item => item.status === SYNC_STATUS.CONFLICT)
+    .sort((a, b) =>
+      String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))
+    );
 }
 
 export async function markFailed(id, error) {
