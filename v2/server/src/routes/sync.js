@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { withTransaction } from '../db.js';
 import { applyEvent } from '../sync/applyEvent.js';
+import {
+  writeAuditEvent,
+  buildSyncAuditMetadata
+} from '../audit/auditService.js';
 
 export const syncRouter = Router();
 
@@ -52,6 +56,13 @@ syncRouter.post('/push', async (req, res, next) => {
         }
 
         await applyEvent(client, req.auth, event);
+
+        await writeAuditEvent(client, req.auth, {
+          action: `SYNC_${event.operation}`,
+          entityType: event.entityType,
+          entityId: event.entityId,
+          metadata: buildSyncAuditMetadata(event)
+        });
 
         await client.query(
           `UPDATE sync_events
