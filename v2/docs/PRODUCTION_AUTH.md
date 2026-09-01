@@ -82,3 +82,16 @@ Si se cambia de almacén:
 8. Crear un usuario de prueba desde **Usuarios y permisos**.
 9. Probar permisos reducidos.
 10. Probar logout/login y modo offline después de una sesión válida.
+
+## Diagnóstico real de Firebase Admin
+
+Con las credenciales reales configuradas en el servidor:
+
+```powershell
+cd .\v2\server
+npm run auth:firebase-check
+```
+
+Este comando hace una consulta real a Firebase Authentication usando `applicationDefault()` y confirma que el proyecto y la service account pueden acceder al servicio. No usa ni imprime contraseñas ni tokens de usuarios.
+
+Después de que este comando pase, la prueba final de la ETAPA 17 es iniciar sesión desde el navegador con Google y confirmar que `/api/v1/auth/bootstrap` y `/api/v1/session` reconocen el usuario y sus workspaces usando un ID Token real.
