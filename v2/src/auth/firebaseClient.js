@@ -23,11 +23,7 @@ export function isFirebaseBrowserAvailable() {
 export async function initializeFirebaseClient({
   onUserChanged = null
 } = {}) {
-  if (!isFirebaseBrowserAvailable()) {
-    throw new Error(
-      'Firebase Auth no está disponible en el navegador'
-    );
-  }
+  await ensureFirebaseBrowser();
 
   if (!globalThis.firebase.apps?.length) {
     globalThis.firebase.initializeApp(FIREBASE_CONFIG);
@@ -117,6 +113,64 @@ export function firebaseUserSummary(user = currentUser) {
     displayName: user.displayName || null,
     photoURL: user.photoURL || null
   };
+}
+
+async function ensureFirebaseBrowser() {
+  if (isFirebaseBrowserAvailable()) return;
+
+  await loadScript(
+    'https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js'
+  );
+  await loadScript(
+    'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js'
+  );
+
+  if (!isFirebaseBrowserAvailable()) {
+    throw new Error(
+      'Firebase Auth no pudo inicializarse en este navegador'
+    );
+  }
+}
+
+function loadScript(src) {
+  const existing = document.querySelector(
+    `script[src="${src}"]`
+  );
+
+  if (existing?.dataset.loaded === 'true') {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const script = existing || document.createElement('script');
+
+    const handleLoad = () => {
+      script.dataset.loaded = 'true';
+      cleanup();
+      resolve();
+    };
+
+    const handleError = () => {
+      cleanup();
+      reject(new Error(
+        'No se pudo cargar Firebase Auth'
+      ));
+    };
+
+    const cleanup = () => {
+      script.removeEventListener('load', handleLoad);
+      script.removeEventListener('error', handleError);
+    };
+
+    script.addEventListener('load', handleLoad, { once: true });
+    script.addEventListener('error', handleError, { once: true });
+
+    if (!existing) {
+      script.src = src;
+      script.async = true;
+      document.head.appendChild(script);
+    }
+  });
 }
 
 function ensureAuth() {
