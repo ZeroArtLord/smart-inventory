@@ -119,6 +119,9 @@ jobs:
           npm run admin:provision -- --email ci-admin@example.com --workspace-key ci-admin-workspace --workspace-name "CI Admin Workspace"
           npm run admin:provision -- --email ci-admin@example.com --workspace-key ci-admin-workspace --workspace-name "CI Admin Workspace"
 
+      - name: Verify Firebase identity linking rules
+        run: npm run smoke:firebase-identity
+
       - name: Start API
         run: |
           npm start > /tmp/smart-inventory-v2.log 2>&1 &
