@@ -7,6 +7,7 @@ import { pool } from './db.js';
 import { authContext } from './middleware/authContext.js';
 import { syncRouter } from './routes/sync.js';
 import { devRouter } from './routes/dev.js';
+import { adminRouter } from './routes/admin.js';
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -38,6 +39,7 @@ app.get('/health', async (_req, res, next) => {
 
 app.use('/api/v1/dev', devRouter);
 app.use('/api/v1/sync', authContext, syncRouter);
+app.use('/api/v1/admin', authContext, adminRouter);
 
 app.get('/vendor/xlsx.full.min.js', (_req, res) => {
   res.sendFile(xlsxBrowserBundle);
