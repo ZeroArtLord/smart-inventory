@@ -1,4 +1,8 @@
 import { createLocalId } from '../core/ids.js';
+import {
+  initialEntityVersion,
+  nextEntityVersion
+} from '../core/versioning.js';
 import { MOVEMENT_TYPES } from '../core/movementTypes.js';
 import { normalizeText, assertNonNegativeNumber } from '../core/catalog.js';
 import {
@@ -57,6 +61,7 @@ export async function createDocument(data = {}) {
     reference: normalizeText(data.reference),
     notes: normalizeText(data.notes),
     metadata: data.metadata || {},
+    version: initialEntityVersion(),
     createdAt: now,
     updatedAt: now,
     closedAt: null
@@ -90,6 +95,9 @@ export async function saveDocumentLine(data = {}) {
     productId: product.id,
     productName: product.name,
     documentType: document.type,
+    version: existing
+      ? nextEntityVersion(existing)
+      : initialEntityVersion(),
     updatedAt: now,
     createdAt: existing?.createdAt || now
   };
@@ -175,6 +183,7 @@ export async function cancelDocument(documentId, { userId = null } = {}) {
   const cancelled = {
     ...current,
     status: DOCUMENT_STATUS.CANCELLED,
+    version: nextEntityVersion(current),
     updatedAt: now,
     metadata: {
       ...(current.metadata || {}),
@@ -275,6 +284,7 @@ async function closeInventoryDocument(documentId, userId) {
             const updatedLot = {
               ...currentLot,
               remainingQuantity: item.afterRemaining,
+              version: nextEntityVersion(currentLot),
               updatedAt: now
             };
 
@@ -351,6 +361,7 @@ async function closeInventoryDocument(documentId, userId) {
             supplierId: line.supplierId || document.supplierId || null,
             locationId: document.locationId || null,
             documentId: document.id,
+            version: initialEntityVersion(),
             createdAt: now,
             updatedAt: now
           };
@@ -390,6 +401,7 @@ async function closeInventoryDocument(documentId, userId) {
       const closed = {
         ...document,
         status: DOCUMENT_STATUS.CLOSED,
+        version: nextEntityVersion(document),
         closedAt: now,
         updatedAt: now,
         closedBy: userId
@@ -465,6 +477,7 @@ async function closeCountDocument(documentId, userId) {
       const closed = {
         ...document,
         status: DOCUMENT_STATUS.CLOSED,
+        version: nextEntityVersion(document),
         closedAt: now,
         updatedAt: now,
         closedBy: userId,
