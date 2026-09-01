@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import pg from 'pg';
+import { writeFile } from 'node:fs/promises';
 
 const { Client } = pg;
 
@@ -431,6 +432,25 @@ try {
 
   if (!Array.isArray(pull.events) || pull.events.length < 6) {
     throw new Error('El pull incremental no devolvió los eventos esperados.');
+  }
+
+  const stateFile = String(
+    process.env.SMOKE_STATE_FILE || ''
+  ).trim();
+
+  if (stateFile) {
+    await writeFile(
+      stateFile,
+      JSON.stringify({
+        workspaceId: bootstrap.workspace.id,
+        userId: bootstrap.user.id,
+        productId,
+        expectedStock: 10,
+        concurrentProductId,
+        concurrentExpectedStock: 2
+      }, null, 2),
+      'utf8'
+    );
   }
 
   console.log('✓ integration smoke: stock, auth, sync, reversals, idempotencia y concurrencia correctos');
