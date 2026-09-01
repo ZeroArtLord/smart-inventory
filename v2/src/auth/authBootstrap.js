@@ -91,35 +91,71 @@ export async function bootstrapFirebaseAccess({
     });
   }
 
-  const token = await getAuthToken({ required: true });
+  const execute = async ({
+    forceRefresh = false
+  } = {}) => {
+    const token = await getAuthToken({
+      required: true,
+      forceRefresh
+    });
 
-  let response;
-  try {
-    response = await fetch(
-      buildApiUrl(
-        config.apiBaseUrl,
-        '/api/v1/auth/bootstrap'
-      ),
-      {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${token}`,
-          'content-type': 'application/json'
-        },
-        body: '{}'
+    let response;
+
+    try {
+      response = await fetch(
+        buildApiUrl(
+          config.apiBaseUrl,
+          '/api/v1/auth/bootstrap'
+        ),
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json'
+          },
+          body: '{}'
+        }
+      );
+    } catch (error) {
+      if (!navigator.onLine) {
+        return {
+          offlineFallback: true
+        };
       }
-    );
-  } catch (error) {
-    if (!navigator.onLine) {
-      return getCachedFirebaseAccess({
-        uid,
-        workspaceId: config.workspaceId
-      });
+      throw error;
     }
-    throw error;
+
+    const data = await readJson(response);
+
+    return {
+      response,
+      data
+    };
+  };
+
+  let result = await execute();
+
+  if (result.offlineFallback) {
+    return getCachedFirebaseAccess({
+      uid,
+      workspaceId: config.workspaceId
+    });
   }
 
-  const data = await readJson(response);
+  if (
+    result.response.status === 401 &&
+    result.data?.code ===
+      'AUTH_TOKEN_INVALID'
+  ) {
+    result = await execute({
+      forceRefresh: true
+    });
+  }
+
+  const {
+    response,
+    data
+  } = result;
 
   if (!response.ok || !data?.ok) {
     const error = new Error(
