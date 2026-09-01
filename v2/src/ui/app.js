@@ -23,7 +23,8 @@ import {
   listDocumentLines,
   listDraftDocuments,
   cancelDocument,
-  closeDocument
+  closeDocument,
+  createCorrectionDraft
 } from '../documents/documentService.js';
 import {
   DOCUMENT_TYPES,
@@ -1336,6 +1337,20 @@ async function renderDocumentWorkspace(type) {
                 <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="csv" type="button">CSV</button>
                 <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="xlsx" type="button">Excel</button>
                 <button class="primary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="print" type="button">Imprimir / PDF</button>
+                ${document.status === DOCUMENT_STATUS.CLOSED &&
+                  !document.metadata?.correctionDraftId &&
+                  canCorrectDocument(type)
+                    ? `<button
+                        class="danger"
+                        data-action="correct-document"
+                        data-id="${escapeHtml(document.id)}"
+                        data-type="${escapeHtml(type)}"
+                        type="button"
+                      >Corregir</button>`
+                    : ''}
+                ${document.metadata?.correctionDraftId
+                  ? '<span class="badge status-warning">Con corrección</span>'
+                  : ''}
               </div>
             </div>
           `).join('')}
@@ -1646,6 +1661,11 @@ async function handleClick(event) {
         return handleAuthButton();
       case 'select-workspace':
         return chooseWorkspace(button.dataset.workspaceId);
+      case 'correct-document':
+        return correctClosedDocument(
+          button.dataset.id,
+          button.dataset.type
+        );
     }
   } catch (error) {
     showToast(error.message || String(error));
@@ -2301,6 +2321,71 @@ async function addOperationLine(type) {
   showToast('Línea guardada');
   scheduleSync();
   await render();
+}
+
+async function correctClosedDocument(documentId, type) {
+  if (!canCorrectDocument(type)) {
+    throw new Error(
+      'No tienes permisos suficientes para compensar este documento'
+    );
+  }
+
+  const reason = prompt(
+    'Motivo de la corrección:',
+    'Corrección autorizada'
+  );
+
+  if (reason === null) return;
+
+  if (reason.trim().length < 4) {
+    throw new Error('Indica un motivo de al menos 4 caracteres');
+  }
+
+  if (!confirm(
+    'Se crearán movimientos compensatorios y un nuevo borrador. El documento original permanecerá intacto. ¿Continuar?'
+  )) {
+    return;
+  }
+
+  const result = await createCorrectionDraft(documentId, {
+    userId: currentOwnerId(),
+    reason: reason.trim()
+  });
+
+  state.view = viewForDocumentType(result.draft.type);
+  state.activeDocumentId = result.draft.id;
+  state.activeDocumentType = result.draft.type;
+  state.selectedProductId = null;
+
+  showToast(
+    result.reused
+      ? 'Continuando corrección existente'
+      : `Corrección creada · ${result.reversals.length} compensación(es)`
+  );
+
+  scheduleSync(100);
+  await render();
+}
+
+function canCorrectDocument(type) {
+  if (!can(state.session, 'adjustment.write')) return false;
+
+  const permission = type === DOCUMENT_TYPES.COUNT
+    ? 'count.write'
+    : type === DOCUMENT_TYPES.ENTRY
+      ? 'entry.write'
+      : type === DOCUMENT_TYPES.SUPPLY
+        ? 'supply.write'
+        : null;
+
+  return Boolean(permission && can(state.session, permission));
+}
+
+function viewForDocumentType(type) {
+  if (type === DOCUMENT_TYPES.COUNT) return 'count';
+  if (type === DOCUMENT_TYPES.ENTRY) return 'entry';
+  if (type === DOCUMENT_TYPES.SUPPLY) return 'supply';
+  return 'home';
 }
 
 async function cancelDraft(documentId) {
