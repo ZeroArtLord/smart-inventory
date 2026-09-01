@@ -2257,8 +2257,14 @@ async function refreshSession({ silent = false } = {}) {
 }
 
 function cssEscape(value) {
-  if (globalThis.CSS?.escape) return CSS.escape(String(value));
-  return String(value).replace(/["\\]/g, '\\async function applyLegacyMigration() {
+  if (globalThis.CSS?.escape) {
+    return CSS.escape(String(value));
+  }
+
+  return String(value).replace(/["\\]/g, '\\$&');
+}
+
+async function applyLegacyMigration() {
   if (state.migrationStatus) {
     throw new Error('La migración V1 ya fue aplicada');
   }
@@ -2281,7 +2287,9 @@ function cssEscape(value) {
   }
 
   if (state.migrationPreview.errors?.length) {
-    throw new Error('Resuelve los errores del preview antes de migrar');
+    throw new Error(
+      'Resuelve los errores del preview antes de migrar'
+    );
   }
 
   if (!confirm(
@@ -2297,15 +2305,18 @@ function cssEscape(value) {
 
   state.migrationStatus = result;
   await refreshProducts();
+
   showToast(
     `Migración lista · ${result.created} creados · ${result.updated} actualizados`
   );
+
   scheduleSync(100);
   await render();
 }
 
 function downloadLegacyArchive() {
-  const snapshot = state.migrationPreview?.snapshot ||
+  const snapshot =
+    state.migrationPreview?.snapshot ||
     readV1Snapshot();
 
   const text = serializeV1Archive(snapshot);
@@ -2318,15 +2329,14 @@ function downloadLegacyArchive() {
   link.href = url;
   link.download =
     `smart_inventory_v1_archive_${new Date().toISOString().slice(0, 10)}.json`;
+
   document.body.appendChild(link);
   link.click();
   link.remove();
+
   setTimeout(() => URL.revokeObjectURL(url), 0);
 
   showToast('Archivo legado V1 generado');
-}
-
-async function applyCatalogPreview() {');
 }
 
 async function applyCatalogPreview() {
