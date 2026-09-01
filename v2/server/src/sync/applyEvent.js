@@ -1,10 +1,10 @@
-export async function applyEvent(client, auth, event) {
-  const { workspaceId, userId } = auth;
-  const { entityType, entityId, operation, payload } = event;
+import { validateSyncEvent } from './validateEvent.js';
 
-  if (!entityType || !entityId || !operation || !payload) {
-    throw new Error('Evento de sincronización incompleto');
-  }
+export async function applyEvent(client, auth, event) {
+  validateSyncEvent(event);
+
+  const { workspaceId, userId } = auth;
+  const { entityType, operation, payload } = event;
 
   switch (entityType) {
     case 'product':
@@ -186,7 +186,7 @@ async function insertMovement(client, workspaceId, userId, p) {
     [
       workspaceId,p.id,p.productId,p.type,p.quantity || 0,
       p.delta ?? null,p.documentId || null,p.lotId || null,
-      p.locationId || null,p.userId || userId || null,p.reversedMovementId || null,
+      p.locationId || null,userId || null,p.reversedMovementId || null,
       JSON.stringify(p.metadata || {}),p.effectiveAt,p.createdAt
     ]
   );
