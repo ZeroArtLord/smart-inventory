@@ -22,6 +22,7 @@ import {
   getCurrentStock
 } from '../inventory/movementService.js';
 import { MOVEMENT_TYPES } from '../core/movementTypes.js';
+import { getSyncConfig } from '../sync/syncSettings.js';
 
 const V1_KEYS = Object.freeze({
   PRODUCTS: 'smart_inventory_products',
@@ -260,10 +261,19 @@ export function buildV1MigrationPreview(snapshot = emptySnapshot()) {
   };
 }
 
-export async function getV1MigrationStatus() {
+export async function getV1MigrationStatus({
+  workspaceId = null
+} = {}) {
+  const scope = await resolveMigrationScope(
+    workspaceId
+  );
+
   const marker = await get(
     STORES.SETTINGS,
-    MIGRATION_MARKER_KEY
+    scopedMigrationKey(
+      MIGRATION_MARKER_KEY,
+      scope
+    )
   );
 
   return marker?.value || null;
@@ -273,6 +283,7 @@ export async function applyV1Migration(
   preview,
   {
     ownerId,
+    workspaceId = null,
     allowAlreadyCompleted = false
   } = {}
 ) {
@@ -286,7 +297,13 @@ export async function applyV1Migration(
     );
   }
 
-  const previous = await getV1MigrationStatus();
+  const scope = await resolveMigrationScope(
+    workspaceId
+  );
+
+  const previous = await getV1MigrationStatus({
+    workspaceId: scope
+  });
   if (previous && !allowAlreadyCompleted) {
     throw new Error(
       'La migración V1 ya fue completada en este dispositivo'
@@ -402,7 +419,10 @@ export async function applyV1Migration(
   const migratedAt = new Date().toISOString();
 
   await put(STORES.SETTINGS, {
-    key: MIGRATION_ARCHIVE_KEY,
+    key: scopedMigrationKey(
+      MIGRATION_ARCHIVE_KEY,
+      scope
+    ),
     value: {
       migratedAt,
       sourceCounts: preview.sourceCounts,
@@ -412,7 +432,10 @@ export async function applyV1Migration(
   });
 
   await put(STORES.SETTINGS, {
-    key: MIGRATION_MARKER_KEY,
+    key: scopedMigrationKey(
+      MIGRATION_MARKER_KEY,
+      scope
+    ),
     value: {
       migratedAt,
       ...result,
@@ -434,6 +457,28 @@ export function serializeV1Archive(snapshot) {
     exportedAt: new Date().toISOString(),
     snapshot: snapshot || emptySnapshot()
   }, null, 2);
+}
+
+async function resolveMigrationScope(
+  workspaceId
+) {
+  const explicit = String(
+    workspaceId || ''
+  ).trim();
+
+  if (explicit) return explicit;
+
+  const config = await getSyncConfig();
+  return String(
+    config.workspaceId || 'unbound'
+  ).trim() || 'unbound';
+}
+
+function scopedMigrationKey(
+  baseKey,
+  workspaceId
+) {
+  return `${baseKey}:${workspaceId}`;
 }
 
 function parseArray(value) {
