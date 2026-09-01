@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 
 const {
   readV1Snapshot,
+  readV1SnapshotWithIndexedDb,
   buildV1MigrationPreview,
   applyV1Migration,
   getV1MigrationStatus,
@@ -192,5 +193,72 @@ test('parseV1ArchiveText acepta archivo portable y snapshot directo', () => {
   assert.throws(
     () => parseV1ArchiveText('{mal json'),
     /JSON válido/i
+  );
+});
+
+
+test('usa IndexedDB V1 como respaldo si localStorage no tiene productos', async () => {
+  const dbName = 'smart_inventory_db';
+
+  await new Promise((resolve, reject) => {
+    const deleteRequest = indexedDB.deleteDatabase(dbName);
+    deleteRequest.onsuccess = resolve;
+    deleteRequest.onerror = () => reject(deleteRequest.error);
+    deleteRequest.onblocked = resolve;
+  });
+
+  await new Promise((resolve, reject) => {
+    const request = indexedDB.open(dbName, 1);
+
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(
+        'products',
+        { keyPath: 'id' }
+      );
+    };
+
+    request.onerror = () => reject(request.error);
+
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction(
+        'products',
+        'readwrite'
+      );
+
+      tx.objectStore('products').put({
+        id: 'legacy-idb-1',
+        name: 'PRODUCTO IDB V1',
+        currentStock: 9,
+        minStock: 2,
+        maxStock: 15,
+        unit: 'UND'
+      });
+
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+
+      tx.onerror = () => reject(tx.error);
+    };
+  });
+
+  const emptyStorage = {
+    getItem() {
+      return null;
+    }
+  };
+
+  const snapshot =
+    await readV1SnapshotWithIndexedDb({
+      storage: emptyStorage,
+      indexedDb: indexedDB
+    });
+
+  assert.equal(snapshot.products.length, 1);
+  assert.equal(
+    snapshot.products[0].name,
+    'PRODUCTO IDB V1'
   );
 });
