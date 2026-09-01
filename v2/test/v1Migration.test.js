@@ -297,3 +297,37 @@ test('estado de migración V1 queda aislado por workspace', async () => {
   assert.ok(statusA);
   assert.equal(statusB, null);
 });
+
+
+test('preview V1 bloquea productos duplicados por nombre normalizado', () => {
+  const preview = buildV1MigrationPreview({
+    products: [
+      {
+        id: 'dup-1',
+        name: 'Azúcar Blanca',
+        currentStock: 5,
+        minStock: 2,
+        maxStock: 10,
+        unit: 'UND'
+      },
+      {
+        id: 'dup-2',
+        name: '  AZUCAR   BLANCA  ',
+        currentStock: 8,
+        minStock: 2,
+        maxStock: 10,
+        unit: 'UND'
+      }
+    ],
+    history: [],
+    daily: [],
+    audit: []
+  });
+
+  assert.equal(preview.rows.length, 2);
+  assert.ok(
+    preview.errors.some(error =>
+      /duplicado por nombre/i.test(error)
+    )
+  );
+});
