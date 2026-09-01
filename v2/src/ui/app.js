@@ -332,48 +332,50 @@ function renderWorkspaceGate() {
 async function signInWithGoogle() {
   authTransitionInProgress = true;
 
-  let user;
-
   try {
-    user = await loginWithGoogle();
-  } catch (error) {
+    const user = await loginWithGoogle();
+
+    if (!user) {
+      showToast(
+        'Abriendo inicio de sesión seguro…'
+      );
+      return;
+    }
+
+    state.authUser =
+      firebaseUserSummary(user);
+
+    if (!state.authUser) {
+      throw new Error(
+        'No se completó el inicio de sesión'
+      );
+    }
+
+    const access =
+      await bootstrapFirebaseAccess({
+        uid: state.authUser.uid
+      });
+
+    state.availableWorkspaces =
+      access.workspaces || [];
+    state.workspaceReady =
+      Boolean(access.selectedWorkspace);
+    state.authAccessOffline =
+      Boolean(access.offline);
+
+    updateAuthUi();
+    updateNavigationUi();
+    showToast('Sesión iniciada');
+
+    if (!access.selectedWorkspace) {
+      renderWorkspaceGate();
+      return;
+    }
+
+    await startAuthenticatedApp();
+  } finally {
     authTransitionInProgress = false;
-    throw error;
   }
-
-  if (!user) {
-    authTransitionInProgress = false;
-    showToast(
-      'Abriendo inicio de sesión seguro…'
-    );
-    return;
-  }
-
-  state.authUser = firebaseUserSummary(user);
-
-  if (!state.authUser) {
-    throw new Error(
-      'No se completó el inicio de sesión'
-    );
-  }
-
-  const access = await bootstrapFirebaseAccess({
-    uid: state.authUser.uid
-  });
-  state.availableWorkspaces = access.workspaces || [];
-  state.workspaceReady = Boolean(access.selectedWorkspace);
-  state.authAccessOffline = Boolean(access.offline);
-
-  updateAuthUi();
-  updateNavigationUi();
-  showToast('Sesión iniciada');
-
-  if (!access.selectedWorkspace) {
-    return renderWorkspaceGate();
-  }
-
-  await startAuthenticatedApp();
-  authTransitionInProgress = false;
 }
 
 async function chooseWorkspace(workspaceId) {
