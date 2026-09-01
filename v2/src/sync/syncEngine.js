@@ -292,7 +292,15 @@ async function pullRemote(config) {
     );
 
     if (!response.ok || !data.ok) {
-      throw new Error(data.message || 'Error descargando cambios del servidor');
+      const error = new Error(
+        data.message ||
+        'Error descargando cambios del servidor'
+      );
+      error.code =
+        data.code || 'SYNC_PULL_FAILED';
+      error.status = response.status;
+      error.details = data.details || null;
+      throw error;
     }
 
     const events = Array.isArray(data.events) ? data.events : [];
