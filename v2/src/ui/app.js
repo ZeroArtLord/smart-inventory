@@ -85,7 +85,7 @@ const appRoot = document.getElementById('app');
 const saveStatus = document.getElementById('saveStatus');
 
 const state = {
-  view: 'home',
+  view: readInitialView(),
   products: [],
   activeDocumentId: null,
   activeDocumentType: null,
@@ -101,6 +101,7 @@ const state = {
 const ownerId = getLocalOwnerId();
 let syncTimer = null;
 let barcodeScannerSession = null;
+let installPromptEvent = null;
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -110,6 +111,7 @@ async function init() {
     await seedDefaultUnits();
     await refreshProducts();
     bindGlobalEvents();
+    bindInstallPrompt();
     registerServiceWorker();
     bindSyncLifecycle();
     await syncAndRefresh({ renderAfter: false });
@@ -186,11 +188,16 @@ async function renderHome() {
         <p>Resumen operativo calculado desde movimientos, lotes y trabajo local.</p>
       </div>
       <div class="dashboard-sync">
+        ${installPromptEvent
+          ? '<button class="secondary" data-action="install-pwa" type="button">Instalar app</button>'
+          : ''}
         ${snapshot.syncConflictCount
           ? `<button class="secondary status-warning" data-open-view="conflicts" type="button">⚠ ${snapshot.syncConflictCount} conflicto(s)</button>`
           : snapshot.pendingSyncCount
             ? `<span class="badge status-warning">${snapshot.pendingSyncCount} pendientes</span>`
-            : '<span class="badge status-good">Todo sincronizado</span>'}
+            : navigator.onLine
+              ? '<span class="badge status-good">Todo sincronizado</span>'
+              : '<span class="badge status-warning">Modo offline</span>'}
       </div>
     </section>
 
@@ -1271,6 +1278,8 @@ async function handleClick(event) {
         return saveMemberRole(button.dataset.userId);
       case 'save-member-permissions':
         return saveMemberPermissions(button.dataset.userId);
+      case 'install-pwa':
+        return installPwa();
     }
   } catch (error) {
     showToast(error.message || String(error));
@@ -2455,6 +2464,54 @@ function canAutoRefresh() {
   }
 
   return true;
+}
+
+function readInitialView() {
+  try {
+    const requested = new URLSearchParams(window.location.search).get('view');
+    const allowed = new Set([
+      'home',
+      'count',
+      'supply',
+      'entry',
+      'replenishment',
+      'catalog',
+      'reports'
+    ]);
+
+    return allowed.has(requested) ? requested : 'home';
+  } catch (_) {
+    return 'home';
+  }
+}
+
+function bindInstallPrompt() {
+  window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    installPromptEvent = event;
+
+    if (state.view === 'home' && canAutoRefresh()) {
+      render().catch(() => {});
+    }
+  });
+
+  window.addEventListener('appinstalled', () => {
+    installPromptEvent = null;
+    showToast('Smart Inventory instalado');
+  });
+}
+
+async function installPwa() {
+  if (!installPromptEvent) {
+    showToast('La instalación no está disponible en este navegador');
+    return;
+  }
+
+  const prompt = installPromptEvent;
+  installPromptEvent = null;
+  await prompt.prompt();
+  await prompt.userChoice.catch(() => null);
+  await render();
 }
 
 function registerServiceWorker() {
