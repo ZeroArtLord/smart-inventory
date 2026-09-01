@@ -262,3 +262,38 @@ test('usa IndexedDB V1 como respaldo si localStorage no tiene productos', async 
     'PRODUCTO IDB V1'
   );
 });
+
+
+test('estado de migración V1 queda aislado por workspace', async () => {
+  const preview = buildV1MigrationPreview({
+    products: [{
+      id: 'legacy-workspace-scope',
+      name: 'PRODUCTO MIGRATION WORKSPACE SCOPE',
+      currentStock: 4,
+      minStock: 1,
+      maxStock: 8,
+      unit: 'UND'
+    }],
+    history: [],
+    daily: [],
+    audit: []
+  });
+
+  await applyV1Migration(preview, {
+    ownerId: 'migration-scope-user',
+    workspaceId: 'workspace-migration-a'
+  });
+
+  const statusA =
+    await getV1MigrationStatus({
+      workspaceId: 'workspace-migration-a'
+    });
+
+  const statusB =
+    await getV1MigrationStatus({
+      workspaceId: 'workspace-migration-b'
+    });
+
+  assert.ok(statusA);
+  assert.equal(statusB, null);
+});
