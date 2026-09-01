@@ -10,15 +10,22 @@ const DEFAULT_CONFIG = Object.freeze({
   workspaceKey: 'establo2026',
   workspaceId: null,
   serverUserId: null,
+  authMode: 'dev',
   enabled: true
 });
 
 export async function getSyncConfig() {
   const record = await get(STORES.SETTINGS, KEYS.CONFIG);
-  return {
+  const value = {
     ...DEFAULT_CONFIG,
     ...(record?.value || {})
   };
+
+  if (!['dev', 'firebase'].includes(value.authMode)) {
+    value.authMode = 'dev';
+  }
+
+  return value;
 }
 
 export async function saveSyncConfig(patch = {}) {
@@ -27,6 +34,10 @@ export async function saveSyncConfig(patch = {}) {
     ...current,
     ...patch
   };
+
+  if (!['dev', 'firebase'].includes(value.authMode)) {
+    throw new Error('Modo de autenticación inválido');
+  }
 
   await put(STORES.SETTINGS, {
     key: KEYS.CONFIG,
