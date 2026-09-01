@@ -860,3 +860,15 @@ input, select {
   color: var(--text);
   border-color: var(--border);
 }
+
+.migration-count-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .migration-count-grid {
+    grid-template-columns: 1fr;
+  }
+}
