@@ -1,6 +1,7 @@
 import { validateSyncEvent } from './validateEvent.js';
 import { assertEventPermission } from '../security/permissions.js';
 import { config } from '../config.js';
+import { assertMovementKeepsStockNonNegative } from './stockInvariant.js';
 import {
   assertMutableEntityVersion,
   persistMutableEntityVersion
@@ -267,12 +268,19 @@ async function upsertReplenishment(client, workspaceId, userId, p) {
 }
 
 async function insertMovement(client, workspaceId, userId, p) {
+  const invariant = await assertMovementKeepsStockNonNegative(
+    client,
+    workspaceId,
+    p
+  );
+
+  if (invariant.duplicateMovement) return;
+
   await client.query(
     `INSERT INTO movements (
       workspace_id,id,product_id,type,quantity,delta,document_id,lot_id,
       location_id,user_id,reversed_movement_id,metadata,effective_at,created_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14)
-    ON CONFLICT (workspace_id,id) DO NOTHING`,
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14)`,
     [
       workspaceId,p.id,p.productId,p.type,p.quantity || 0,
       p.delta ?? null,p.documentId || null,p.lotId || null,
