@@ -16,6 +16,7 @@ import {
   buildApiUrl
 } from './syncSettings.js';
 import { applyRemoteEvents } from './remoteApply.js';
+import { getAuthToken } from '../auth/authProvider.js';
 
 const listeners = new Set();
 let syncing = false;
@@ -120,6 +121,18 @@ export async function syncNow({
 }
 
 async function ensureServerIdentity(config, { localUserId, displayName }) {
+  if (config.authMode === 'firebase') {
+    if (!config.workspaceId) {
+      throw new Error(
+        'Falta workspaceId para sincronización autenticada de producción'
+      );
+    }
+
+    // Fuerza una validación temprana para no empezar un ciclo de sync sin token.
+    await getAuthToken({ required: true });
+    return config;
+  }
+
   if (config.workspaceId && config.serverUserId) return config;
 
   const response = await fetch(
@@ -167,7 +180,7 @@ async function pushPending(config) {
         buildApiUrl(config.apiBaseUrl, '/api/v1/sync/push'),
         {
           method: 'POST',
-          headers: authHeaders(config),
+          headers: await authHeaders(config),
           body: JSON.stringify({ events: batch })
         }
       );
@@ -239,7 +252,7 @@ async function pullRemote(config) {
     url.searchParams.set('limit', '250');
 
     const response = await fetch(url, {
-      headers: authHeaders(config, false)
+      headers: await authHeaders(config, false)
     });
     const data = await readJson(response);
 
@@ -262,11 +275,17 @@ async function pullRemote(config) {
   return { count, cursor };
 }
 
-function authHeaders(config, includeJson = true) {
+async function authHeaders(config, includeJson = true) {
   const headers = {
-    'x-workspace-id': config.workspaceId,
-    'x-user-id': config.serverUserId
+    'x-workspace-id': config.workspaceId
   };
+
+  if (config.authMode === 'firebase') {
+    const token = await getAuthToken({ required: true });
+    headers.authorization = `Bearer ${token}`;
+  } else {
+    headers['x-user-id'] = config.serverUserId;
+  }
 
   if (includeJson) {
     headers['content-type'] = 'application/json';
