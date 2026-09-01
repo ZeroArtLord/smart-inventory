@@ -90,3 +90,84 @@ test('apiRequest expone código y status de errores del servidor', async () => {
       /Sin permiso/.test(error.message)
   );
 });
+
+
+test('apiRequest fuerza refresh una vez tras AUTH_TOKEN_INVALID', async () => {
+  await saveSyncConfig({
+    authMode: 'firebase',
+    workspaceId: 'workspace-refresh',
+    serverUserId: null
+  });
+
+  const tokenCalls = [];
+
+  setAuthTokenProvider(async options => {
+    tokenCalls.push(
+      Boolean(options?.forceRefresh)
+    );
+
+    return options?.forceRefresh
+      ? 'fresh-token'
+      : 'stale-token';
+  });
+
+  let fetchCalls = 0;
+
+  globalThis.fetch = async (_url, options) => {
+    fetchCalls += 1;
+
+    if (fetchCalls === 1) {
+      assert.equal(
+        options.headers.authorization,
+        'Bearer stale-token'
+      );
+
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          code: 'AUTH_TOKEN_INVALID',
+          message: 'Token vencido'
+        }),
+        {
+          status: 401,
+          headers: {
+            'content-type':
+              'application/json'
+          }
+        }
+      );
+    }
+
+    assert.equal(
+      options.headers.authorization,
+      'Bearer fresh-token'
+    );
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        refreshed: true
+      }),
+      {
+        status: 200,
+        headers: {
+          'content-type':
+            'application/json'
+        }
+      }
+    );
+  };
+
+  const result = await apiRequest(
+    '/api/v1/session'
+  );
+
+  assert.equal(result.refreshed, true);
+  assert.equal(fetchCalls, 2);
+  assert.deepEqual(
+    tokenCalls,
+    [false, true]
+  );
+
+  clearAuthTokenProvider();
+});
