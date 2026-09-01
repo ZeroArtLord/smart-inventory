@@ -1,5 +1,10 @@
 import { validateSyncEvent } from './validateEvent.js';
 import { assertEventPermission } from '../security/permissions.js';
+import { config } from '../config.js';
+import {
+  assertMutableEntityVersion,
+  persistMutableEntityVersion
+} from './versioning.js';
 
 export async function applyEvent(client, auth, event) {
   validateSyncEvent(event);
@@ -8,31 +13,69 @@ export async function applyEvent(client, auth, event) {
   const { workspaceId, userId } = auth;
   const { entityType, operation, payload } = event;
 
+  await assertMutableEntityVersion(
+    client,
+    workspaceId,
+    event,
+    {
+      allowLegacy: config.nodeEnv !== 'production'
+    }
+  );
+
+  let result;
+
   switch (entityType) {
     case 'product':
-      return upsertProduct(client, workspaceId, payload);
+      result = await upsertProduct(client, workspaceId, payload);
+      break;
     case 'category':
-      return upsertCategory(client, workspaceId, payload);
+      result = await upsertCategory(client, workspaceId, payload);
+      break;
     case 'supplier':
-      return upsertSupplier(client, workspaceId, payload);
+      result = await upsertSupplier(client, workspaceId, payload);
+      break;
     case 'location':
-      return upsertLocation(client, workspaceId, payload);
+      result = await upsertLocation(client, workspaceId, payload);
+      break;
     case 'document':
-      return upsertDocument(client, workspaceId, payload);
+      result = await upsertDocument(client, workspaceId, payload);
+      break;
     case 'documentLine':
-      return upsertDocumentLine(client, workspaceId, payload);
+      result = await upsertDocumentLine(client, workspaceId, payload);
+      break;
     case 'lot':
-      return upsertLot(client, workspaceId, payload);
+      result = await upsertLot(client, workspaceId, payload);
+      break;
     case 'replenishment':
-      return upsertReplenishment(client, workspaceId, userId, payload);
+      result = await upsertReplenishment(
+        client,
+        workspaceId,
+        userId,
+        payload
+      );
+      break;
     case 'movement':
       if (operation !== 'CREATE') {
         throw new Error('Los movimientos solo admiten CREATE');
       }
-      return insertMovement(client, workspaceId, userId, payload);
+      result = await insertMovement(
+        client,
+        workspaceId,
+        userId,
+        payload
+      );
+      break;
     default:
       throw new Error(`Entidad no soportada: ${entityType}`);
   }
+
+  await persistMutableEntityVersion(
+    client,
+    workspaceId,
+    event
+  );
+
+  return result;
 }
 
 async function upsertProduct(client, workspaceId, p) {
