@@ -1,5 +1,9 @@
 import 'dotenv/config';
-import { access, mkdir } from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  readFile
+} from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { config } from '../src/config.js';
 import { pool } from '../src/db.js';
@@ -32,6 +36,58 @@ try {
     'FIREBASE_PROJECT_ID configurado',
     config.firebaseProjectId || 'vacío'
   );
+
+  const credentialPath = String(
+    process.env.GOOGLE_APPLICATION_CREDENTIALS || ''
+  ).trim();
+
+  assert(
+    Boolean(credentialPath),
+    'GOOGLE_APPLICATION_CREDENTIALS configurado',
+    credentialPath || 'vacío'
+  );
+
+  if (credentialPath) {
+    let credential;
+
+    try {
+      const raw = await readFile(
+        credentialPath,
+        'utf8'
+      );
+      credential = JSON.parse(raw);
+
+      const hasRequiredFields = Boolean(
+        credential?.project_id &&
+        credential?.client_email &&
+        credential?.private_key
+      );
+
+      checks.push({
+        check: 'Service account Firebase legible',
+        ok: hasRequiredFields,
+        detail: hasRequiredFields
+          ? credential.client_email
+          : 'faltan campos requeridos'
+      });
+
+      checks.push({
+        check: 'Service account pertenece al proyecto Firebase',
+        ok:
+          credential?.project_id ===
+          config.firebaseProjectId,
+        detail:
+          credential?.project_id ||
+          'project_id ausente'
+      });
+    } catch (error) {
+      checks.push({
+        check: 'Service account Firebase legible',
+        ok: false,
+        detail: error.message
+      });
+    }
+  }
 
   const database = await pool.query(
     'SELECT current_database() AS database, now() AS now'
