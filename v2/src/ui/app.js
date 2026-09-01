@@ -64,6 +64,12 @@ import {
   supportsCameraBarcodeScanner,
   startCameraBarcodeScanner
 } from '../scanner/barcodeScanner.js';
+import {
+  buildDocumentExportRows,
+  downloadCsv,
+  downloadXlsx,
+  printRows
+} from '../export/exportService.js';
 
 const appRoot = document.getElementById('app');
 const saveStatus = document.getElementById('saveStatus');
@@ -76,7 +82,8 @@ const state = {
   selectedProductId: null,
   searchResults: [],
   importPreview: null,
-  reportDays: 30
+  reportDays: 30,
+  reportRows: []
 };
 
 const ownerId = getLocalOwnerId();
