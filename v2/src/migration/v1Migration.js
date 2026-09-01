@@ -46,6 +46,39 @@ export function readV1Snapshot(storage = globalThis.localStorage) {
   };
 }
 
+export function parseV1ArchiveText(text) {
+  let parsed;
+
+  try {
+    parsed = JSON.parse(String(text || ''));
+  } catch (_) {
+    throw new Error('El archivo V1 no contiene JSON válido');
+  }
+
+  const snapshot = parsed?.schema === 'smart-inventory-v1-archive'
+    ? parsed.snapshot
+    : parsed?.snapshot || parsed;
+
+  if (!snapshot || typeof snapshot !== 'object') {
+    throw new Error('El archivo V1 no contiene un snapshot válido');
+  }
+
+  return {
+    products: Array.isArray(snapshot.products)
+      ? snapshot.products
+      : [],
+    history: Array.isArray(snapshot.history)
+      ? snapshot.history
+      : [],
+    daily: Array.isArray(snapshot.daily)
+      ? snapshot.daily
+      : [],
+    audit: Array.isArray(snapshot.audit)
+      ? snapshot.audit
+      : []
+  };
+}
+
 export function buildV1MigrationPreview(snapshot = emptySnapshot()) {
   const warnings = [];
   const errors = [];
