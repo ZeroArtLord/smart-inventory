@@ -46,6 +46,9 @@
 - Conteo genera ajustes.
 - Entrada genera movimientos y lotes opcionales.
 - Surtido genera descargos internos y valida existencia.
+- Flujos Entrada/Surtido cubiertos por pruebas automáticas de cierre, stock e idempotencia.
+- Entradas con varios lotes del mismo producto.
+- Surtidos consumen lotes por FEFO y actualizan cantidades restantes.
 
 ### Fase 5 — Inteligencia V1 (núcleo)
 - Consumo basado en surtidos reales.
@@ -87,17 +90,18 @@
 - La UI no se refresca automáticamente mientras el usuario está escribiendo.
 - Identidad lógica de desarrollo compartida entre dispositivos.
 - Membresía de workspace verificada en servidor.
+- Validación de eventos de sincronización en backend antes de persistir.
+- El usuario de movimientos lo impone el contexto autenticado del servidor; no se confía en el payload del cliente.
 
 ## Pendiente inmediato
 
-1. Probar el importador Excel V2 con archivos reales y validar sincronización masiva.
-2. Instalar PostgreSQL y levantar la API en el servidor de pruebas definitivo.
-3. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC.
-4. Autenticación real, roles y permisos.
-5. Gestión real de pedidos/en tránsito.
-6. FEFO y consumo de lotes.
-7. Reportes.
-8. Cámara/códigos de barra.
-9. Pruebas destructivas multi-dispositivo.
-10. Migrador V1 → V2.
-11. Integración SAINT como fase final.
+1. Aplicar migración 003 de ubicación de lotes en el servidor local/de pruebas.
+2. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC.
+3. Autenticación real, roles y permisos.
+4. Gestión real de pedidos/en tránsito.
+5. UI de lotes/vencimientos y alertas FEFO.
+6. Reportes.
+7. Cámara/códigos de barra.
+8. Pruebas destructivas multi-dispositivo.
+9. Migrador V1 → V2.
+10. Integración SAINT como fase final.
