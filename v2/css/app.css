@@ -309,7 +309,7 @@ input, select {
   right: 0;
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 1px;
   padding-bottom: env(safe-area-inset-bottom);
   background: #d1d5db;
@@ -389,5 +389,43 @@ input, select {
 
   .dashboard-list-end {
     text-align: left;
+  }
+}
+
+
+.replenishment-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.replenishment-actions,
+.replenishment-buttons {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.replenishment-actions .secondary,
+.replenishment-buttons button {
+  min-height: 36px;
+  padding: 7px 10px;
+}
+
+@media (max-width: 640px) {
+  .bottom-nav button {
+    min-height: 58px;
+    padding: 4px 2px;
+    font-size: .78rem;
+  }
+
+  .replenishment-actions,
+  .replenishment-buttons {
+    justify-content: flex-start;
   }
 }
