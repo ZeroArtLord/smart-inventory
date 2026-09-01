@@ -423,6 +423,93 @@ try {
     2
   );
 
+  const bulkSize = 75;
+  const bulkEvents = Array.from(
+    { length: bulkSize },
+    (_, index) => {
+      const id = `prd_ci_bulk_${stamp}_${index}`;
+
+      return {
+        id: `evt_ci_bulk_${stamp}_${index}`,
+        entityType: 'product',
+        entityId: id,
+        operation: 'CREATE',
+        payload: {
+          id,
+          sku: `CI-BULK-${stamp}-${index}`,
+          name: `CI BULK PRODUCT ${index}`,
+          nameNormalized:
+            `ci bulk product ${index}`,
+          aliases: [],
+          barcode: '',
+          categoryId: null,
+          inventoryUnitId: 'unit_und',
+          purchaseUnitId: 'unit_und',
+          purchaseConversion: 1,
+          minStock: 0,
+          maxStock: 100,
+          replenishmentMethod: 'BOTH',
+          supplierId: null,
+          active: true,
+          version: 1,
+          createdAt: now,
+          updatedAt: now
+        }
+      };
+    }
+  );
+
+  const bulkStartedAt = Date.now();
+
+  const bulkResult = await jsonFetch(
+    '/api/v1/sync/push',
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        events: bulkEvents
+      })
+    }
+  );
+
+  const bulkDurationMs =
+    Date.now() - bulkStartedAt;
+
+  if (
+    !Array.isArray(bulkResult.applied) ||
+    bulkResult.applied.length !== bulkSize
+  ) {
+    throw new Error(
+      `El lote de carga no confirmó ${bulkSize} eventos.`
+    );
+  }
+
+  const bulkCount = await db.query(
+    `SELECT COUNT(*)::int AS total
+     FROM products
+     WHERE workspace_id = $1
+       AND sku LIKE $2`,
+    [
+      bootstrap.workspace.id,
+      `CI-BULK-${stamp}-%`
+    ]
+  );
+
+  if (
+    Number(bulkCount.rows[0]?.total || 0) !==
+    bulkSize
+  ) {
+    throw new Error(
+      'El lote de carga no quedó completo en PostgreSQL.'
+    );
+  }
+
+  if (bulkDurationMs > 15000) {
+    throw new Error(
+      `Lote de ${bulkSize} eventos excedió 15 s (${bulkDurationMs} ms).`
+    );
+  }
+
   const pull = await jsonFetch(
     '/api/v1/sync/pull?cursor=0&limit=100',
     {
@@ -453,7 +540,9 @@ try {
     );
   }
 
-  console.log('✓ integration smoke: stock, auth, sync, reversals, idempotencia y concurrencia correctos');
+  console.log(
+    `✓ integration smoke: stock, auth, sync, reversals, idempotencia, concurrencia y lote de ${bulkSize} eventos correctos (${bulkDurationMs} ms)`
+  );
 } finally {
   await db.end();
 }
