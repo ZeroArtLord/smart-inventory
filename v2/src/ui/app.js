@@ -2050,7 +2050,7 @@ async function createReplenishmentFromSuggestion(button) {
 
 async function setReplenishmentStatus(id, status) {
   await changeReplenishmentStatus(id, status, {
-    userId: ownerId
+    userId: currentOwnerId()
   });
 
   showToast('Estado actualizado');
