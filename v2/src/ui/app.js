@@ -485,8 +485,14 @@ function updateNavigationUi() {
     nav.hidden = locked;
 
     nav.querySelectorAll('[data-view]').forEach(button => {
-      const active =
+      const allowed =
         !locked &&
+        canOpenView(button.dataset.view);
+
+      button.hidden = !allowed;
+
+      const active =
+        allowed &&
         button.dataset.view === state.view;
 
       button.classList.toggle('active', active);
@@ -500,6 +506,103 @@ function updateNavigationUi() {
   if (homeButton) {
     homeButton.hidden = locked;
   }
+}
+
+function hasClientPermission(permission) {
+  if (
+    state.authMode === 'dev' &&
+    !state.session
+  ) {
+    return true;
+  }
+
+  return can(state.session, permission);
+}
+
+function hasAnyClientPermission(permissions = []) {
+  return permissions.some(
+    permission => hasClientPermission(permission)
+  );
+}
+
+function canOpenView(view) {
+  switch (view) {
+    case 'home':
+    case 'conflicts':
+      return true;
+    case 'catalog':
+      return hasAnyClientPermission([
+        'catalog.view',
+        'catalog.write'
+      ]);
+    case 'count':
+      return hasClientPermission('count.write');
+    case 'entry':
+      return hasClientPermission('entry.write');
+    case 'supply':
+      return hasClientPermission('supply.write');
+    case 'replenishment':
+      return hasClientPermission('purchases.write');
+    case 'reports':
+      return hasClientPermission('reports.view');
+    case 'users':
+      return hasClientPermission('users.manage');
+    case 'audit':
+      return hasClientPermission('audit.view');
+    case 'migration':
+      return (
+        hasClientPermission('catalog.write') &&
+        hasClientPermission('adjustment.write')
+      );
+    default:
+      return false;
+  }
+}
+
+function requireClientPermission(
+  permission,
+  message = null
+) {
+  if (hasClientPermission(permission)) return;
+
+  const error = new Error(
+    message || `Permiso requerido: ${permission}`
+  );
+  error.code = 'PERMISSION_DENIED';
+  throw error;
+}
+
+function permissionForDocumentTypeClient(type) {
+  switch (type) {
+    case DOCUMENT_TYPES.COUNT:
+      return 'count.write';
+    case DOCUMENT_TYPES.ENTRY:
+      return 'entry.write';
+    case DOCUMENT_TYPES.SUPPLY:
+      return 'supply.write';
+    default:
+      return 'adjustment.write';
+  }
+}
+
+function renderAccessDenied(view) {
+  appRoot.innerHTML = `
+    <section class="hero">
+      <h2>Acceso restringido</h2>
+      <p>No tienes permiso para abrir esta sección.</p>
+    </section>
+
+    <section class="card stack">
+      <div class="status-warning">
+        Vista solicitada: <strong>${escapeHtml(view || '—')}</strong>
+      </div>
+      <button
+        class="primary"
+        data-open-view="home"
+        type="button"
+      >Volver al inicio</button>
+    </section>
+  `;
 }
 
 function currentOwnerId() {
@@ -529,6 +632,13 @@ async function render() {
 
   await refreshSaveStatus();
   updateNavigationUi();
+
+  if (
+    state.view !== 'home' &&
+    !canOpenView(state.view)
+  ) {
+    return renderAccessDenied(state.view);
+  }
 
   switch (state.view) {
     case 'catalog':
@@ -708,21 +818,33 @@ async function renderHome() {
     </section>
 
     <section class="grid dashboard-grid" style="margin-top:16px">
-      ${actionCard('count', 'Conteo físico', 'Número + Enter. Ajustes trazables.')}
-      ${actionCard('supply', 'Surtido', 'Salida validada y FEFO por lotes cuando aplica.')}
-      ${actionCard('entry', 'Entrada', 'Recepción, costo, lote y vencimiento opcionales.')}
-      ${actionCard('replenishment', 'Comprar / Pedir', 'Sugerencias, pedidos y mercancía en tránsito.')}
-      ${actionCard('reports', 'Reportes', 'Inventario, consumo, vencimientos y movimientos.')}
-      ${can(state.session, 'users.manage')
+      ${canOpenView('count')
+        ? actionCard('count', 'Conteo físico', 'Número + Enter. Ajustes trazables.')
+        : ''}
+      ${canOpenView('supply')
+        ? actionCard('supply', 'Surtido', 'Salida validada y FEFO por lotes cuando aplica.')
+        : ''}
+      ${canOpenView('entry')
+        ? actionCard('entry', 'Entrada', 'Recepción, costo, lote y vencimiento opcionales.')
+        : ''}
+      ${canOpenView('replenishment')
+        ? actionCard('replenishment', 'Comprar / Pedir', 'Sugerencias, pedidos y mercancía en tránsito.')
+        : ''}
+      ${canOpenView('reports')
+        ? actionCard('reports', 'Reportes', 'Inventario, consumo, vencimientos y movimientos.')
+        : ''}
+      ${canOpenView('users')
         ? actionCard('users', 'Usuarios y permisos', 'Roles, visibilidad y permisos granulares.')
         : ''}
-      ${can(state.session, 'audit.view')
+      ${canOpenView('audit')
         ? actionCard('audit', 'Auditoría', 'Quién hizo qué, cuándo y desde qué operación.')
         : ''}
-      ${can(state.session, 'catalog.write') && can(state.session, 'adjustment.write')
+      ${canOpenView('migration')
         ? actionCard('migration', 'Migrar Smart Inventory V1', 'Preview, archivo legado y stock inicial trazable.')
         : ''}
-      ${actionCard('catalog', 'Catálogo', 'Excel, mínimos, máximos y reposición.')}
+      ${canOpenView('catalog')
+        ? actionCard('catalog', 'Catálogo', 'Excel, mínimos, máximos y reposición.')
+        : ''}
     </section>
   `;
 }
