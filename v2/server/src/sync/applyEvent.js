@@ -1,7 +1,9 @@
 import { validateSyncEvent } from './validateEvent.js';
+import { assertEventPermission } from '../security/permissions.js';
 
 export async function applyEvent(client, auth, event) {
   validateSyncEvent(event);
+  assertEventPermission(auth, event);
 
   const { workspaceId, userId } = auth;
   const { entityType, operation, payload } = event;
