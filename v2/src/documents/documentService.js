@@ -3,7 +3,10 @@ import {
   initialEntityVersion,
   nextEntityVersion
 } from '../core/versioning.js';
-import { MOVEMENT_TYPES } from '../core/movementTypes.js';
+import {
+  MOVEMENT_TYPES,
+  stockDeltaForMovement
+} from '../core/movementTypes.js';
 import { normalizeText, assertNonNegativeNumber } from '../core/catalog.js';
 import {
   STORES,
@@ -218,6 +221,327 @@ export async function closeDocument(documentId, { userId = null } = {}) {
   }
 
   throw new Error('Este documento no tiene flujo de cierre');
+}
+
+export async function createCorrectionDraft(
+  documentId,
+  {
+    userId = null,
+    reason = 'Corrección autorizada'
+  } = {}
+) {
+  const normalizedReason = normalizeText(reason);
+
+  if (normalizedReason.length < 4) {
+    throw new Error('Indica un motivo válido para la corrección');
+  }
+
+  return runTransaction(
+    [
+      STORES.DOCUMENTS,
+      STORES.DOCUMENT_LINES,
+      STORES.MOVEMENTS,
+      STORES.LOTS,
+      STORES.SYNC_QUEUE
+    ],
+    'readwrite',
+    async (
+      documentStore,
+      lineStore,
+      movementStore,
+      lotStore,
+      queueStore
+    ) => {
+      const original = await requestToPromise(
+        documentStore.get(documentId)
+      );
+
+      if (!original) {
+        throw new Error('Documento no encontrado');
+      }
+
+      if (original.status !== DOCUMENT_STATUS.CLOSED) {
+        throw new Error(
+          'Solo pueden corregirse documentos cerrados'
+        );
+      }
+
+      const existingCorrectionId =
+        original.metadata?.correctionDraftId || null;
+
+      if (existingCorrectionId) {
+        const existingDraft = await requestToPromise(
+          documentStore.get(existingCorrectionId)
+        );
+
+        if (
+          existingDraft &&
+          existingDraft.status === DOCUMENT_STATUS.DRAFT
+        ) {
+          return {
+            original,
+            draft: existingDraft,
+            reversals: [],
+            lots: [],
+            reused: true
+          };
+        }
+
+        throw new Error(
+          'Este documento ya tiene una corrección registrada'
+        );
+      }
+
+      const lines = await requestToPromise(
+        lineStore.index('documentId').getAll(documentId)
+      );
+
+      const originalMovements = await requestToPromise(
+        movementStore.index('documentId').getAll(documentId)
+      );
+
+      const now = new Date().toISOString();
+      const reversals = [];
+      const updatedLots = [];
+
+      for (const movement of originalMovements) {
+        if (movement.type === MOVEMENT_TYPES.REVERSAL) continue;
+
+        const previousReversals = await requestToPromise(
+          movementStore
+            .index('reversedMovementId')
+            .getAll(movement.id)
+        );
+
+        if (previousReversals.length > 0) {
+          throw new Error(
+            'El documento ya contiene movimientos compensados'
+          );
+        }
+
+        const currentMovements = await requestToPromise(
+          movementStore
+            .index('productId')
+            .getAll(movement.productId)
+        );
+
+        const currentStock = calculateStock(
+          currentMovements,
+          movement.productId,
+          { locationId: movement.locationId || null }
+        );
+
+        const reversalDelta = -stockDeltaForMovement(movement);
+
+        if (currentStock + reversalDelta < -0.000001) {
+          throw new Error(
+            'No puede corregirse este documento porque mercancía posterior depende de sus movimientos'
+          );
+        }
+
+        if (movement.lotId) {
+          const lot = await requestToPromise(
+            lotStore.get(movement.lotId)
+          );
+
+          if (!lot) {
+            throw new Error(
+              'No se encontró el lote vinculado al movimiento'
+            );
+          }
+
+          let nextRemaining = Number(
+            lot.remainingQuantity || 0
+          );
+
+          if (original.type === DOCUMENT_TYPES.ENTRY) {
+            const originalQuantity = Number(
+              lot.originalQuantity || 0
+            );
+
+            if (
+              Math.abs(nextRemaining - originalQuantity) >
+              0.000001
+            ) {
+              throw new Error(
+                'No puede reabrirse la entrada porque uno de sus lotes ya fue consumido'
+              );
+            }
+
+            nextRemaining = 0;
+          }
+
+          if (original.type === DOCUMENT_TYPES.SUPPLY) {
+            nextRemaining += Number(movement.quantity || 0);
+
+            if (
+              nextRemaining >
+              Number(lot.originalQuantity || 0) + 0.000001
+            ) {
+              throw new Error(
+                'La restauración del lote excedería su cantidad original'
+              );
+            }
+          }
+
+          const updatedLot = {
+            ...lot,
+            remainingQuantity: nextRemaining,
+            version: nextEntityVersion(lot),
+            updatedAt: now
+          };
+
+          await requestToPromise(
+            lotStore.put(updatedLot)
+          );
+          await requestToPromise(
+            queueStore.add(
+              createSyncItem(
+                'lot',
+                updatedLot.id,
+                'UPDATE',
+                updatedLot
+              )
+            )
+          );
+
+          updatedLots.push(updatedLot);
+        }
+
+        const reversal = buildMovement({
+          productId: movement.productId,
+          type: MOVEMENT_TYPES.REVERSAL,
+          quantity: Math.abs(
+            stockDeltaForMovement(movement)
+          ),
+          delta: reversalDelta,
+          documentId: original.id,
+          lotId: movement.lotId || null,
+          locationId: movement.locationId || null,
+          userId,
+          effectiveAt: now,
+          reversedMovementId: movement.id,
+          metadata: {
+            reason: normalizedReason,
+            originalMovementId: movement.id,
+            correctionOfDocumentId: original.id
+          }
+        });
+
+        await requestToPromise(
+          movementStore.add(reversal)
+        );
+        await requestToPromise(
+          queueStore.add(
+            buildMovementSyncItem(reversal)
+          )
+        );
+
+        reversals.push(reversal);
+      }
+
+      const draft = {
+        ...original,
+        id: createLocalId(
+          prefixForDocument(original.type)
+        ),
+        status: DOCUMENT_STATUS.DRAFT,
+        ownerId: userId || original.ownerId || null,
+        version: initialEntityVersion(),
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+        closedBy: null,
+        metadata: {
+          ...(original.metadata || {}),
+          correctionOfDocumentId: original.id,
+          correctionReason: normalizedReason,
+          correctionCreatedAt: now
+        }
+      };
+
+      delete draft.metadata.correctionDraftId;
+      delete draft.metadata.correctedAt;
+      delete draft.metadata.correctedBy;
+
+      await requestToPromise(
+        documentStore.add(draft)
+      );
+      await requestToPromise(
+        queueStore.add(
+          createSyncItem(
+            'document',
+            draft.id,
+            'CREATE',
+            draft
+          )
+        )
+      );
+
+      if (original.type !== DOCUMENT_TYPES.COUNT) {
+        for (const line of lines) {
+          const copied = {
+            ...line,
+            id: createLocalId('line'),
+            documentId: draft.id,
+            documentType: draft.type,
+            version: initialEntityVersion(),
+            createdAt: now,
+            updatedAt: now
+          };
+
+          await requestToPromise(
+            lineStore.add(copied)
+          );
+          await requestToPromise(
+            queueStore.add(
+              createSyncItem(
+                'documentLine',
+                copied.id,
+                'CREATE',
+                copied
+              )
+            )
+          );
+        }
+      }
+
+      const correctedOriginal = {
+        ...original,
+        version: nextEntityVersion(original),
+        updatedAt: now,
+        metadata: {
+          ...(original.metadata || {}),
+          correctionDraftId: draft.id,
+          correctedAt: now,
+          correctedBy: userId,
+          correctionReason: normalizedReason
+        }
+      };
+
+      await requestToPromise(
+        documentStore.put(correctedOriginal)
+      );
+      await requestToPromise(
+        queueStore.add(
+          createSyncItem(
+            'document',
+            correctedOriginal.id,
+            'UPDATE',
+            correctedOriginal
+          )
+        )
+      );
+
+      return {
+        original: correctedOriginal,
+        draft,
+        reversals,
+        lots: updatedLots,
+        reused: false
+      };
+    }
+  );
 }
 
 async function closeInventoryDocument(documentId, userId) {
