@@ -9,7 +9,8 @@
     "backup": "node scripts/backup.js",
     "backup:verify": "node scripts/verifyBackup.js",
     "smoke:integration": "node scripts/integrationSmoke.js",
-    "smoke:restart": "node scripts/postRestartSmoke.js"
+    "smoke:restart": "node scripts/postRestartSmoke.js",
+    "preflight:production": "node scripts/preflightProduction.js"
   },
   "dependencies": {
     "express": "^5.0.0",
