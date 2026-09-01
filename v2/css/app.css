@@ -85,6 +85,68 @@ button {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+.dashboard-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-sync {
+  display: flex;
+  align-items: center;
+}
+
+.dashboard-metric strong {
+  display: block;
+  font-size: 1.9rem;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.dashboard-metric-label {
+  font-weight: 800;
+  margin-bottom: 3px;
+}
+
+.dashboard-detail-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.dashboard-list-row:last-child {
+  border-bottom: 0;
+}
+
+.dashboard-list-end {
+  min-width: 72px;
+  text-align: right;
+}
+
+.dashboard-list-end strong,
+.dashboard-list-end small {
+  display: block;
+}
+
+.dashboard-list-end small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: .76rem;
+}
+
+.compact-empty {
+  padding: 14px 8px;
+}
+
+
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -306,5 +368,26 @@ input, select {
     grid-template-columns: minmax(0, 1.3fr) minmax(300px, .7fr);
     gap: 16px;
     align-items: start;
+  }
+}
+
+@media (max-width: 980px) {
+  .dashboard-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dashboard-list-row {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-list-end {
+    text-align: left;
   }
 }
