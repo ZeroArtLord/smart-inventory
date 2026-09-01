@@ -9,6 +9,9 @@ import {
   get,
   put
 } from '../storage/database.js';
+import {
+  switchWorkspaceCacheAndConfig
+} from '../sync/workspaceCache.js';
 
 const CACHED_ACCESS_KEY = 'auth.firebase.cachedAccess';
 
@@ -205,11 +208,15 @@ export async function selectFirebaseWorkspace(workspaceId) {
     throw new Error('Selecciona un almacén válido');
   }
 
-  return saveSyncConfig({
-    authMode: 'firebase',
-    workspaceId: normalized,
-    serverUserId: null
-  });
+  const result = await switchWorkspaceCacheAndConfig(
+    normalized,
+    {
+      authMode: 'firebase',
+      serverUserId: null
+    }
+  );
+
+  return result.config;
 }
 
 async function readJson(response) {
