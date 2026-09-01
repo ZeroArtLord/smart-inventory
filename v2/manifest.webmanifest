@@ -1,11 +1,42 @@
 {
   "name": "Smart Inventory V2",
   "short_name": "SmartInv V2",
+  "id": "./index.html",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
+  ],
   "background_color": "#f3f4f6",
   "theme_color": "#111827",
   "lang": "es",
-  "description": "Asistente operativo de almacén local-first."
+  "categories": [
+    "business",
+    "productivity"
+  ],
+  "description": "Asistente operativo de almacén local-first.",
+  "shortcuts": [
+    {
+      "name": "Conteo",
+      "short_name": "Conteo",
+      "url": "./index.html?view=count"
+    },
+    {
+      "name": "Surtido",
+      "short_name": "Surtido",
+      "url": "./index.html?view=supply"
+    },
+    {
+      "name": "Entrada",
+      "short_name": "Entrada",
+      "url": "./index.html?view=entry"
+    },
+    {
+      "name": "Abastecer",
+      "short_name": "Abastecer",
+      "url": "./index.html?view=replenishment"
+    }
+  ]
 }
