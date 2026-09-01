@@ -122,6 +122,97 @@ export function buildDemandTrend(
   };
 }
 
+export function buildWeeklySeasonality(
+  movements,
+  productId,
+  now = new Date(),
+  {
+    lookbackDays = 84,
+    minHistoryDays = 56,
+    minMovements = 12
+  } = {}
+) {
+  const days = Math.max(28, Math.floor(Number(lookbackDays) || 84));
+  const end = now.getTime();
+  const start = end - (days * DAY_MS);
+
+  const relevant = movements
+    .filter(movement => movement.productId === productId)
+    .filter(movement => movement.type === MOVEMENT_TYPES.SUPPLY)
+    .filter(movement => movement.voided !== true)
+    .map(movement => ({
+      quantity: Number(movement.quantity || 0),
+      at: new Date(movement.effectiveAt || movement.createdAt)
+    }))
+    .filter(item =>
+      Number.isFinite(item.quantity) &&
+      item.quantity > 0 &&
+      !Number.isNaN(item.at.getTime()) &&
+      item.at.getTime() <= end &&
+      item.at.getTime() > start
+    );
+
+  if (!relevant.length) {
+    return emptySeasonality(days);
+  }
+
+  const firstAt = Math.min(...relevant.map(item => item.at.getTime()));
+  const historyDays = Math.max(
+    1,
+    Math.ceil((end - firstAt) / DAY_MS)
+  );
+
+  if (
+    historyDays < minHistoryDays ||
+    relevant.length < minMovements
+  ) {
+    return {
+      ...emptySeasonality(days),
+      historyDays,
+      movementCount: relevant.length
+    };
+  }
+
+  const totals = Array(7).fill(0);
+  for (const item of relevant) {
+    totals[item.at.getUTCDay()] += item.quantity;
+  }
+
+  const occurrences = weekdayOccurrences(start, end);
+  const dailyAverages = totals.map((total, weekday) => {
+    const count = occurrences[weekday] || 1;
+    return total / count;
+  });
+
+  const overallDailyAverage =
+    relevant.reduce((sum, item) => sum + item.quantity, 0) / days;
+
+  const factors = dailyAverages.map(average => {
+    if (!(overallDailyAverage > 0)) return 1;
+    return round(
+      Math.min(1.75, Math.max(0.5, average / overallDailyAverage))
+    );
+  });
+
+  const strongestDay = factors.indexOf(Math.max(...factors));
+  const weakestDay = factors.indexOf(Math.min(...factors));
+
+  return {
+    lookbackDays: days,
+    historyDays,
+    movementCount: relevant.length,
+    confidence: historyDays >= 84 && relevant.length >= 24
+      ? 'MEDIUM'
+      : 'LOW',
+    overallDailyAverage: round(overallDailyAverage),
+    weekdayTotals: totals.map(round),
+    weekdayDailyAverages: dailyAverages.map(round),
+    weekdayFactors: factors,
+    strongestDay,
+    weakestDay
+  };
+}
+
 export function getTrendAwareReplenishmentSuggestion(
   product,
   context = {}
@@ -243,6 +334,37 @@ export function classifyStockRisk(product, context = {}) {
   }
 
   return { level: 'GOOD', suggestion };
+}
+
+function emptySeasonality(lookbackDays) {
+  return {
+    lookbackDays,
+    historyDays: 0,
+    movementCount: 0,
+    confidence: 'INSUFFICIENT',
+    overallDailyAverage: 0,
+    weekdayTotals: Array(7).fill(0),
+    weekdayDailyAverages: Array(7).fill(0),
+    weekdayFactors: Array(7).fill(1),
+    strongestDay: null,
+    weakestDay: null
+  };
+}
+
+function weekdayOccurrences(startMs, endMs) {
+  const counts = Array(7).fill(0);
+  const cursor = new Date(startMs);
+  cursor.setUTCHours(0, 0, 0, 0);
+
+  const end = new Date(endMs);
+  end.setUTCHours(0, 0, 0, 0);
+
+  while (cursor <= end) {
+    counts[cursor.getUTCDay()] += 1;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return counts;
 }
 
 function chooseDailyEstimate(averages, historyDays) {
