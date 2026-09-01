@@ -373,6 +373,9 @@ async function renderReplenishmentWorkspace() {
     lowStockLimit: 1000
   });
   const items = await listReplenishments();
+  const actionableSuggestions = snapshot.lowStock.filter(
+    row => Number(row.suggestedQuantity || 0) > 0
+  );
 
   appRoot.innerHTML = `
     <section class="hero">
@@ -390,8 +393,8 @@ async function renderReplenishmentWorkspace() {
           <span class="badge">${snapshot.inventorySummary.replenishmentNeeded}</span>
         </div>
 
-        ${snapshot.lowStock.length
-          ? snapshot.lowStock.map(row => {
+        ${actionableSuggestions.length
+          ? actionableSuggestions.map(row => {
               const product = state.products.find(item => item.id === row.productId);
               return `
                 <div class="dashboard-list-row">
