@@ -1634,7 +1634,9 @@ async function refreshSaveStatus() {
 async function getPendingSyncCount() {
   const items = await getAll(STORES.SYNC_QUEUE);
   return items.filter(item =>
-    item.status === 'PENDING' || item.status === 'FAILED'
+    item.status === 'PENDING' ||
+    item.status === 'FAILED' ||
+    item.status === 'CONFLICT'
   ).length;
 }
 
@@ -1741,6 +1743,9 @@ function bindSyncLifecycle() {
         break;
       case 'disabled':
         saveStatus.textContent = '✓ Guardado local · sync desactivado';
+        break;
+      case 'conflict':
+        saveStatus.textContent = '⚠ Conflicto pendiente de revisión';
         break;
       case 'error':
         saveStatus.textContent = '✓ Guardado local · servidor pendiente';
