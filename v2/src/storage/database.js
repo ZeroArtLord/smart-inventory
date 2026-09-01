@@ -175,6 +175,28 @@ export async function remove(storeName, key) {
   return runTransaction(storeName, 'readwrite', store => requestToPromise(store.delete(key)));
 }
 
+export async function clearStores(storeNames) {
+  const names = Array.isArray(storeNames)
+    ? [...new Set(storeNames)]
+    : [storeNames];
+
+  return runTransaction(
+    names,
+    'readwrite',
+    async (...args) => {
+      const stores = args.slice(0, names.length);
+
+      await Promise.all(
+        stores.map(store =>
+          requestToPromise(store.clear())
+        )
+      );
+
+      return true;
+    }
+  );
+}
+
 export async function runTransaction(storeNames, mode, operation) {
   const db = await openDatabase();
   const names = Array.isArray(storeNames) ? storeNames : [storeNames];
