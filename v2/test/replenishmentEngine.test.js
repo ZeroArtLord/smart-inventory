@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { MOVEMENT_TYPES } from '../src/core/movementTypes.js';
 import {
   buildConsumptionProfile,
+  buildDemandTrend,
   getReplenishmentSuggestion,
+  getTrendAwareReplenishmentSuggestion,
   classifyStockRisk
 } from '../src/intelligence/replenishmentEngine.js';
 
@@ -90,4 +92,86 @@ test('clasifica crítico cuando está por debajo del mínimo', () => {
   );
 
   assert.equal(risk.level, 'CRITICAL');
+});
+
+
+test('detecta tendencia de consumo al alza comparando ventanas', () => {
+  const now = new Date('2026-09-01T12:00:00Z');
+  const movements = [];
+
+  for (let day = 1; day <= 6; day++) {
+    movements.push({
+      productId: 'tendencia',
+      type: MOVEMENT_TYPES.SUPPLY,
+      quantity: 10,
+      effectiveAt: new Date(
+        now.getTime() - (day * 86400000)
+      ).toISOString()
+    });
+  }
+
+  for (let day = 15; day <= 20; day++) {
+    movements.push({
+      productId: 'tendencia',
+      type: MOVEMENT_TYPES.SUPPLY,
+      quantity: 4,
+      effectiveAt: new Date(
+        now.getTime() - (day * 86400000)
+      ).toISOString()
+    });
+  }
+
+  const trend = buildDemandTrend(
+    movements,
+    'tendencia',
+    now,
+    { windowDays: 14 }
+  );
+
+  assert.equal(trend.direction, 'UP');
+  assert.equal(trend.confidence, 'MEDIUM');
+  assert.ok(trend.percentChange > 100);
+});
+
+test('tendencia al alza aumenta consumo ajustado sin superar factor de seguridad', () => {
+  const result = getTrendAwareReplenishmentSuggestion(
+    { minStock: 20, maxStock: 100 },
+    {
+      stock: 10,
+      pendingInbound: 0,
+      dailyConsumption: 5,
+      targetDays: 7,
+      safetyDays: 1,
+      trend: {
+        direction: 'UP',
+        confidence: 'MEDIUM',
+        percentChange: 80
+      }
+    }
+  );
+
+  assert.equal(result.baseDailyConsumption, 5);
+  assert.equal(result.adjustedDailyConsumption, 7);
+  assert.equal(result.originalTargetDays, 7);
+  assert.equal(result.safetyDays, 1);
+  assert.equal(result.targetDays, 8);
+  assert.equal(result.suggestedQuantity, 46);
+});
+
+test('sin confianza suficiente no modifica el consumo base', () => {
+  const result = getTrendAwareReplenishmentSuggestion(
+    { minStock: 20, maxStock: 100 },
+    {
+      stock: 10,
+      dailyConsumption: 5,
+      targetDays: 7,
+      trend: {
+        direction: 'UP',
+        confidence: 'INSUFFICIENT',
+        percentChange: 100
+      }
+    }
+  );
+
+  assert.equal(result.adjustedDailyConsumption, 5);
 });
