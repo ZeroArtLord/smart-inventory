@@ -1,5 +1,9 @@
 import { createLocalId } from '../core/ids.js';
 import {
+  initialEntityVersion,
+  nextEntityVersion
+} from '../core/versioning.js';
+import {
   REPLENISHMENT_METHODS,
   normalizeText
 } from '../core/catalog.js';
@@ -85,6 +89,7 @@ export async function createReplenishment(data = {}) {
     orderedAt: null,
     receivedAt: null,
     cancelledAt: null,
+    version: initialEntityVersion(),
     createdAt: now,
     updatedAt: now
   };
@@ -116,6 +121,7 @@ export async function changeReplenishmentStatus(
   const updated = {
     ...current,
     status,
+    version: nextEntityVersion(current),
     updatedAt: now,
     updatedBy: userId || null
   };
@@ -210,6 +216,7 @@ export async function registerReplenishmentReceipt(
         receivedQuantity,
         pendingQuantity,
         status,
+        version: nextEntityVersion(current),
         receivedAt: status === REPLENISHMENT_STATUS.RECEIVED
           ? now
           : current.receivedAt || null,
