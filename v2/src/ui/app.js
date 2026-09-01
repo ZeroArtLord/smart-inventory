@@ -36,6 +36,13 @@ import {
   onSyncStatus
 } from '../sync/syncEngine.js';
 import {
+  listSyncConflicts
+} from '../sync/localQueue.js';
+import {
+  acceptServerConflict,
+  reapplyLocalConflict
+} from '../sync/conflictResolver.js';
+import {
   getDashboardSnapshot
 } from './dashboardService.js';
 import {
@@ -130,6 +137,8 @@ async function render() {
       return renderReplenishmentWorkspace();
     case 'reports':
       return renderReports();
+    case 'conflicts':
+      return renderConflicts();
     default:
       return renderHome();
   }
@@ -148,9 +157,11 @@ async function renderHome() {
         <p>Resumen operativo calculado desde movimientos, lotes y trabajo local.</p>
       </div>
       <div class="dashboard-sync">
-        ${snapshot.pendingSyncCount
-          ? `<span class="badge status-warning">${snapshot.pendingSyncCount} pendientes</span>`
-          : '<span class="badge status-good">Todo sincronizado</span>'}
+        ${snapshot.syncConflictCount
+          ? `<button class="secondary status-warning" data-open-view="conflicts" type="button">⚠ ${snapshot.syncConflictCount} conflicto(s)</button>`
+          : snapshot.pendingSyncCount
+            ? `<span class="badge status-warning">${snapshot.pendingSyncCount} pendientes</span>`
+            : '<span class="badge status-good">Todo sincronizado</span>'}
       </div>
     </section>
 
@@ -279,6 +290,50 @@ async function renderHome() {
       ${actionCard('replenishment', 'Comprar / Pedir', 'Sugerencias, pedidos y mercancía en tránsito.')}
       ${actionCard('reports', 'Reportes', 'Inventario, consumo, vencimientos y movimientos.')}
       ${actionCard('catalog', 'Catálogo', 'Excel, mínimos, máximos y reposición.')}
+    </section>
+  `;
+}
+
+async function renderConflicts() {
+  const conflicts = await listSyncConflicts();
+
+  appRoot.innerHTML = `
+    <section class="hero">
+      <h2>Conflictos de sincronización</h2>
+      <p>Un cambio llegó desde otro dispositivo antes que el tuyo. Nada se sobrescribe en silencio.</p>
+    </section>
+
+    <section class="card stack">
+      ${conflicts.length
+        ? conflicts.map(item => `
+          <div class="conflict-card">
+            <div>
+              <strong>${escapeHtml(item.entityType)} · ${escapeHtml(item.entityId)}</strong>
+              <div class="product-meta">
+                Motivo ${escapeHtml(item.conflict?.reason || 'STALE_WRITE')} ·
+                Servidor v${item.conflict?.serverVersion ?? '—'} ·
+                Tu cambio v${item.conflict?.clientVersion ?? item.payload?.version ?? '—'}
+              </div>
+            </div>
+
+            <div class="conflict-actions">
+              <button
+                class="secondary"
+                data-action="accept-server-conflict"
+                data-id="${escapeHtml(item.id)}"
+                type="button"
+              >Usar servidor</button>
+
+              <button
+                class="primary"
+                data-action="reapply-local-conflict"
+                data-id="${escapeHtml(item.id)}"
+                type="button"
+              >Reaplicar mi cambio</button>
+            </div>
+          </div>
+        `).join('')
+        : '<div class="empty">No hay conflictos pendientes.</div>'}
     </section>
   `;
 }
@@ -942,6 +997,10 @@ async function handleClick(event) {
         return setReplenishmentStatus(button.dataset.id, button.dataset.status);
       case 'receive-replenishment':
         return startReplenishmentEntry(button.dataset.id);
+      case 'accept-server-conflict':
+        return resolveConflict(button.dataset.id, 'SERVER');
+      case 'reapply-local-conflict':
+        return resolveConflict(button.dataset.id, 'LOCAL');
     }
   } catch (error) {
     showToast(error.message || String(error));
@@ -1063,6 +1122,28 @@ async function applyCatalogPreview() {
   );
 
   scheduleSync(100);
+  await render();
+}
+
+async function resolveConflict(conflictId, resolution) {
+  if (resolution === 'SERVER') {
+    if (!confirm('¿Descartar tu cambio local y conservar la versión del servidor?')) {
+      return;
+    }
+
+    await acceptServerConflict(conflictId);
+    showToast('Conflicto resuelto usando servidor');
+  } else {
+    if (!confirm('¿Reaplicar tu cambio sobre la versión actual del servidor?')) {
+      return;
+    }
+
+    await reapplyLocalConflict(conflictId);
+    showToast('Cambio local rebasado y listo para sincronizar');
+    scheduleSync(100);
+  }
+
+  await refreshProducts();
   await render();
 }
 
