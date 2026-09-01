@@ -14,7 +14,8 @@
     "backup:restore-smoke": "node scripts/restoreSmoke.js",
     "admin:provision": "node scripts/provisionAdmin.js",
     "integrity:check": "node scripts/integrityCheck.js",
-    "migration:verify": "node scripts/verifyV1Migration.js"
+    "migration:verify": "node scripts/verifyV1Migration.js",
+    "smoke:firebase-identity": "node scripts/firebaseIdentitySmoke.js"
   },
   "dependencies": {
     "express": "^5.0.0",
