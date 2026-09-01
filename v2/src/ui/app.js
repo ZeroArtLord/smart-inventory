@@ -14,6 +14,7 @@ import {
 import {
   STORES,
   openDatabase,
+  get,
   getAll
 } from '../storage/database.js';
 import {
@@ -37,6 +38,13 @@ import {
 import {
   getDashboardSnapshot
 } from './dashboardService.js';
+import {
+  createReplenishment,
+  listReplenishments,
+  changeReplenishmentStatus,
+  reconcileReplenishmentReceipts,
+  REPLENISHMENT_STATUS
+} from '../replenishment/replenishmentService.js';
 
 const appRoot = document.getElementById('app');
 const saveStatus = document.getElementById('saveStatus');
@@ -110,6 +118,8 @@ async function render() {
       return renderDocumentWorkspace(DOCUMENT_TYPES.ENTRY);
     case 'supply':
       return renderDocumentWorkspace(DOCUMENT_TYPES.SUPPLY);
+    case 'replenishment':
+      return renderReplenishmentWorkspace();
     default:
       return renderHome();
   }
@@ -256,6 +266,7 @@ async function renderHome() {
       ${actionCard('count', 'Conteo físico', 'Número + Enter. Ajustes trazables.')}
       ${actionCard('supply', 'Surtido', 'Salida validada y FEFO por lotes cuando aplica.')}
       ${actionCard('entry', 'Entrada', 'Recepción, costo, lote y vencimiento opcionales.')}
+      ${actionCard('replenishment', 'Comprar / Pedir', 'Sugerencias, pedidos y mercancía en tránsito.')}
       ${actionCard('catalog', 'Catálogo', 'Excel, mínimos, máximos y reposición.')}
     </section>
   `;
@@ -352,6 +363,89 @@ async function renderCatalog() {
             `).join('')
             : '<div class="empty">Todavía no hay productos.</div>'}
         </div>
+      </section>
+    </div>
+  `;
+}
+
+async function renderReplenishmentWorkspace() {
+  const snapshot = await getDashboardSnapshot({
+    lowStockLimit: 1000
+  });
+  const items = await listReplenishments();
+
+  appRoot.innerHTML = `
+    <section class="hero">
+      <h2>Compras, pedidos y tránsito</h2>
+      <p>Una compra/pedido pendiente reduce la recomendación, pero nunca aumenta el stock físico.</p>
+    </section>
+
+    <div class="operation-layout">
+      <section class="card stack">
+        <div class="row">
+          <div>
+            <h3 style="margin:0">Sugerencias</h3>
+            <div class="product-meta">Calculadas con stock real + mercancía ya pedida.</div>
+          </div>
+          <span class="badge">${snapshot.inventorySummary.replenishmentNeeded}</span>
+        </div>
+
+        ${snapshot.lowStock.length
+          ? snapshot.lowStock.map(row => {
+              const product = state.products.find(item => item.id === row.productId);
+              return `
+                <div class="dashboard-list-row">
+                  <div>
+                    <strong>${escapeHtml(row.name)}</strong>
+                    <div class="product-meta">
+                      Stock ${formatNumber(row.stock)} · En tránsito ${formatNumber(row.pendingInbound)} ·
+                      Min ${formatNumber(row.minStock)} · Max ${formatNumber(row.maxStock)}
+                    </div>
+                  </div>
+                  <div class="replenishment-actions">
+                    <span class="badge">${formatNumber(row.suggestedQuantity)} sugeridos</span>
+                    ${renderReplenishmentCreateButtons(product, row.suggestedQuantity)}
+                  </div>
+                </div>
+              `;
+            }).join('')
+          : '<div class="empty compact-empty">No hay sugerencias pendientes.</div>'}
+      </section>
+
+      <section class="card stack">
+        <div class="row">
+          <div>
+            <h3 style="margin:0">Compras / pedidos</h3>
+            <div class="product-meta">Borradores, realizados, en tránsito y recibidos.</div>
+          </div>
+          <span class="badge">${items.length}</span>
+        </div>
+
+        ${items.length
+          ? items.map(item => `
+            <div class="replenishment-card">
+              <div class="row">
+                <div>
+                  <strong>${escapeHtml(item.productName || item.productId)}</strong>
+                  <div class="product-meta">
+                    ${item.method === 'PURCHASE' ? 'Compra' : 'Pedido'} ·
+                    ${formatNumber(item.requestedQuantity)} solicitados ·
+                    ${formatNumber(item.pendingQuantity)} pendientes
+                  </div>
+                </div>
+                <span class="badge">${replenishmentStatusLabel(item.status)}</span>
+              </div>
+
+              ${item.expectedAt
+                ? `<div class="product-meta">Llegada esperada: ${formatShortDate(item.expectedAt)}</div>`
+                : ''}
+
+              <div class="row replenishment-buttons">
+                ${renderReplenishmentStatusButtons(item)}
+              </div>
+            </div>
+          `).join('')
+          : '<div class="empty compact-empty">Todavía no hay compras o pedidos.</div>'}
       </section>
     </div>
   `;
@@ -498,7 +592,18 @@ function renderCountProduct(product) {
 
 async function renderCartWorkspace(type) {
   const lines = await listDocumentLines(state.activeDocumentId);
-  const selected = state.products.find(product => product.id === state.selectedProductId);
+  const documentRecord = await get(STORES.DOCUMENTS, state.activeDocumentId);
+  const linkedReplenishment = documentRecord?.metadata?.replenishmentId
+    ? await get(
+        STORES.REPLENISHMENTS,
+        documentRecord.metadata.replenishmentId
+      )
+    : null;
+  const selectedProductId = linkedReplenishment?.productId ||
+    state.selectedProductId;
+  const selected = state.products.find(
+    product => product.id === selectedProductId
+  );
 
   appRoot.innerHTML = `
     <section class="hero">
@@ -508,12 +613,20 @@ async function renderCartWorkspace(type) {
 
     <div class="operation-layout">
       <section class="card stack">
-        <label>
-          Buscar producto
-          <input id="productSearch" autocomplete="off" placeholder="Nombre, alias, SKU o código">
-        </label>
+        ${linkedReplenishment ? `
+          <div class="status-warning">
+            Recepción vinculada a ${linkedReplenishment.method === 'PURCHASE' ? 'Compra' : 'Pedido'}.
+            Pendiente: <strong>${formatNumber(linkedReplenishment.pendingQuantity)}</strong>.
+            Solo puede recibirse ${escapeHtml(linkedReplenishment.productName || linkedReplenishment.productId)}.
+          </div>
+        ` : `
+          <label>
+            Buscar producto
+            <input id="productSearch" autocomplete="off" placeholder="Nombre, alias, SKU o código">
+          </label>
 
-        <div id="searchResults" class="search-results"></div>
+          <div id="searchResults" class="search-results"></div>
+        `}
 
         ${selected ? `
           <div class="card" style="box-shadow:none">
@@ -628,6 +741,12 @@ async function handleClick(event) {
         return finishDocument();
       case 'apply-catalog-import':
         return applyCatalogPreview();
+      case 'create-replenishment':
+        return createReplenishmentFromSuggestion(button);
+      case 'set-replenishment-status':
+        return setReplenishmentStatus(button.dataset.id, button.dataset.status);
+      case 'receive-replenishment':
+        return startReplenishmentEntry(button.dataset.id);
     }
   } catch (error) {
     showToast(error.message || String(error));
@@ -747,6 +866,66 @@ async function applyCatalogPreview() {
   await render();
 }
 
+async function createReplenishmentFromSuggestion(button) {
+  const requestedQuantity = Number(button.dataset.quantity || 0);
+  if (!(requestedQuantity > 0)) {
+    throw new Error('La sugerencia no tiene cantidad para reponer');
+  }
+
+  await createReplenishment({
+    productId: button.dataset.productId,
+    method: button.dataset.method,
+    requestedQuantity,
+    ownerId,
+    sourceSuggestion: {
+      quantity: requestedQuantity,
+      createdAt: new Date().toISOString()
+    }
+  });
+
+  showToast('Compra/pedido creado como borrador');
+  scheduleSync();
+  await render();
+}
+
+async function setReplenishmentStatus(id, status) {
+  await changeReplenishmentStatus(id, status, {
+    userId: ownerId
+  });
+
+  showToast('Estado actualizado');
+  scheduleSync();
+  await render();
+}
+
+async function startReplenishmentEntry(replenishmentId) {
+  const item = await get(STORES.REPLENISHMENTS, replenishmentId);
+  if (!item) throw new Error('Compra/pedido no encontrado');
+
+  if (!(Number(item.pendingQuantity) > 0)) {
+    throw new Error('No queda mercancía pendiente por recibir');
+  }
+
+  const document = await createDocument({
+    type: DOCUMENT_TYPES.ENTRY,
+    ownerId,
+    supplierId: item.supplierId || null,
+    metadata: {
+      replenishmentId: item.id,
+      replenishmentProductId: item.productId
+    }
+  });
+
+  state.view = 'entry';
+  state.activeDocumentId = document.id;
+  state.activeDocumentType = DOCUMENT_TYPES.ENTRY;
+  state.selectedProductId = item.productId;
+
+  showToast('Entrada vinculada al pedido');
+  scheduleSync();
+  await render();
+}
+
 async function startDocument(type) {
   if (state.products.length === 0) {
     state.view = 'catalog';
@@ -812,7 +991,21 @@ async function saveCount(productId) {
 }
 
 async function addOperationLine(type) {
-  if (!state.selectedProductId) throw new Error('Selecciona un producto');
+  const activeDocument = await get(
+    STORES.DOCUMENTS,
+    state.activeDocumentId
+  );
+  const linkedReplenishment = activeDocument?.metadata?.replenishmentId
+    ? await get(
+        STORES.REPLENISHMENTS,
+        activeDocument.metadata.replenishmentId
+      )
+    : null;
+
+  const productId = linkedReplenishment?.productId ||
+    state.selectedProductId;
+
+  if (!productId) throw new Error('Selecciona un producto');
 
   const quantityInput = document.getElementById('operationQuantity');
   const quantity = evaluateNumericExpression(quantityInput?.value);
@@ -825,16 +1018,25 @@ async function addOperationLine(type) {
     : '';
 
   const existing = lines.find(line =>
-    line.productId === state.selectedProductId &&
+    line.productId === productId &&
     (type !== DOCUMENT_TYPES.ENTRY || (line.lotNumber || '') === lotNumber)
   );
 
   const accumulatedQuantity = Number(existing?.quantity || 0) + quantity;
 
+  if (
+    linkedReplenishment &&
+    accumulatedQuantity > Number(linkedReplenishment.pendingQuantity || 0)
+  ) {
+    throw new Error(
+      `Solo quedan ${linkedReplenishment.pendingQuantity} pendientes por recibir`
+    );
+  }
+
   const data = {
     id: existing?.id,
     documentId: state.activeDocumentId,
-    productId: state.selectedProductId,
+    productId,
     quantity: accumulatedQuantity
   };
 
@@ -880,6 +1082,13 @@ async function finishDocument() {
   }
 
   const result = await closeDocument(state.activeDocumentId, { userId: ownerId });
+
+  if (
+    result.document?.type === DOCUMENT_TYPES.ENTRY &&
+    result.document?.metadata?.replenishmentId
+  ) {
+    await reconcileReplenishmentReceipts();
+  }
 
   state.activeDocumentId = null;
   state.activeDocumentType = null;
@@ -993,6 +1202,131 @@ function renderCatalogImportPreview(preview) {
       ` : '<div class="empty">No hay filas válidas para importar.</div>'}
     </div>
   `;
+}
+
+function renderReplenishmentCreateButtons(product, quantity) {
+  if (!product || !(Number(quantity) > 0)) return '';
+
+  const method = product.replenishmentMethod;
+
+  if (method === REPLENISHMENT_METHODS.NONE) {
+    return '<span class="product-meta">Sin reposición automática</span>';
+  }
+
+  const buttons = [];
+
+  if (
+    method === REPLENISHMENT_METHODS.PURCHASE ||
+    method === REPLENISHMENT_METHODS.BOTH
+  ) {
+    buttons.push(`
+      <button
+        class="secondary"
+        data-action="create-replenishment"
+        data-product-id="${escapeHtml(product.id)}"
+        data-method="PURCHASE"
+        data-quantity="${Number(quantity)}"
+        type="button"
+      >Compra</button>
+    `);
+  }
+
+  if (
+    method === REPLENISHMENT_METHODS.ORDER ||
+    method === REPLENISHMENT_METHODS.BOTH
+  ) {
+    buttons.push(`
+      <button
+        class="secondary"
+        data-action="create-replenishment"
+        data-product-id="${escapeHtml(product.id)}"
+        data-method="ORDER"
+        data-quantity="${Number(quantity)}"
+        type="button"
+      >Pedido</button>
+    `);
+  }
+
+  return buttons.join('');
+}
+
+function renderReplenishmentStatusButtons(item) {
+  const buttons = [];
+
+  if (item.status === REPLENISHMENT_STATUS.DRAFT) {
+    buttons.push(`
+      <button
+        class="primary"
+        data-action="set-replenishment-status"
+        data-id="${escapeHtml(item.id)}"
+        data-status="${REPLENISHMENT_STATUS.ORDERED}"
+        type="button"
+      >Confirmar pedido</button>
+    `);
+  }
+
+  if (item.status === REPLENISHMENT_STATUS.ORDERED) {
+    buttons.push(`
+      <button
+        class="secondary"
+        data-action="set-replenishment-status"
+        data-id="${escapeHtml(item.id)}"
+        data-status="${REPLENISHMENT_STATUS.IN_TRANSIT}"
+        type="button"
+      >Marcar en tránsito</button>
+    `);
+  }
+
+  if (
+    item.status === REPLENISHMENT_STATUS.ORDERED ||
+    item.status === REPLENISHMENT_STATUS.IN_TRANSIT ||
+    item.status === REPLENISHMENT_STATUS.PARTIALLY_RECEIVED
+  ) {
+    buttons.push(`
+      <button
+        class="success"
+        data-action="receive-replenishment"
+        data-id="${escapeHtml(item.id)}"
+        type="button"
+      >Recibir</button>
+    `);
+  }
+
+  if (
+    item.status !== REPLENISHMENT_STATUS.RECEIVED &&
+    item.status !== REPLENISHMENT_STATUS.CANCELLED
+  ) {
+    buttons.push(`
+      <button
+        class="danger"
+        data-action="set-replenishment-status"
+        data-id="${escapeHtml(item.id)}"
+        data-status="${REPLENISHMENT_STATUS.CANCELLED}"
+        type="button"
+      >Cancelar</button>
+    `);
+  }
+
+  return buttons.join('');
+}
+
+function replenishmentStatusLabel(status) {
+  switch (status) {
+    case REPLENISHMENT_STATUS.DRAFT:
+      return 'Borrador';
+    case REPLENISHMENT_STATUS.ORDERED:
+      return 'Realizado';
+    case REPLENISHMENT_STATUS.IN_TRANSIT:
+      return 'En tránsito';
+    case REPLENISHMENT_STATUS.PARTIALLY_RECEIVED:
+      return 'Recibido parcial';
+    case REPLENISHMENT_STATUS.RECEIVED:
+      return 'Recibido';
+    case REPLENISHMENT_STATUS.CANCELLED:
+      return 'Cancelado';
+    default:
+      return status || '—';
+  }
 }
 
 function dashboardMetric(value, label, detail) {
@@ -1225,6 +1559,10 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
 
   if (result?.ok && result.pulled > 0) {
     await refreshProducts();
+
+    const reconciled = await reconcileReplenishmentReceipts();
+    if (reconciled.length > 0) scheduleSync(100);
+
     if (renderAfter && canAutoRefresh()) await render();
   }
 
