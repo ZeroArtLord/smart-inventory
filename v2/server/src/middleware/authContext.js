@@ -142,6 +142,12 @@ async function resolveProvisionedUser(decoded) {
     throw authError('Usuario autenticado no provisionado');
   }
 
+  if (decoded.email_verified !== true) {
+    throw authError(
+      'El email debe estar verificado antes de vincular la cuenta'
+    );
+  }
+
   try {
     return await withTransaction(async client => {
       const byEmail = await client.query(
