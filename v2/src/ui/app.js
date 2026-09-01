@@ -137,6 +137,8 @@ const devOwnerId = getLocalOwnerId();
 let syncTimer = null;
 let barcodeScannerSession = null;
 let installPromptEvent = null;
+let authLifecycleReady = false;
+let authTransitionInProgress = false;
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -211,8 +213,13 @@ async function initializeApplicationAuth() {
     return 'authenticated';
   }
 
-  const user = await initializeFirebaseClient();
+  const user = await initializeFirebaseClient({
+    onUserChanged:
+      handleFirebaseAuthStateChanged
+  });
+
   state.authUser = firebaseUserSummary(user);
+  authLifecycleReady = true;
   updateAuthUi();
 
   if (!state.authUser) {
@@ -323,9 +330,19 @@ function renderWorkspaceGate() {
 }
 
 async function signInWithGoogle() {
-  const user = await loginWithGoogle();
+  authTransitionInProgress = true;
+
+  let user;
+
+  try {
+    user = await loginWithGoogle();
+  } catch (error) {
+    authTransitionInProgress = false;
+    throw error;
+  }
 
   if (!user) {
+    authTransitionInProgress = false;
     showToast(
       'Abriendo inicio de sesión seguro…'
     );
@@ -356,6 +373,7 @@ async function signInWithGoogle() {
   }
 
   await startAuthenticatedApp();
+  authTransitionInProgress = false;
 }
 
 async function chooseWorkspace(workspaceId) {
@@ -389,18 +407,7 @@ async function chooseWorkspace(workspaceId) {
   }
 
   if (previousWorkspaceId !== workspaceId) {
-    state.products = [];
-    state.activeDocumentId = null;
-    state.activeDocumentType = null;
-    state.selectedProductId = null;
-    state.searchResults = [];
-    state.importPreview = null;
-    state.reportRows = [];
-    state.members = [];
-    state.auditEvents = [];
-    state.migrationPreview = null;
-    state.migrationStatus = null;
-    state.view = 'home';
+    resetWorkspaceUiState();
   }
 
   updateNavigationUi();
@@ -415,7 +422,14 @@ async function handleAuthButton() {
     return signInWithGoogle();
   }
 
-  await logoutFirebase();
+  authTransitionInProgress = true;
+
+  try {
+    await logoutFirebase();
+  } finally {
+    authTransitionInProgress = false;
+  }
+
   state.authUser = null;
   state.session = null;
   state.availableWorkspaces = [];
@@ -428,6 +442,107 @@ async function handleAuthButton() {
   updateAuthUi();
   showToast('Sesión cerrada');
   renderAuthGate();
+}
+
+function handleFirebaseAuthStateChanged(user) {
+  const previousUid =
+    state.authUser?.uid || null;
+  const nextUser =
+    firebaseUserSummary(user);
+
+  state.authUser = nextUser;
+  updateAuthUi();
+
+  if (
+    !authLifecycleReady ||
+    authTransitionInProgress
+  ) {
+    return;
+  }
+
+  if (!nextUser) {
+    lockAuthenticatedUi();
+    showToast('La sesión terminó');
+    renderAuthGate();
+    return;
+  }
+
+  if (previousUid !== nextUser.uid) {
+    handleFirebaseAccountTransition(
+      nextUser
+    ).catch(error => {
+      lockAuthenticatedUi();
+      showToast(
+        error?.message ||
+        'No se pudo cambiar la sesión'
+      );
+      renderAuthGate();
+    });
+  }
+}
+
+async function handleFirebaseAccountTransition(
+  user
+) {
+  state.session = null;
+  state.availableWorkspaces = [];
+  state.workspaceReady = false;
+  state.authAccessOffline = false;
+  resetWorkspaceUiState();
+  updateNavigationUi();
+
+  const access =
+    await bootstrapFirebaseAccess({
+      uid: user.uid
+    });
+
+  state.availableWorkspaces =
+    access.workspaces || [];
+  state.workspaceReady =
+    Boolean(access.selectedWorkspace);
+  state.authAccessOffline =
+    Boolean(access.offline);
+
+  if (
+    access.offline &&
+    access.selectedWorkspace
+  ) {
+    state.session =
+      sessionFromCachedAccess(access);
+  }
+
+  if (!access.selectedWorkspace) {
+    updateNavigationUi();
+    renderWorkspaceGate();
+    return;
+  }
+
+  await startAuthenticatedApp();
+}
+
+function lockAuthenticatedUi() {
+  state.session = null;
+  state.availableWorkspaces = [];
+  state.workspaceReady = false;
+  state.authAccessOffline = false;
+  resetWorkspaceUiState();
+  updateAuthUi();
+  updateNavigationUi();
+}
+
+function resetWorkspaceUiState() {
+  state.products = [];
+  state.activeDocumentId = null;
+  state.activeDocumentType = null;
+  state.selectedProductId = null;
+  state.searchResults = [];
+  state.importPreview = null;
+  state.reportRows = [];
+  state.members = [];
+  state.auditEvents = [];
+  state.migrationPreview = null;
+  state.migrationStatus = null;
+  state.view = 'home';
 }
 
 function updateAuthUi() {
@@ -3507,6 +3622,33 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
       state.authUser?.email ||
       'Usuario local'
   });
+
+  if (
+    !result?.ok &&
+    state.authMode === 'firebase' &&
+    [
+      'AUTH_TOKEN_INVALID',
+      'WORKSPACE_ACCESS_DENIED'
+    ].includes(result?.error?.code)
+  ) {
+    lockAuthenticatedUi();
+
+    if (
+      result.error.code ===
+      'AUTH_TOKEN_INVALID'
+    ) {
+      await logoutFirebase().catch(() => {});
+      state.authUser = null;
+      updateAuthUi();
+    }
+
+    if (renderAfter) {
+      renderAuthGate();
+    }
+
+    await refreshSaveStatus();
+    return result;
+  }
 
   if (result?.ok) {
     if (state.authMode === 'firebase' && navigator.onLine) {
