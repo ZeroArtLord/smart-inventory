@@ -65,7 +65,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: smart_inventory
           POSTGRES_PASSWORD: ci_password
@@ -89,6 +89,8 @@ jobs:
       AUTH_MODE: dev
       DEV_ALLOW_HEADER_AUTH: "true"
       SMOKE_STATE_FILE: /tmp/smart-inventory-smoke.json
+      BACKUP_DIR: /tmp/smart-inventory-backups
+      BACKUP_RETENTION_DAYS: "14"
 
     steps:
       - name: Checkout
@@ -101,6 +103,11 @@ jobs:
 
       - name: Install server dependencies
         run: npm install --no-audit --no-fund
+
+      - name: Install PostgreSQL client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
 
       - name: Apply PostgreSQL migrations
         run: npm run migrate
@@ -158,8 +165,16 @@ jobs:
           AUTH_MODE: firebase
           DEV_ALLOW_HEADER_AUTH: "false"
           FIREBASE_PROJECT_ID: smart-inventory-c296b
-          BACKUP_DIR: /tmp/smart-inventory-backups
         run: npm run preflight:production
+
+      - name: Create PostgreSQL backup
+        run: npm run backup
+
+      - name: Verify backup catalog
+        run: npm run backup:verify
+
+      - name: Restore backup into temporary database
+        run: npm run backup:restore-smoke
 
       - name: Show server log on failure
         if: failure()
