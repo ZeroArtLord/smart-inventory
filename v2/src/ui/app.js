@@ -1364,9 +1364,11 @@ async function renderReports() {
             <option value="90" ${state.reportDays === 90 ? 'selected' : ''}>90 días</option>
           </select>
         </label>
-        <button class="secondary" data-action="export-report" data-format="csv" type="button">CSV</button>
-        <button class="secondary" data-action="export-report" data-format="xlsx" type="button">Excel</button>
-        <button class="primary" data-action="export-report" data-format="print" type="button">Imprimir / PDF</button>
+        ${hasClientPermission('reports.export') ? `
+          <button class="secondary" data-action="export-report" data-format="csv" type="button">CSV</button>
+          <button class="secondary" data-action="export-report" data-format="xlsx" type="button">Excel</button>
+          <button class="primary" data-action="export-report" data-format="print" type="button">Imprimir / PDF</button>
+        ` : '<span class="product-meta">Exportación no autorizada</span>'}
       </div>
     </section>
 
@@ -2113,6 +2115,11 @@ async function handleClick(event) {
 }
 
 function exportCurrentReport(format) {
+  requireClientPermission(
+    'reports.export',
+    'No tienes permiso para exportar reportes'
+  );
+
   const rows = (state.reportRows || []).map(row => ({
     Producto: row.name,
     SKU: row.sku || '',
