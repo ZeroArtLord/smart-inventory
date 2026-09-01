@@ -8,7 +8,8 @@
     "migrate": "node scripts/migrate.js",
     "backup": "node scripts/backup.js",
     "backup:verify": "node scripts/verifyBackup.js",
-    "smoke:integration": "node scripts/integrationSmoke.js"
+    "smoke:integration": "node scripts/integrationSmoke.js",
+    "smoke:restart": "node scripts/postRestartSmoke.js"
   },
   "dependencies": {
     "express": "^5.0.0",
