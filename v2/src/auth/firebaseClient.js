@@ -35,6 +35,18 @@ export async function initializeFirebaseClient({
 
   auth = globalThis.firebase.auth();
 
+  await auth.setPersistence(
+    globalThis.firebase.auth.Auth.Persistence.LOCAL
+  );
+
+  try {
+    await auth.getRedirectResult();
+  } catch (error) {
+    clearAuthTokenProvider();
+    currentUser = null;
+    throw error;
+  }
+
   if (unsubscribe) {
     unsubscribe();
     unsubscribe = null;
