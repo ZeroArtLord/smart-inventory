@@ -24,7 +24,7 @@ Este documento traduce el Plan Maestro a 26 checkpoints ejecutables. Cada etapa 
 20. **PWA móvil final + UX una mano/offline** — EN CURSO
 21. **Código de barras: cámara + lector USB/Bluetooth** — LISTO
 22. **PDF/Excel/CSV + impresión de documentos/reportes** — LISTO
-23. **Auditoría, reapertura autorizada y compensaciones** — EN CURSO
+23. **Auditoría, reapertura autorizada y compensaciones** — LISTO
 24. **Hardening: seguridad, caída, concurrencia, carga y backups** — EN CURSO
 25. **Migración V1 + piloto + despliegue/producción** — PENDIENTE
 26. **SAINT Enterprise Bridge** — PENDIENTE
