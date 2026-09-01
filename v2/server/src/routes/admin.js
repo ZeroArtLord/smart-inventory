@@ -6,6 +6,7 @@ import {
   validateRoleCode
 } from '../security/roles.js';
 import { requirePermission } from '../middleware/requirePermission.js';
+import { writeAuditEvent } from '../audit/auditService.js';
 
 export const adminRouter = Router();
 
@@ -122,6 +123,16 @@ adminRouter.post('/members', async (req, res, next) => {
         ]
       );
 
+      await writeAuditEvent(client, req.auth, {
+        action: 'MEMBER_PROVISIONED',
+        entityType: 'workspaceMember',
+        entityId: user.id,
+        metadata: {
+          roleCode,
+          active: true
+        }
+      });
+
       return {
         userId: user.id,
         externalAuthId: user.external_auth_id,
@@ -139,6 +150,7 @@ adminRouter.post('/members', async (req, res, next) => {
   } catch (error) {
     if (
       error?.message === 'Rol inválido' ||
+      error?.message === 'Email inválido' ||
       error?.message?.startsWith('Permiso')
     ) {
       return res.status(400).json({
@@ -185,24 +197,49 @@ adminRouter.patch('/members/:userId', async (req, res, next) => {
       });
     }
 
-    const result = await pool.query(
-      `UPDATE workspace_members
-       SET role_code = $3,
-           permissions = $4::jsonb,
-           active = $5
-       WHERE workspace_id = $1
-         AND user_id = $2
-       RETURNING workspace_id, user_id, role_code, permissions, active`,
-      [
-        req.auth.workspaceId,
-        targetUserId,
-        roleCode,
-        JSON.stringify(permissions),
-        active
-      ]
-    );
+    const member = await withTransaction(async client => {
+      const result = await client.query(
+        `UPDATE workspace_members
+         SET role_code = $3,
+             permissions = $4::jsonb,
+             active = $5
+         WHERE workspace_id = $1
+           AND user_id = $2
+         RETURNING workspace_id, user_id, role_code, permissions, active`,
+        [
+          req.auth.workspaceId,
+          targetUserId,
+          roleCode,
+          JSON.stringify(permissions),
+          active
+        ]
+      );
 
-    if (result.rowCount === 0) {
+      if (result.rowCount === 0) return null;
+
+      const row = result.rows[0];
+
+      await writeAuditEvent(client, req.auth, {
+        action: 'MEMBER_UPDATED',
+        entityType: 'workspaceMember',
+        entityId: targetUserId,
+        metadata: {
+          roleCode: row.role_code,
+          active: row.active,
+          permissions: row.permissions || []
+        }
+      });
+
+      return {
+        workspaceId: row.workspace_id,
+        userId: row.user_id,
+        roleCode: row.role_code,
+        permissions: row.permissions || [],
+        active: row.active
+      };
+    });
+
+    if (!member) {
       return res.status(404).json({
         ok: false,
         code: 'MEMBER_NOT_FOUND',
@@ -210,17 +247,7 @@ adminRouter.patch('/members/:userId', async (req, res, next) => {
       });
     }
 
-    const row = result.rows[0];
-    res.json({
-      ok: true,
-      member: {
-        workspaceId: row.workspace_id,
-        userId: row.user_id,
-        roleCode: row.role_code,
-        permissions: row.permissions || [],
-        active: row.active
-      }
-    });
+    res.json({ ok: true, member });
   } catch (error) {
     if (
       error?.message === 'Rol inválido' ||
