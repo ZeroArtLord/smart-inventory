@@ -40,12 +40,14 @@ Verificar:
 
 ```powershell
 Invoke-RestMethod http://localhost:5190/health | ConvertTo-Json
+Invoke-RestMethod http://localhost:5190/ready | ConvertTo-Json -Depth 5
 ```
 
 Esperado:
 
-- `ok: true`
-- `database: ok`
+- `/health`: `ok: true` y `database: ok`.
+- `/ready`: `ok: true`, `migrations: ok` y `pending: []`.
+- Si `/ready` devuelve 503 con migraciones pendientes, ejecutar `npm run migrate` antes de continuar.
 
 Después, cuando Armando tenga tiempo para pruebas manuales:
 
