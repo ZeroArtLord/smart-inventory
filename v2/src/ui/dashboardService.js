@@ -66,7 +66,8 @@ export async function getDashboardSnapshot({
   const pendingSync = syncQueue.filter(item =>
     item.status === 'PENDING' ||
     item.status === 'FAILED' ||
-    item.status === 'SYNCING'
+    item.status === 'SYNCING' ||
+    item.status === 'CONFLICT'
   );
 
   const lowStock = inventoryRows
