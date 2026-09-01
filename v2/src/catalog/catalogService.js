@@ -14,6 +14,10 @@ import {
   runTransaction
 } from '../storage/database.js';
 import { SYNC_STATUS } from '../sync/localQueue.js';
+import {
+  initialEntityVersion,
+  nextEntityVersion
+} from '../core/versioning.js';
 
 export async function seedDefaultUnits() {
   const existing = await getAll(STORES.UNITS);
@@ -36,6 +40,7 @@ export async function createCategory(name) {
     name: cleanName,
     nameNormalized: normalizeSearchText(cleanName),
     active: true,
+    version: initialEntityVersion(),
     createdAt: now,
     updatedAt: now
   };
@@ -57,6 +62,7 @@ export async function createSupplier(data = {}) {
     email: normalizeText(data.email),
     notes: normalizeText(data.notes),
     active: true,
+    version: initialEntityVersion(),
     createdAt: now,
     updatedAt: now
   };
@@ -75,6 +81,7 @@ export async function createLocation(name) {
     name: cleanName,
     nameNormalized: normalizeSearchText(cleanName),
     active: true,
+    version: initialEntityVersion(),
     createdAt: now,
     updatedAt: now
   };
@@ -117,6 +124,7 @@ export async function createProduct(data = {}) {
     replenishmentMethod: method,
     supplierId: data.supplierId || null,
     active: data.active !== false,
+    version: initialEntityVersion(),
     createdAt: now,
     updatedAt: now
   };
@@ -133,6 +141,7 @@ export async function updateProduct(productId, patch = {}) {
     ...current,
     ...patch,
     id: current.id,
+    version: nextEntityVersion(current),
     updatedAt: new Date().toISOString()
   };
 
