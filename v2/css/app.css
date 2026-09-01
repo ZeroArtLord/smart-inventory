@@ -558,3 +558,53 @@ input, select {
     width: 100%;
   }
 }
+
+
+.report-actions {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.closed-document-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.closed-document-row:last-child {
+  border-bottom: 0;
+}
+
+.document-export-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.document-export-actions button,
+.report-actions button {
+  min-height: 38px;
+  padding: 7px 10px;
+}
+
+@media (max-width: 640px) {
+  .report-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .closed-document-row {
+    grid-template-columns: 1fr;
+  }
+
+  .document-export-actions {
+    justify-content: flex-start;
+  }
+}
