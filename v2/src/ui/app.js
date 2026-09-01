@@ -357,6 +357,9 @@ async function chooseWorkspace(workspaceId) {
     throw new Error('Ese almacén no está autorizado para tu cuenta');
   }
 
+  const previousWorkspaceId =
+    state.session?.workspaceId || null;
+
   await selectFirebaseWorkspace(workspaceId);
   state.workspaceReady = true;
   state.authAccessOffline = false;
@@ -373,6 +376,21 @@ async function chooseWorkspace(workspaceId) {
       permissions: selected.permissions || [],
       authMode: 'firebase'
     };
+  }
+
+  if (previousWorkspaceId !== workspaceId) {
+    state.products = [];
+    state.activeDocumentId = null;
+    state.activeDocumentType = null;
+    state.selectedProductId = null;
+    state.searchResults = [];
+    state.importPreview = null;
+    state.reportRows = [];
+    state.members = [];
+    state.auditEvents = [];
+    state.migrationPreview = null;
+    state.migrationStatus = null;
+    state.view = 'home';
   }
 
   updateNavigationUi();
@@ -552,6 +570,9 @@ async function renderHome() {
         <p>Resumen operativo calculado desde movimientos, lotes y trabajo local.</p>
       </div>
       <div class="dashboard-sync">
+        ${state.availableWorkspaces.length > 1
+          ? '<button class="secondary" data-action="show-workspace-picker" type="button">Cambiar almacén</button>'
+          : ''}
         ${installPromptEvent
           ? '<button class="secondary" data-action="install-pwa" type="button">Instalar app</button>'
           : ''}
@@ -1937,6 +1958,10 @@ async function handleClick(event) {
         return handleAuthButton();
       case 'select-workspace':
         return chooseWorkspace(button.dataset.workspaceId);
+      case 'show-workspace-picker':
+        state.workspaceReady = false;
+        updateNavigationUi();
+        return renderWorkspaceGate();
       case 'correct-document':
         return correctClosedDocument(
           button.dataset.id,
