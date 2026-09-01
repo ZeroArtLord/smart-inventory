@@ -27,3 +27,28 @@ test('rechaza proveedores que no sean funciones', () => {
     /debe ser una función/i
   );
 });
+
+
+test('proveedor recibe forceRefresh cuando se solicita', async () => {
+  let received = null;
+
+  setAuthTokenProvider(async options => {
+    received = options;
+    return 'refreshed-token';
+  });
+
+  assert.equal(
+    await getAuthToken({
+      required: true,
+      forceRefresh: true
+    }),
+    'refreshed-token'
+  );
+
+  assert.equal(
+    received?.forceRefresh,
+    true
+  );
+
+  clearAuthTokenProvider();
+});
