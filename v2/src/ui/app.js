@@ -71,6 +71,15 @@ import {
   downloadXlsx,
   printRows
 } from '../export/exportService.js';
+import {
+  getCurrentSession,
+  listWorkspaceMembers,
+  createWorkspaceMember,
+  updateWorkspaceMember,
+  can,
+  ROLE_OPTIONS,
+  PERMISSION_OPTIONS
+} from '../admin/adminClient.js';
 
 const appRoot = document.getElementById('app');
 const saveStatus = document.getElementById('saveStatus');
@@ -84,7 +93,9 @@ const state = {
   searchResults: [],
   importPreview: null,
   reportDays: 30,
-  reportRows: []
+  reportRows: [],
+  session: null,
+  members: []
 };
 
 const ownerId = getLocalOwnerId();
@@ -103,6 +114,7 @@ async function init() {
     bindSyncLifecycle();
     await syncAndRefresh({ renderAfter: false });
     await refreshProducts();
+    await refreshSession({ silent: true });
     await render();
   } catch (error) {
     renderFatal(error);
@@ -153,6 +165,8 @@ async function render() {
       return renderReports();
     case 'conflicts':
       return renderConflicts();
+    case 'users':
+      return renderUsers();
     default:
       return renderHome();
   }
@@ -164,7 +178,6 @@ async function renderHome() {
     state.products.map(product => [product.id, product])
   );
 
-  state.reportRows = inventoryRows;
 
   appRoot.innerHTML = `
     <section class="hero dashboard-hero">
@@ -305,8 +318,173 @@ async function renderHome() {
       ${actionCard('entry', 'Entrada', 'Recepción, costo, lote y vencimiento opcionales.')}
       ${actionCard('replenishment', 'Comprar / Pedir', 'Sugerencias, pedidos y mercancía en tránsito.')}
       ${actionCard('reports', 'Reportes', 'Inventario, consumo, vencimientos y movimientos.')}
+      ${can(state.session, 'users.manage')
+        ? actionCard('users', 'Usuarios y permisos', 'Roles, visibilidad y permisos granulares.')
+        : ''}
       ${actionCard('catalog', 'Catálogo', 'Excel, mínimos, máximos y reposición.')}
     </section>
+  `;
+}
+
+async function renderUsers() {
+  if (!state.session) {
+    await refreshSession({ silent: true });
+  }
+
+  if (!can(state.session, 'users.manage')) {
+    appRoot.innerHTML = `
+      <section class="hero">
+        <h2>Usuarios y permisos</h2>
+        <p>Esta sección requiere el permiso users.manage.</p>
+      </section>
+      <section class="card">
+        <div class="empty">No tienes permiso para administrar usuarios.</div>
+      </section>
+    `;
+    return;
+  }
+
+  try {
+    state.members = await listWorkspaceMembers();
+  } catch (error) {
+    appRoot.innerHTML = `
+      <section class="hero">
+        <h2>Usuarios y permisos</h2>
+        <p>Administración protegida por la API.</p>
+      </section>
+      <section class="card">
+        <div class="status-danger">${escapeHtml(error.message || String(error))}</div>
+      </section>
+    `;
+    return;
+  }
+
+  appRoot.innerHTML = `
+    <section class="hero dashboard-hero">
+      <div>
+        <h2>Usuarios y permisos</h2>
+        <p>La interfaz oculta acciones, pero la API vuelve a validar cada permiso.</p>
+      </div>
+      <span class="badge">${state.members.length} miembro(s)</span>
+    </section>
+
+    <section class="card stack">
+      <div>
+        <h3 style="margin:0">Agregar usuario</h3>
+        <div class="product-meta">
+          Puedes preautorizar por email. En Firebase se vinculará al UID en el primer acceso válido.
+        </div>
+      </div>
+
+      <form id="memberForm" class="user-create-grid">
+        <label>
+          Nombre
+          <input name="displayName" autocomplete="name" placeholder="Nombre visible">
+        </label>
+
+        <label>
+          Email
+          <input name="email" type="email" autocomplete="email" required placeholder="usuario@empresa.com">
+        </label>
+
+        <label>
+          Rol inicial
+          <select name="roleCode">
+            ${ROLE_OPTIONS.map(role => `
+              <option value="${role.code}" ${role.code === 'WAREHOUSE' ? 'selected' : ''}>
+                ${escapeHtml(role.label)}
+              </option>
+            `).join('')}
+          </select>
+        </label>
+
+        <button class="primary" type="submit">Agregar miembro</button>
+      </form>
+    </section>
+
+    <section class="stack" style="margin-top:16px">
+      ${state.members.map(member => renderMemberCard(member)).join('')}
+    </section>
+  `;
+}
+
+function renderMemberCard(member) {
+  const permissions = Array.isArray(member.permissions)
+    ? member.permissions
+    : [];
+  const wildcard = permissions.includes('*');
+
+  return `
+    <article class="card user-member-card" data-member-card="${escapeHtml(member.userId)}">
+      <div class="row user-member-head">
+        <div>
+          <strong>${escapeHtml(member.displayName || member.email || member.externalAuthId || member.userId)}</strong>
+          <div class="product-meta">
+            ${escapeHtml(member.email || 'Sin email')} ·
+            ${member.externalAuthId ? 'Identidad vinculada' : 'Pendiente de primer acceso'}
+          </div>
+        </div>
+        <span class="badge ${member.membershipActive ? 'status-good' : 'status-warning'}">
+          ${member.membershipActive ? 'Activo' : 'Desactivado'}
+        </span>
+      </div>
+
+      <div class="user-member-controls">
+        <label>
+          Rol
+          <select data-member-role>
+            ${ROLE_OPTIONS.map(role => `
+              <option value="${role.code}" ${role.code === member.roleCode ? 'selected' : ''}>
+                ${escapeHtml(role.label)}
+              </option>
+            `).join('')}
+          </select>
+        </label>
+
+        <label class="user-active-toggle">
+          <input data-member-active type="checkbox" ${member.membershipActive ? 'checked' : ''}>
+          Membresía activa
+        </label>
+
+        <button
+          class="primary"
+          data-action="save-member-role"
+          data-user-id="${escapeHtml(member.userId)}"
+          type="button"
+        >Aplicar rol / estado</button>
+      </div>
+
+      <details class="permission-details">
+        <summary>
+          Permisos granulares
+          ${wildcard ? '<span class="badge">Acceso total</span>' : `<span class="badge">${permissions.length}</span>`}
+        </summary>
+
+        <div class="permission-grid">
+          ${PERMISSION_OPTIONS.map(permission => `
+            <label class="permission-option">
+              <input
+                type="checkbox"
+                data-member-permission
+                value="${escapeHtml(permission.code)}"
+                ${wildcard || permissions.includes(permission.code) ? 'checked' : ''}
+              >
+              <span>
+                <strong>${escapeHtml(permission.label)}</strong>
+                <small>${escapeHtml(permission.code)}</small>
+              </span>
+            </label>
+          `).join('')}
+        </div>
+
+        <button
+          class="secondary"
+          data-action="save-member-permissions"
+          data-user-id="${escapeHtml(member.userId)}"
+          type="button"
+        >Guardar permisos personalizados</button>
+      </details>
+    </article>
   `;
 }
 
@@ -1089,6 +1267,10 @@ async function handleClick(event) {
           button.dataset.id,
           button.dataset.format
         );
+      case 'save-member-role':
+        return saveMemberRole(button.dataset.userId);
+      case 'save-member-permissions':
+        return saveMemberPermissions(button.dataset.userId);
     }
   } catch (error) {
     showToast(error.message || String(error));
@@ -1308,6 +1490,26 @@ function closeBarcodeScanner() {
 }
 
 async function handleSubmit(event) {
+  if (event.target.id === 'memberForm') {
+    event.preventDefault();
+
+    try {
+      const form = new FormData(event.target);
+      await createWorkspaceMember({
+        displayName: form.get('displayName'),
+        email: form.get('email'),
+        roleCode: form.get('roleCode')
+      });
+
+      showToast('Usuario agregado al almacén');
+      state.members = await listWorkspaceMembers();
+      await render();
+    } catch (error) {
+      showToast(error.message || String(error));
+    }
+    return;
+  }
+
   if (event.target.id !== 'productForm') return;
   event.preventDefault();
 
@@ -1399,6 +1601,69 @@ async function handleKeydown(event) {
     state.searchResults = [];
     return render();
   }
+}
+
+async function saveMemberRole(userId) {
+  const card = document.querySelector(
+    `[data-member-card="${cssEscape(userId)}"]`
+  );
+  if (!card) throw new Error('Miembro no encontrado en pantalla');
+
+  const roleCode = card.querySelector('[data-member-role]')?.value;
+  const active = Boolean(
+    card.querySelector('[data-member-active]')?.checked
+  );
+
+  await updateWorkspaceMember(userId, {
+    roleCode,
+    active
+  });
+
+  showToast('Rol y estado actualizados');
+  state.members = await listWorkspaceMembers();
+  await refreshSession({ silent: true });
+  await render();
+}
+
+async function saveMemberPermissions(userId) {
+  const card = document.querySelector(
+    `[data-member-card="${cssEscape(userId)}"]`
+  );
+  if (!card) throw new Error('Miembro no encontrado en pantalla');
+
+  const roleCode = card.querySelector('[data-member-role]')?.value;
+  const active = Boolean(
+    card.querySelector('[data-member-active]')?.checked
+  );
+  const permissions = [...card.querySelectorAll('[data-member-permission]:checked')]
+    .map(input => input.value);
+
+  await updateWorkspaceMember(userId, {
+    roleCode,
+    permissions,
+    active
+  });
+
+  showToast('Permisos personalizados guardados');
+  state.members = await listWorkspaceMembers();
+  await refreshSession({ silent: true });
+  await render();
+}
+
+async function refreshSession({ silent = false } = {}) {
+  try {
+    state.session = await getCurrentSession();
+    return state.session;
+  } catch (error) {
+    state.session = null;
+    if (!silent) throw error;
+    return null;
+  }
+}
+
+function cssEscape(value) {
+  if (globalThis.CSS?.escape) return CSS.escape(String(value));
+  return String(value).replace(/["\\]/g, '\\async function applyCatalogPreview() {');
 }
 
 async function applyCatalogPreview() {
