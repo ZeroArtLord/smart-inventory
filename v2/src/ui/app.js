@@ -39,6 +39,13 @@ import {
   getDashboardSnapshot
 } from './dashboardService.js';
 import {
+  buildInventoryReport,
+  summarizeInventoryReport,
+  listExpiringLots,
+  summarizeMovements,
+  buildProductMovementTotals
+} from '../reporting/reportingEngine.js';
+import {
   createReplenishment,
   listReplenishments,
   changeReplenishmentStatus,
@@ -56,7 +63,8 @@ const state = {
   activeDocumentType: null,
   selectedProductId: null,
   searchResults: [],
-  importPreview: null
+  importPreview: null,
+  reportDays: 30
 };
 
 const ownerId = getLocalOwnerId();
@@ -120,6 +128,8 @@ async function render() {
       return renderDocumentWorkspace(DOCUMENT_TYPES.SUPPLY);
     case 'replenishment':
       return renderReplenishmentWorkspace();
+    case 'reports':
+      return renderReports();
     default:
       return renderHome();
   }
@@ -267,8 +277,190 @@ async function renderHome() {
       ${actionCard('supply', 'Surtido', 'Salida validada y FEFO por lotes cuando aplica.')}
       ${actionCard('entry', 'Entrada', 'Recepción, costo, lote y vencimiento opcionales.')}
       ${actionCard('replenishment', 'Comprar / Pedir', 'Sugerencias, pedidos y mercancía en tránsito.')}
+      ${actionCard('reports', 'Reportes', 'Inventario, consumo, vencimientos y movimientos.')}
       ${actionCard('catalog', 'Catálogo', 'Excel, mínimos, máximos y reposición.')}
     </section>
+  `;
+}
+
+async function renderReports() {
+  const [movements, lots] = await Promise.all([
+    getAll(STORES.MOVEMENTS),
+    getAll(STORES.LOTS)
+  ]);
+
+  const now = new Date();
+  const from = new Date(
+    now.getTime() - (Number(state.reportDays || 30) * 86400000)
+  );
+
+  const inventoryRows = buildInventoryReport(
+    state.products,
+    movements,
+    { now }
+  );
+  const inventorySummary = summarizeInventoryReport(inventoryRows);
+  const movementSummary = summarizeMovements(movements, {
+    from,
+    to: now
+  });
+  const movementTotals = buildProductMovementTotals(movements, {
+    from,
+    to: now
+  });
+  const expiringLots = listExpiringLots(lots, {
+    now,
+    withinDays: 30,
+    includeExpired: true
+  });
+
+  const productById = new Map(
+    state.products.map(product => [product.id, product])
+  );
+
+  appRoot.innerHTML = `
+    <section class="hero dashboard-hero">
+      <div>
+        <h2>Reportes</h2>
+        <p>Datos calculados desde movimientos reales. Nada de stock editable.</p>
+      </div>
+      <label class="report-filter">
+        Periodo
+        <select id="reportDays">
+          <option value="7" ${state.reportDays === 7 ? 'selected' : ''}>7 días</option>
+          <option value="30" ${state.reportDays === 30 ? 'selected' : ''}>30 días</option>
+          <option value="90" ${state.reportDays === 90 ? 'selected' : ''}>90 días</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="grid dashboard-grid">
+      ${dashboardMetric(
+        inventorySummary.products,
+        'Productos',
+        'Activos'
+      )}
+      ${dashboardMetric(
+        inventorySummary.critical,
+        'Stock crítico',
+        'Requiere atención'
+      )}
+      ${dashboardMetric(
+        movementSummary.entryCount,
+        'Entradas',
+        `Últimos ${state.reportDays} días`
+      )}
+      ${dashboardMetric(
+        movementSummary.supplyCount,
+        'Surtidos',
+        `Últimos ${state.reportDays} días`
+      )}
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <div class="row">
+        <div>
+          <h3 style="margin:0">Inventario actual</h3>
+          <div class="product-meta">Stock, mínimos, máximos, cobertura y tendencia.</div>
+        </div>
+        <span class="badge">${inventoryRows.length}</span>
+      </div>
+
+      <div class="report-table-wrap">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Stock</th>
+              <th>Min</th>
+              <th>Max</th>
+              <th>Tránsito</th>
+              <th>Sugerencia</th>
+              <th>Cobertura</th>
+              <th>Tendencia</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${inventoryRows.map(row => `
+              <tr>
+                <td>
+                  <strong>${escapeHtml(row.name)}</strong>
+                  <div class="product-meta">${escapeHtml(row.sku || '')}</div>
+                </td>
+                <td>${formatNumber(row.stock)}</td>
+                <td>${formatNumber(row.minStock)}</td>
+                <td>${formatNumber(row.maxStock)}</td>
+                <td>${formatNumber(row.pendingInbound)}</td>
+                <td>${formatNumber(row.suggestedQuantity)}</td>
+                <td>${row.coverageDays === null ? '—' : formatNumber(row.coverageDays) + ' d'}</td>
+                <td>${trendLabel(row)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="operation-layout" style="margin-top:16px">
+      <section class="card stack">
+        <div class="row">
+          <div>
+            <h3 style="margin:0">Mayor movimiento</h3>
+            <div class="product-meta">Surtido real del periodo seleccionado.</div>
+          </div>
+        </div>
+
+        ${movementTotals.length
+          ? movementTotals.slice(0, 10).map(row => {
+              const product = productById.get(row.productId);
+              return `
+                <div class="dashboard-list-row">
+                  <div>
+                    <strong>${escapeHtml(product?.name || row.productId)}</strong>
+                    <div class="product-meta">
+                      Entradas ${formatNumber(row.entry)} · Surtidos ${formatNumber(row.supply)} · Ajustes ${formatSigned(row.adjustment)}
+                    </div>
+                  </div>
+                  <div class="dashboard-list-end">
+                    <strong>${formatNumber(row.supply)}</strong>
+                    <small>surtido</small>
+                  </div>
+                </div>
+              `;
+            }).join('')
+          : '<div class="empty compact-empty">Sin movimientos en el periodo.</div>'}
+      </section>
+
+      <section class="card stack">
+        <div class="row">
+          <div>
+            <h3 style="margin:0">Vencimientos</h3>
+            <div class="product-meta">Lotes vencidos o próximos 30 días.</div>
+          </div>
+          <span class="badge">${expiringLots.length}</span>
+        </div>
+
+        ${expiringLots.length
+          ? expiringLots.slice(0, 10).map(lot => {
+              const product = productById.get(lot.productId);
+              return `
+                <div class="dashboard-list-row">
+                  <div>
+                    <strong>${escapeHtml(product?.name || lot.productId)}</strong>
+                    <div class="product-meta">
+                      Lote ${escapeHtml(lot.lotNumber || '—')} · ${formatNumber(lot.remainingQuantity)} restantes
+                    </div>
+                  </div>
+                  <div class="dashboard-list-end ${lot.expired ? 'status-danger' : lot.daysRemaining <= 7 ? 'status-warning' : ''}">
+                    <strong>${lot.expired ? 'Vencido' : lot.daysRemaining + ' d'}</strong>
+                    <small>${formatShortDate(lot.expiresAt)}</small>
+                  </div>
+                </div>
+              `;
+            }).join('')
+          : '<div class="empty compact-empty">Sin vencimientos próximos.</div>'}
+      </section>
+    </div>
   `;
 }
 
@@ -784,6 +976,11 @@ async function handleSubmit(event) {
 }
 
 async function handleChange(event) {
+  if (event.target.id === 'reportDays') {
+    state.reportDays = Number(event.target.value || 30);
+    return render();
+  }
+
   if (event.target.id !== 'catalogImportFile') return;
 
   const file = event.target.files?.[0];
@@ -1205,6 +1402,30 @@ function renderCatalogImportPreview(preview) {
       ` : '<div class="empty">No hay filas válidas para importar.</div>'}
     </div>
   `;
+}
+
+function trendLabel(row) {
+  if (row.trendConfidence === 'INSUFFICIENT') {
+    return '<span class="product-meta">Sin historial</span>';
+  }
+
+  const arrow = row.trendDirection === 'UP'
+    ? '↑'
+    : row.trendDirection === 'DOWN'
+      ? '↓'
+      : '→';
+
+  const className = row.trendDirection === 'UP'
+    ? 'status-warning'
+    : row.trendDirection === 'DOWN'
+      ? 'status-good'
+      : '';
+
+  const percent = row.trendPercentChange === null
+    ? ''
+    : ' ' + formatSigned(row.trendPercentChange) + '%';
+
+  return `<span class="${className}"><strong>${arrow}${percent}</strong></span>`;
 }
 
 function renderReplenishmentCreateButtons(product, quantity) {
