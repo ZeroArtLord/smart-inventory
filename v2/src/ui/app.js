@@ -26,7 +26,8 @@ import {
   closeDocument
 } from '../documents/documentService.js';
 import {
-  DOCUMENT_TYPES
+  DOCUMENT_TYPES,
+  DOCUMENT_STATUS
 } from '../documents/documentTypes.js';
 import {
   getReplenishmentSuggestion
@@ -162,6 +163,8 @@ async function renderHome() {
   const productById = new Map(
     state.products.map(product => [product.id, product])
   );
+
+  state.reportRows = inventoryRows;
 
   appRoot.innerHTML = `
     <section class="hero dashboard-hero">
@@ -392,14 +395,19 @@ async function renderReports() {
         <h2>Reportes</h2>
         <p>Datos calculados desde movimientos reales. Nada de stock editable.</p>
       </div>
-      <label class="report-filter">
-        Periodo
-        <select id="reportDays">
-          <option value="7" ${state.reportDays === 7 ? 'selected' : ''}>7 días</option>
-          <option value="30" ${state.reportDays === 30 ? 'selected' : ''}>30 días</option>
-          <option value="90" ${state.reportDays === 90 ? 'selected' : ''}>90 días</option>
-        </select>
-      </label>
+      <div class="report-actions">
+        <label class="report-filter">
+          Periodo
+          <select id="reportDays">
+            <option value="7" ${state.reportDays === 7 ? 'selected' : ''}>7 días</option>
+            <option value="30" ${state.reportDays === 30 ? 'selected' : ''}>30 días</option>
+            <option value="90" ${state.reportDays === 90 ? 'selected' : ''}>90 días</option>
+          </select>
+        </label>
+        <button class="secondary" data-action="export-report" data-format="csv" type="button">CSV</button>
+        <button class="secondary" data-action="export-report" data-format="xlsx" type="button">Excel</button>
+        <button class="primary" data-action="export-report" data-format="print" type="button">Imprimir / PDF</button>
+      </div>
     </section>
 
     <section class="grid dashboard-grid">
