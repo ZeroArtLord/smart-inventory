@@ -13,10 +13,10 @@ Este documento traduce el Plan Maestro a 26 checkpoints ejecutables. Cada etapa 
 9. **Entradas + costos/lotes/vencimiento** — LISTO
 10. **Surtidos + validación de stock + cierre** — LISTO
 11. **Lotes + FEFO + ubicación de lotes** — LISTO
-12. **Compras/pedidos + mercancía en tránsito** — EN CURSO
-13. **Inteligencia V1–V3: min/max, consumo, cobertura + tránsito** — EN CURSO
-14. **Inteligencia avanzada: tendencia, rotación y recomendación futura** — PENDIENTE
-15. **Dashboard + motor de reportes operativos** — EN CURSO
+12. **Compras/pedidos + mercancía en tránsito** — LISTO
+13. **Inteligencia V1–V3: min/max, consumo, cobertura + tránsito** — LISTO
+14. **Inteligencia avanzada: tendencia, rotación y recomendación futura** — EN CURSO
+15. **Dashboard + motor de reportes operativos** — LISTO
 16. **Usuarios, roles y permisos granulares** — EN CURSO
 17. **Autenticación real por token firmado** — PENDIENTE
 18. **Conflictos/versionado multi-dispositivo** — PENDIENTE
