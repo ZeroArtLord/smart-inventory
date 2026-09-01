@@ -95,3 +95,27 @@ npm run auth:firebase-check
 Este comando hace una consulta real a Firebase Authentication usando `applicationDefault()` y confirma que el proyecto y la service account pueden acceder al servicio. No usa ni imprime contraseñas ni tokens de usuarios.
 
 Después de que este comando pase, la prueba final de la ETAPA 17 es iniciar sesión desde el navegador con Google y confirmar que `/api/v1/auth/bootstrap` y `/api/v1/session` reconocen el usuario y sus workspaces usando un ID Token real.
+
+## Prueba E2E con un ID Token Firebase real
+
+Cuando el servidor ya esté arrancado con `AUTH_MODE=firebase`, se puede probar la cadena completa sin usar una cuenta humana:
+
+```powershell
+$env:FIREBASE_WEB_API_KEY = "TU_API_KEY_WEB"
+$env:AUTH_BASE_URL = "http://127.0.0.1:5190"
+npm run auth:firebase-e2e
+```
+
+El script crea un usuario Firebase temporal y un usuario local temporal, genera un custom token con Firebase Admin, lo intercambia mediante Identity Toolkit por un **ID Token real emitido por Firebase**, y usa ese token contra Smart Inventory.
+
+Comprueba automáticamente:
+
+- verificación criptográfica del ID Token por Firebase Admin;
+- vínculo del UID Firebase con el usuario pre-provisionado por email verificado;
+- `/api/v1/auth/bootstrap`;
+- `/api/v1/session`;
+- bloqueo inmediato al desactivar la membresía del workspace;
+- rechazo del token cuando el usuario Firebase se deshabilita;
+- limpieza del usuario temporal en Firebase y PostgreSQL.
+
+Esta es la prueba automática más cercana a producción. Después solo queda validar en navegador el flujo humano **Continuar con Google** y el dominio/origen HTTPS autorizado.
