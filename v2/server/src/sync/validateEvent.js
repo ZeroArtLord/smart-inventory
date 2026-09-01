@@ -75,6 +75,10 @@ export function validateSyncEvent(event) {
       requireUpsert(operation);
       validateLot(payload);
       break;
+    case 'replenishment':
+      requireUpsert(operation);
+      validateReplenishment(payload);
+      break;
     case 'movement':
       if (operation !== 'CREATE') {
         throw new Error('Los movimientos solo admiten CREATE');
@@ -178,6 +182,58 @@ function validateLot(lot) {
   if (lot.unitCost !== null && lot.unitCost !== undefined) {
     finiteNonNegative(lot.unitCost, 'Costo del lote');
   }
+}
+
+function validateReplenishment(item) {
+  requireText(item.productId, 'productId');
+
+  if (!new Set(['PURCHASE', 'ORDER']).has(item.method)) {
+    throw new Error('Método de compra/pedido inválido');
+  }
+
+  if (!new Set([
+    'DRAFT',
+    'ORDERED',
+    'IN_TRANSIT',
+    'PARTIALLY_RECEIVED',
+    'RECEIVED',
+    'CANCELLED'
+  ]).has(item.status)) {
+    throw new Error('Estado de compra/pedido inválido');
+  }
+
+  const requested = finiteNonNegative(
+    item.requestedQuantity,
+    'Cantidad solicitada'
+  );
+  const received = finiteNonNegative(
+    item.receivedQuantity ?? 0,
+    'Cantidad recibida'
+  );
+  const pending = finiteNonNegative(
+    item.pendingQuantity,
+    'Cantidad pendiente'
+  );
+
+  if (requested <= 0) {
+    throw new Error('La cantidad solicitada debe ser mayor que cero');
+  }
+
+  if (received > requested) {
+    throw new Error('La cantidad recibida supera la solicitada');
+  }
+
+  if (Math.abs((requested - received) - pending) > 0.000001) {
+    throw new Error('Las cantidades de compra/pedido no cuadran');
+  }
+
+  if (item.expectedAt) requireDate(item.expectedAt, 'expectedAt');
+  if (item.orderedAt) requireDate(item.orderedAt, 'orderedAt');
+  if (item.receivedAt) requireDate(item.receivedAt, 'receivedAt');
+  if (item.cancelledAt) requireDate(item.cancelledAt, 'cancelledAt');
+
+  requireDate(item.createdAt, 'createdAt');
+  requireDate(item.updatedAt, 'updatedAt');
 }
 
 function validateMovement(movement) {
