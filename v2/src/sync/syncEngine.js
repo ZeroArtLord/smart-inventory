@@ -56,7 +56,34 @@ export async function syncNow({
       displayName
     });
 
-    const pushed = await pushPending(config);
+    let pushed;
+
+    try {
+      pushed = await pushPending(config);
+    } catch (error) {
+      if (error?.code !== 'SYNC_CONFLICT') throw error;
+
+      const pulled = await pullRemote(config);
+      await pruneSyncedOperations();
+
+      emit({
+        state: 'conflict',
+        message: error.message,
+        details: error.details || null,
+        pulled: pulled.count,
+        cursor: pulled.cursor
+      });
+
+      return {
+        ok: false,
+        conflict: true,
+        error,
+        pushed: 0,
+        pulled: pulled.count,
+        cursor: pulled.cursor
+      };
+    }
+
     const pulled = await pullRemote(config);
 
     await pruneSyncedOperations();
