@@ -725,6 +725,19 @@ async function renderReplenishmentWorkspace() {
 async function renderDocumentWorkspace(type) {
   if (!state.activeDocumentId || state.activeDocumentType !== type) {
     const drafts = await listDraftDocuments({ ownerId, type });
+    const allDocuments = await getAll(STORES.DOCUMENTS);
+    const closedDocuments = allDocuments
+      .filter(document => document.type === type)
+      .filter(document =>
+        document.status !== DOCUMENT_STATUS.DRAFT &&
+        document.status !== DOCUMENT_STATUS.CANCELLED
+      )
+      .sort((a, b) =>
+        String(b.closedAt || b.updatedAt || '').localeCompare(
+          String(a.closedAt || a.updatedAt || '')
+        )
+      )
+      .slice(0, 10);
 
     appRoot.innerHTML = `
       <section class="hero">
@@ -757,6 +770,34 @@ async function renderDocumentWorkspace(type) {
           `
           : '<div class="empty">No hay borradores pendientes.</div>'}
       </section>
+
+      ${closedDocuments.length ? `
+        <section class="card stack" style="margin-top:16px">
+          <div class="row">
+            <div>
+              <strong>Documentos cerrados</strong>
+              <div class="product-meta">Imprime, guarda como PDF o exporta sin modificar inventario.</div>
+            </div>
+            <span class="badge">${closedDocuments.length}</span>
+          </div>
+
+          ${closedDocuments.map(document => `
+            <div class="closed-document-row">
+              <div>
+                <strong>${escapeHtml(document.id)}</strong>
+                <div class="product-meta">
+                  ${escapeHtml(document.status)} · ${formatDate(document.closedAt || document.updatedAt)}
+                </div>
+              </div>
+              <div class="document-export-actions">
+                <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="csv" type="button">CSV</button>
+                <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="xlsx" type="button">Excel</button>
+                <button class="primary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="print" type="button">Imprimir / PDF</button>
+              </div>
+            </div>
+          `).join('')}
+        </section>
+      ` : ''}
     `;
     return;
   }
