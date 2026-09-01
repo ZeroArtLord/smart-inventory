@@ -46,6 +46,92 @@ export function readV1Snapshot(storage = globalThis.localStorage) {
   };
 }
 
+export async function readV1SnapshotWithIndexedDb({
+  storage = globalThis.localStorage,
+  indexedDb = globalThis.indexedDB
+} = {}) {
+  const snapshot = readV1Snapshot(storage);
+
+  if (snapshot.products.length > 0 || !indexedDb) {
+    return snapshot;
+  }
+
+  if (typeof indexedDb.databases === 'function') {
+    const databases = await indexedDb.databases();
+    const exists = databases.some(
+      database => database?.name === 'smart_inventory_db'
+    );
+
+    if (!exists) {
+      return snapshot;
+    }
+  } else {
+    // Sin forma segura de consultar existencia, no creamos por accidente
+    // una base V1 vacía solamente para buscar un respaldo.
+    return snapshot;
+  }
+
+  const products = await readLegacyProductsFromIndexedDb(
+    indexedDb
+  );
+
+  return {
+    ...snapshot,
+    products
+  };
+}
+
+async function readLegacyProductsFromIndexedDb(indexedDb) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDb.open(
+      'smart_inventory_db'
+    );
+
+    request.onerror = () => reject(
+      request.error ||
+      new Error('No se pudo abrir IndexedDB V1')
+    );
+
+    request.onsuccess = () => {
+      const db = request.result;
+
+      if (!db.objectStoreNames.contains('products')) {
+        db.close();
+        resolve([]);
+        return;
+      }
+
+      const tx = db.transaction(
+        'products',
+        'readonly'
+      );
+      const getAllRequest = tx
+        .objectStore('products')
+        .getAll();
+
+      getAllRequest.onsuccess = () => {
+        const rows = Array.isArray(
+          getAllRequest.result
+        )
+          ? getAllRequest.result
+          : [];
+
+        db.close();
+        resolve(rows);
+      };
+
+      getAllRequest.onerror = () => {
+        const error =
+          getAllRequest.error ||
+          new Error('No se pudo leer products de V1');
+
+        db.close();
+        reject(error);
+      };
+    };
+  });
+}
+
 export function parseV1ArchiveText(text) {
   let parsed;
 
