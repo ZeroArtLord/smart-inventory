@@ -9,7 +9,8 @@ const {
 const {
   createDocument,
   saveDocumentLine,
-  closeDocument
+  closeDocument,
+  createCorrectionDraft
 } = await import('../src/documents/documentService.js');
 
 const {
@@ -327,4 +328,164 @@ test('surtido con lotes aplica FEFO y actualiza cantidades restantes', async () 
   assert.equal(byNumber.get('LOTE-VENCE-ANTES').remainingQuantity, 0);
   assert.equal(byNumber.get('LOTE-VENCE-DESPUES').remainingQuantity, 7);
   assert.equal(await getCurrentStock(product.id), 7);
+});
+
+
+test('corregir un surtido restaura stock y lote sin borrar el documento original', async () => {
+  const product = await createProduct({
+    name: 'CORRECCION SURTIDO TEST',
+    sku: 'CORR-SUPPLY',
+    minStock: 0,
+    maxStock: 40
+  });
+
+  const entry = await createDocument({
+    type: DOCUMENT_TYPES.ENTRY,
+    ownerId: 'corr-user'
+  });
+
+  await saveDocumentLine({
+    documentId: entry.id,
+    productId: product.id,
+    quantity: 10,
+    lotNumber: 'CORR-LOTE-1',
+    expiresAt: '2027-12-01'
+  });
+
+  await closeDocument(entry.id, { userId: 'corr-user' });
+
+  const supply = await createDocument({
+    type: DOCUMENT_TYPES.SUPPLY,
+    ownerId: 'corr-user',
+    destinationId: 'cocina'
+  });
+
+  await saveDocumentLine({
+    documentId: supply.id,
+    productId: product.id,
+    quantity: 4
+  });
+
+  await closeDocument(supply.id, { userId: 'corr-user' });
+  assert.equal(await getCurrentStock(product.id), 6);
+
+  const result = await createCorrectionDraft(supply.id, {
+    userId: 'supervisor-corr',
+    reason: 'Cantidad entregada incorrecta'
+  });
+
+  assert.equal(result.original.status, DOCUMENT_STATUS.CLOSED);
+  assert.equal(result.draft.status, DOCUMENT_STATUS.DRAFT);
+  assert.equal(result.draft.metadata.correctionOfDocumentId, supply.id);
+  assert.equal(result.reversals.length, 1);
+  assert.equal(result.reversals[0].type, 'REVERSAL');
+  assert.equal(result.reversals[0].delta, 4);
+  assert.equal(await getCurrentStock(product.id), 10);
+
+  const lots = await getAllByIndex(
+    STORES.LOTS,
+    'productId',
+    product.id
+  );
+  assert.equal(lots[0].remainingQuantity, 10);
+
+  const correctionLines = await getAllByIndex(
+    STORES.DOCUMENT_LINES,
+    'documentId',
+    result.draft.id
+  );
+  assert.equal(correctionLines.length, 1);
+  assert.equal(correctionLines[0].quantity, 4);
+});
+
+test('no permite corregir una entrada si su mercancía ya fue consumida', async () => {
+  const product = await createProduct({
+    name: 'CORRECCION ENTRADA BLOQUEADA',
+    sku: 'CORR-ENTRY-BLOCK',
+    minStock: 0,
+    maxStock: 40
+  });
+
+  const entry = await createDocument({
+    type: DOCUMENT_TYPES.ENTRY,
+    ownerId: 'corr-entry-user'
+  });
+
+  await saveDocumentLine({
+    documentId: entry.id,
+    productId: product.id,
+    quantity: 10,
+    lotNumber: 'CORR-ENTRY-LOT',
+    expiresAt: '2028-01-01'
+  });
+
+  await closeDocument(entry.id, { userId: 'corr-entry-user' });
+
+  const supply = await createDocument({
+    type: DOCUMENT_TYPES.SUPPLY,
+    ownerId: 'corr-entry-user'
+  });
+
+  await saveDocumentLine({
+    documentId: supply.id,
+    productId: product.id,
+    quantity: 2
+  });
+
+  await closeDocument(supply.id, { userId: 'corr-entry-user' });
+  assert.equal(await getCurrentStock(product.id), 8);
+
+  await assert.rejects(
+    createCorrectionDraft(entry.id, {
+      userId: 'supervisor-corr',
+      reason: 'Factura equivocada'
+    }),
+    /mercancía posterior|lote ya fue consumido/i
+  );
+
+  assert.equal(await getCurrentStock(product.id), 8);
+
+  const storedEntry = await get(STORES.DOCUMENTS, entry.id);
+  assert.equal(storedEntry.metadata?.correctionDraftId, undefined);
+});
+
+test('corregir un conteo compensa ajustes y crea un conteo nuevo vacío', async () => {
+  const product = await createProduct({
+    name: 'CORRECCION CONTEO TEST',
+    sku: 'CORR-COUNT',
+    minStock: 0,
+    maxStock: 20
+  });
+
+  const count = await createDocument({
+    type: DOCUMENT_TYPES.COUNT,
+    ownerId: 'corr-count-user'
+  });
+
+  await saveDocumentLine({
+    documentId: count.id,
+    productId: product.id,
+    countedStock: 5
+  });
+
+  await closeDocument(count.id, { userId: 'corr-count-user' });
+  assert.equal(await getCurrentStock(product.id), 5);
+
+  const result = await createCorrectionDraft(count.id, {
+    userId: 'supervisor-corr',
+    reason: 'Reconteo solicitado'
+  });
+
+  assert.equal(await getCurrentStock(product.id), 0);
+  assert.equal(result.reversals.length, 1);
+  assert.equal(result.reversals[0].delta, -5);
+  assert.equal(result.draft.type, DOCUMENT_TYPES.COUNT);
+  assert.equal(result.draft.status, DOCUMENT_STATUS.DRAFT);
+
+  const correctionLines = await getAllByIndex(
+    STORES.DOCUMENT_LINES,
+    'documentId',
+    result.draft.id
+  );
+  assert.equal(correctionLines.length, 0);
 });
