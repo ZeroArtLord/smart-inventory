@@ -837,3 +837,26 @@ input, select {
     font-size: .78rem;
   }
 }
+
+.workspace-choice {
+  width: 100%;
+  min-height: 60px;
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  justify-items: start;
+}
+
+.workspace-choice strong {
+  display: block;
+}
+
+.workspace-choice span {
+  color: var(--muted);
+  font-size: .8rem;
+}
+
+.auth-secondary-action {
+  color: var(--text);
+  border-color: var(--border);
+}
