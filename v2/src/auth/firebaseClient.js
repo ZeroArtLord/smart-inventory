@@ -3,7 +3,7 @@ import {
   clearAuthTokenProvider
 } from './authProvider.js';
 
-const FIREBASE_CONFIG = Object.freeze({
+export const FIREBASE_CONFIG = Object.freeze({
   apiKey: 'AIzaSyDSFpufEj4XWz7hoxUmHwxBzSaB7HXDjA4',
   authDomain: 'smart-inventory-c296b.firebaseapp.com',
   projectId: 'smart-inventory-c296b',
@@ -15,6 +15,10 @@ const FIREBASE_CONFIG = Object.freeze({
 let auth = null;
 let currentUser = null;
 let unsubscribe = null;
+
+export function getFirebaseClientProjectId() {
+  return FIREBASE_CONFIG.projectId;
+}
 
 export function isFirebaseBrowserAvailable() {
   return Boolean(globalThis.firebase?.initializeApp && globalThis.firebase?.auth);
@@ -45,7 +49,8 @@ export async function initializeFirebaseClient({
 
         if (currentUser) {
           setAuthTokenProvider(
-            () => currentUser.getIdToken()
+            ({ forceRefresh = false } = {}) =>
+              currentUser.getIdToken(forceRefresh)
           );
         } else {
           clearAuthTokenProvider();
@@ -81,16 +86,26 @@ export async function loginWithGoogle() {
     prompt: 'select_account'
   });
 
-  const result = await auth.signInWithPopup(provider);
-  currentUser = result.user || null;
+  try {
+    const result = await auth.signInWithPopup(provider);
+    currentUser = result.user || null;
 
-  if (currentUser) {
-    setAuthTokenProvider(
-      () => currentUser.getIdToken()
-    );
+    if (currentUser) {
+      setAuthTokenProvider(
+        ({ forceRefresh = false } = {}) =>
+          currentUser.getIdToken(forceRefresh)
+      );
+    }
+
+    return currentUser;
+  } catch (error) {
+    if (shouldUseRedirect(error)) {
+      await auth.signInWithRedirect(provider);
+      return null;
+    }
+
+    throw error;
   }
-
-  return currentUser;
 }
 
 export async function logoutFirebase() {
@@ -177,4 +192,12 @@ function ensureAuth() {
   if (!auth) {
     throw new Error('Firebase Auth todavía no está inicializado');
   }
+}
+
+
+function shouldUseRedirect(error) {
+  return [
+    'auth/popup-blocked',
+    'auth/operation-not-supported-in-this-environment'
+  ].includes(error?.code);
 }
