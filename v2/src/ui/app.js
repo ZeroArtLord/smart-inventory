@@ -2356,6 +2356,8 @@ async function handleSubmit(event) {
   event.preventDefault();
 
   try {
+    requireClientPermission('catalog.write');
+
     const form = new FormData(event.target);
     const minStock = evaluateNumericExpression(form.get('minStock'));
     const maxStock = evaluateNumericExpression(form.get('maxStock'));
@@ -2464,6 +2466,8 @@ async function handleKeydown(event) {
 }
 
 async function reverseAdjustment(movementId) {
+  requireClientPermission('adjustment.write');
+
   const reason = prompt(
     'Motivo de la compensación del ajuste:',
     'Corrección autorizada'
@@ -2489,6 +2493,8 @@ async function reverseAdjustment(movementId) {
 }
 
 async function saveMemberRole(userId) {
+  requireClientPermission('users.manage');
+
   const card = document.querySelector(
     `[data-member-card="${cssEscape(userId)}"]`
   );
@@ -2511,6 +2517,8 @@ async function saveMemberRole(userId) {
 }
 
 async function saveMemberPermissions(userId) {
+  requireClientPermission('users.manage');
+
   const card = document.querySelector(
     `[data-member-card="${cssEscape(userId)}"]`
   );
@@ -2630,6 +2638,8 @@ function downloadLegacyArchive() {
 }
 
 async function applyCatalogPreview() {
+  requireClientPermission('catalog.write');
+
   const preview = state.importPreview;
   if (!preview?.rows?.length) {
     throw new Error('No hay filas válidas para importar');
@@ -2676,6 +2686,8 @@ async function resolveConflict(conflictId, resolution) {
 }
 
 async function createReplenishmentFromSuggestion(button) {
+  requireClientPermission('purchases.write');
+
   const requestedQuantity = Number(button.dataset.quantity || 0);
   if (!(requestedQuantity > 0)) {
     throw new Error('La sugerencia no tiene cantidad para reponer');
@@ -2698,6 +2710,8 @@ async function createReplenishmentFromSuggestion(button) {
 }
 
 async function setReplenishmentStatus(id, status) {
+  requireClientPermission('purchases.write');
+
   await changeReplenishmentStatus(id, status, {
     userId: currentOwnerId()
   });
@@ -2708,6 +2722,9 @@ async function setReplenishmentStatus(id, status) {
 }
 
 async function startReplenishmentEntry(replenishmentId) {
+  requireClientPermission('purchases.write');
+  requireClientPermission('entry.write');
+
   const item = await get(STORES.REPLENISHMENTS, replenishmentId);
   if (!item) throw new Error('Compra/pedido no encontrado');
 
@@ -2736,6 +2753,10 @@ async function startReplenishmentEntry(replenishmentId) {
 }
 
 async function startDocument(type) {
+  requireClientPermission(
+    permissionForDocumentTypeClient(type)
+  );
+
   if (state.products.length === 0) {
     state.view = 'catalog';
     showToast('Primero agrega o importa productos');
@@ -2772,6 +2793,8 @@ async function startDocument(type) {
 }
 
 async function saveCount(productId) {
+  requireClientPermission('count.write');
+
   const input = document.getElementById('countValue');
   if (!input) return;
 
@@ -2800,6 +2823,10 @@ async function saveCount(productId) {
 }
 
 async function addOperationLine(type) {
+  requireClientPermission(
+    permissionForDocumentTypeClient(type)
+  );
+
   const activeDocument = await get(
     STORES.DOCUMENTS,
     state.activeDocumentId
@@ -2950,6 +2977,12 @@ async function cancelDraft(documentId) {
 }
 
 async function finishDocument() {
+  requireClientPermission(
+    permissionForDocumentTypeClient(
+      state.activeDocumentType
+    )
+  );
+
   const label = documentTitle(state.activeDocumentType).toLowerCase();
   if (!confirm(`¿Cerrar ${label}? Después del cierre ya afecta el inventario.`)) {
     return;
