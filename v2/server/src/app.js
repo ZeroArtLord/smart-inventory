@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { pool } from './db.js';
 import { getReadiness } from './readiness.js';
 import { authContext } from './middleware/authContext.js';
+import { rateLimit } from './middleware/rateLimit.js';
 import { syncRouter } from './routes/sync.js';
 import { devRouter } from './routes/dev.js';
 import { adminRouter } from './routes/admin.js';
@@ -89,12 +90,69 @@ app.get('/ready', async (_req, res, next) => {
   }
 });
 
-app.use('/api/v1/dev', devRouter);
-app.use('/api/v1/auth', authRouter);
-app.use('/api/v1/sync', authContext, syncRouter);
-app.use('/api/v1/admin', authContext, adminRouter);
-app.use('/api/v1/audit', authContext, auditRouter);
-app.use('/api/v1/session', authContext, sessionRouter);
+app.use(
+  '/api/v1/dev',
+  rateLimit({
+    windowMs: 60000,
+    max: 60,
+    namespace: 'dev'
+  }),
+  devRouter
+);
+
+app.use(
+  '/api/v1/auth',
+  rateLimit({
+    windowMs: 300000,
+    max: 40,
+    namespace: 'auth'
+  }),
+  authRouter
+);
+
+app.use(
+  '/api/v1/sync',
+  rateLimit({
+    windowMs: 60000,
+    max: 240,
+    namespace: 'sync'
+  }),
+  authContext,
+  syncRouter
+);
+
+app.use(
+  '/api/v1/admin',
+  rateLimit({
+    windowMs: 300000,
+    max: 120,
+    namespace: 'admin'
+  }),
+  authContext,
+  adminRouter
+);
+
+app.use(
+  '/api/v1/audit',
+  rateLimit({
+    windowMs: 60000,
+    max: 120,
+    namespace: 'audit'
+  }),
+  authContext,
+  auditRouter
+);
+
+app.use(
+  '/api/v1/session',
+  rateLimit({
+    windowMs: 60000,
+    max: 120,
+    namespace: 'session'
+  }),
+  authContext,
+  sessionRouter
+);
 
 app.get('/vendor/xlsx.full.min.js', (_req, res) => {
   res.sendFile(xlsxBrowserBundle);
