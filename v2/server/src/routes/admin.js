@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { pool } from '../db.js';
+import { pool, withTransaction } from '../db.js';
 import { PERMISSIONS } from '../security/permissions.js';
 import {
   resolveMemberPermissions,
@@ -33,19 +33,121 @@ adminRouter.get('/members', async (req, res, next) => {
 
     res.json({
       ok: true,
-      members: result.rows.map(row => ({
-        userId: row.user_id,
-        externalAuthId: row.external_auth_id,
-        email: row.email,
-        displayName: row.display_name,
-        userActive: row.user_active,
-        roleCode: row.role_code,
-        permissions: row.permissions || [],
-        membershipActive: row.membership_active,
-        createdAt: row.created_at
-      }))
+      members: result.rows.map(mapMemberRow)
     });
   } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post('/members', async (req, res, next) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const externalAuthId = normalizeOptionalText(req.body?.externalAuthId);
+    const displayName = normalizeOptionalText(req.body?.displayName);
+    const roleCode = validateRoleCode(req.body?.roleCode || 'WAREHOUSE');
+    const permissions = resolveMemberPermissions({
+      roleCode,
+      permissions: req.body?.permissions
+    });
+
+    if (!email && !externalAuthId) {
+      return res.status(400).json({
+        ok: false,
+        code: 'IDENTITY_REQUIRED',
+        message: 'Indica email o externalAuthId para provisionar al usuario.'
+      });
+    }
+
+    const member = await withTransaction(async client => {
+      let userResult;
+
+      if (externalAuthId) {
+        userResult = await client.query(
+          `INSERT INTO users (
+             external_auth_id,email,display_name,active
+           ) VALUES ($1,$2,$3,true)
+           ON CONFLICT (external_auth_id) DO UPDATE SET
+             email = COALESCE(EXCLUDED.email, users.email),
+             display_name = COALESCE(EXCLUDED.display_name, users.display_name),
+             active = true
+           RETURNING id, external_auth_id, email, display_name, active, created_at`,
+          [externalAuthId, email, displayName]
+        );
+      } else {
+        const existing = await client.query(
+          `SELECT id, external_auth_id, email, display_name, active, created_at
+           FROM users
+           WHERE lower(email) = lower($1)
+           ORDER BY created_at ASC
+           LIMIT 1`,
+          [email]
+        );
+
+        if (existing.rowCount > 0) {
+          userResult = existing;
+          await client.query(
+            `UPDATE users
+             SET display_name = COALESCE($2, display_name),
+                 active = true
+             WHERE id = $1`,
+            [existing.rows[0].id, displayName]
+          );
+        } else {
+          userResult = await client.query(
+            `INSERT INTO users (email,display_name,active)
+             VALUES ($1,$2,true)
+             RETURNING id, external_auth_id, email, display_name, active, created_at`,
+            [email, displayName]
+          );
+        }
+      }
+
+      const user = userResult.rows[0];
+
+      const membership = await client.query(
+        `INSERT INTO workspace_members (
+           workspace_id,user_id,role_code,permissions,active
+         ) VALUES ($1,$2,$3,$4::jsonb,true)
+         ON CONFLICT (workspace_id,user_id) DO UPDATE SET
+           role_code = EXCLUDED.role_code,
+           permissions = EXCLUDED.permissions,
+           active = true
+         RETURNING role_code, permissions, active, created_at`,
+        [
+          req.auth.workspaceId,
+          user.id,
+          roleCode,
+          JSON.stringify(permissions)
+        ]
+      );
+
+      return {
+        userId: user.id,
+        externalAuthId: user.external_auth_id,
+        email: user.email,
+        displayName: displayName || user.display_name,
+        userActive: true,
+        roleCode: membership.rows[0].role_code,
+        permissions: membership.rows[0].permissions || [],
+        membershipActive: membership.rows[0].active,
+        createdAt: membership.rows[0].created_at
+      };
+    });
+
+    res.status(201).json({ ok: true, member });
+  } catch (error) {
+    if (
+      error?.message === 'Rol inválido' ||
+      error?.message?.startsWith('Permiso')
+    ) {
+      return res.status(400).json({
+        ok: false,
+        code: 'INVALID_ROLE_OR_PERMISSIONS',
+        message: error.message
+      });
+    }
+
     next(error);
   }
 });
@@ -134,3 +236,33 @@ adminRouter.patch('/members/:userId', async (req, res, next) => {
     next(error);
   }
 });
+
+function mapMemberRow(row) {
+  return {
+    userId: row.user_id,
+    externalAuthId: row.external_auth_id,
+    email: row.email,
+    displayName: row.display_name,
+    userActive: row.user_active,
+    roleCode: row.role_code,
+    permissions: row.permissions || [],
+    membershipActive: row.membership_active,
+    createdAt: row.created_at
+  };
+}
+
+function normalizeEmail(value) {
+  const email = String(value || '').trim().toLowerCase();
+  if (!email) return null;
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('Email inválido');
+  }
+
+  return email;
+}
+
+function normalizeOptionalText(value) {
+  const text = String(value || '').trim();
+  return text || null;
+}
