@@ -10,5 +10,7 @@ export const config = Object.freeze({
   port: Number(process.env.PORT || 5190),
   databaseUrl: requireEnv('DATABASE_URL'),
   nodeEnv: process.env.NODE_ENV || 'development',
+  authMode: process.env.AUTH_MODE || 'dev',
+  firebaseProjectId: process.env.FIREBASE_PROJECT_ID || null,
   devAllowHeaderAuth: String(process.env.DEV_ALLOW_HEADER_AUTH || 'false') === 'true'
 });
