@@ -92,6 +92,39 @@ export async function assertMutableEntityVersion(
   return null;
 }
 
+export async function persistMutableEntityVersion(
+  client,
+  workspaceId,
+  event
+) {
+  const table = ENTITY_TABLES[event?.entityType];
+  if (!table) return null;
+
+  const version = Number(event?.payload?.version);
+  if (!Number.isInteger(version) || version < 1) {
+    throw new Error('Versión canónica inválida');
+  }
+
+  const result = await client.query(
+    `UPDATE ${table}
+     SET version = $3
+     WHERE workspace_id = $1
+       AND id = $2
+     RETURNING version`,
+    [workspaceId, event.entityId, version]
+  );
+
+  if (result.rowCount === 0) {
+    throw conflictError(event, {
+      serverVersion: 0,
+      clientVersion: version,
+      reason: 'ENTITY_NOT_FOUND_AFTER_APPLY'
+    });
+  }
+
+  return Number(result.rows[0].version);
+}
+
 function conflictError(event, {
   serverVersion,
   clientVersion,
