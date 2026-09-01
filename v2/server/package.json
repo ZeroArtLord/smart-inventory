@@ -5,7 +5,9 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
-    "migrate": "node scripts/migrate.js"
+    "migrate": "node scripts/migrate.js",
+    "backup": "node scripts/backup.js",
+    "backup:verify": "node scripts/verifyBackup.js"
   },
   "dependencies": {
     "express": "^5.0.0",
