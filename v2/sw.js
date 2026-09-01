@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-14';
+const CACHE_NAME = 'smart-inventory-v2-shell-15';
 
 const APP_SHELL = [
   './',
@@ -9,6 +9,7 @@ const APP_SHELL = [
   './src/ui/app.js',
   './src/auth/authProvider.js',
   './src/auth/firebaseClient.js',
+  './src/auth/authBootstrap.js',
   './src/api/apiClient.js',
   './src/core/mathExpression.js',
   './src/core/ids.js',
