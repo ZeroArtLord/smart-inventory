@@ -12,7 +12,10 @@ export function clearAuthTokenProvider() {
   tokenProvider = null;
 }
 
-export async function getAuthToken({ required = false } = {}) {
+export async function getAuthToken({
+  required = false,
+  forceRefresh = false
+} = {}) {
   if (!tokenProvider) {
     if (required) {
       throw new Error('Proveedor de autenticación no configurado');
@@ -20,7 +23,9 @@ export async function getAuthToken({ required = false } = {}) {
     return null;
   }
 
-  const token = await tokenProvider();
+  const token = await tokenProvider({
+    forceRefresh: Boolean(forceRefresh)
+  });
   const normalized = String(token || '').trim();
 
   if (!normalized && required) {
