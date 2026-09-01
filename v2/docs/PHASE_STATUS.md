@@ -68,6 +68,7 @@
 - Surtido tipo carrito.
 - Borradores recuperables.
 - Service Worker para shell offline.
+- Dashboard operativo conectado a datos locales reales: stock con atención, lotes por vencer, movimientos recientes y sugerencias de reposición.
 
 ### Fase 7 — Backend propio (fundación)
 - Node.js API.
@@ -92,16 +93,24 @@
 - Membresía de workspace verificada en servidor.
 - Validación de eventos de sincronización en backend antes de persistir.
 - El usuario de movimientos lo impone el contexto autenticado del servidor; no se confía en el payload del cliente.
+- Modelo de permisos de escritura por catálogo/conteo/entrada/surtido/ajuste.
+- Los eventos de sincronización son rechazados si el miembro no tiene el permiso requerido.
+
+### Fase 9 — Reportes / Dashboard (fundación)
+- Motor de reporte de inventario desde movimientos.
+- Riesgo de stock y cantidades sugeridas.
+- Lotes vencidos/próximos a vencer.
+- Resumen de movimientos por periodo y por producto.
+- Sin mezclar cantidades de unidades distintas en un total engañoso.
 
 ## Pendiente inmediato
 
 1. Aplicar migración 003 de ubicación de lotes en el servidor local/de pruebas.
 2. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC.
-3. Autenticación real, roles y permisos.
+3. Autenticación real por token firmado; el motor de permisos ya está preparado.
 4. Gestión real de pedidos/en tránsito.
-5. UI de lotes/vencimientos y alertas FEFO.
-6. Reportes.
-7. Cámara/códigos de barra.
-8. Pruebas destructivas multi-dispositivo.
-9. Migrador V1 → V2.
-10. Integración SAINT como fase final.
+5. Pantallas completas de reportes y alertas sobre el motor ya implementado.
+6. Cámara/códigos de barra.
+7. Pruebas destructivas multi-dispositivo.
+8. Migrador V1 → V2.
+9. Integración SAINT como fase final.
