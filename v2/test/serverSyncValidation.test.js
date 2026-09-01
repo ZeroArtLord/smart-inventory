@@ -1,0 +1,122 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+const {
+  validateSyncEvent
+} = await import('../server/src/sync/validateEvent.js');
+
+function baseProduct() {
+  return {
+    id: 'prd_test',
+    name: 'Producto Test',
+    minStock: 5,
+    maxStock: 20,
+    purchaseConversion: 1,
+    replenishmentMethod: 'BOTH'
+  };
+}
+
+function baseMovement() {
+  return {
+    id: 'mov_test',
+    productId: 'prd_test',
+    type: 'ENTRY',
+    quantity: 5,
+    createdAt: '2026-09-01T12:00:00.000Z',
+    effectiveAt: '2026-09-01T12:00:00.000Z'
+  };
+}
+
+test('acepta un producto válido', () => {
+  assert.doesNotThrow(() => validateSyncEvent({
+    entityType: 'product',
+    entityId: 'prd_test',
+    operation: 'CREATE',
+    payload: baseProduct()
+  }));
+});
+
+test('rechaza evento cuyo entityId no coincide con payload.id', () => {
+  assert.throws(() => validateSyncEvent({
+    entityType: 'product',
+    entityId: 'prd_otro',
+    operation: 'CREATE',
+    payload: baseProduct()
+  }), /no coincide/i);
+});
+
+test('rechaza mínimos mayores al máximo en servidor', () => {
+  const product = {
+    ...baseProduct(),
+    minStock: 30,
+    maxStock: 20
+  };
+
+  assert.throws(() => validateSyncEvent({
+    entityType: 'product',
+    entityId: product.id,
+    operation: 'UPDATE',
+    payload: product
+  }), /mínimo no puede superar/i);
+});
+
+test('rechaza movimiento de salida con cantidad cero', () => {
+  const movement = {
+    ...baseMovement(),
+    type: 'SUPPLY',
+    quantity: 0
+  };
+
+  assert.throws(() => validateSyncEvent({
+    entityType: 'movement',
+    entityId: movement.id,
+    operation: 'CREATE',
+    payload: movement
+  }), /mayor que cero/i);
+});
+
+test('rechaza UPDATE de movimientos inmutables', () => {
+  const movement = baseMovement();
+
+  assert.throws(() => validateSyncEvent({
+    entityType: 'movement',
+    entityId: movement.id,
+    operation: 'UPDATE',
+    payload: movement
+  }), /solo admiten CREATE/i);
+});
+
+test('rechaza lote cuya cantidad restante supera la original', () => {
+  const lot = {
+    id: 'lot_test',
+    productId: 'prd_test',
+    receivedAt: '2026-09-01T12:00:00.000Z',
+    originalQuantity: 5,
+    remainingQuantity: 6,
+    createdAt: '2026-09-01T12:00:00.000Z',
+    updatedAt: '2026-09-01T12:00:00.000Z'
+  };
+
+  assert.throws(() => validateSyncEvent({
+    entityType: 'lot',
+    entityId: lot.id,
+    operation: 'CREATE',
+    payload: lot
+  }), /supera la original/i);
+});
+
+test('acepta ajuste con delta negativo', () => {
+  const movement = {
+    ...baseMovement(),
+    type: 'ADJUSTMENT',
+    quantity: 0,
+    delta: -3
+  };
+
+  assert.doesNotThrow(() => validateSyncEvent({
+    entityType: 'movement',
+    entityId: movement.id,
+    operation: 'CREATE',
+    payload: movement
+  }));
+});
