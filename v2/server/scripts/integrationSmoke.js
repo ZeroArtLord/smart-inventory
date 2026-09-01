@@ -521,6 +521,66 @@ try {
     throw new Error('El pull incremental no devolvió los eventos esperados.');
   }
 
+  const invalidWorkspaceResponse = await fetch(
+    `${baseUrl}/api/v1/session`,
+    {
+      headers: {
+        'x-workspace-id': 'not-a-uuid',
+        'x-user-id': bootstrap.user.id
+      }
+    }
+  );
+
+  const invalidWorkspaceBody =
+    await invalidWorkspaceResponse.json();
+
+  if (
+    invalidWorkspaceResponse.status !== 400 ||
+    invalidWorkspaceBody?.code !==
+      'WORKSPACE_INVALID'
+  ) {
+    throw new Error(
+      'El servidor no rechazó correctamente un workspace UUID inválido.'
+    );
+  }
+
+  await db.query(
+    `UPDATE workspaces
+     SET active = false
+     WHERE id = $1`,
+    [bootstrap.workspace.id]
+  );
+
+  try {
+    const inactiveWorkspaceResponse =
+      await fetch(
+        `${baseUrl}/api/v1/session`,
+        {
+          headers
+        }
+      );
+
+    const inactiveWorkspaceBody =
+      await inactiveWorkspaceResponse.json();
+
+    if (
+      inactiveWorkspaceResponse.status !== 403 ||
+      inactiveWorkspaceBody?.code !==
+        'WORKSPACE_ACCESS_DENIED'
+    ) {
+      throw new Error(
+        'Un workspace inactivo siguió aceptando requests autenticados.'
+      );
+    }
+  } finally {
+    await db.query(
+      `UPDATE workspaces
+       SET active = true
+       WHERE id = $1`,
+      [bootstrap.workspace.id]
+    );
+  }
+
   const stateFile = String(
     process.env.SMOKE_STATE_FILE || ''
   ).trim();
@@ -541,7 +601,7 @@ try {
   }
 
   console.log(
-    `✓ integration smoke: stock, auth, sync, reversals, idempotencia, concurrencia y lote de ${bulkSize} eventos correctos (${bulkDurationMs} ms)`
+    `✓ integration smoke: stock, auth/workspace, sync, reversals, idempotencia, concurrencia y lote de ${bulkSize} eventos correctos (${bulkDurationMs} ms)`
   );
 } finally {
   await db.end();
