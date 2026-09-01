@@ -14,7 +14,11 @@
       <strong>Smart Inventory V2</strong>
       <small id="saveStatus">Iniciando…</small>
     </div>
-    <button id="homeButton" class="ghost-button" type="button">Inicio</button>
+    <div class="topbar-actions">
+      <span id="authUserStatus" class="topbar-user" hidden></span>
+      <button id="authButton" class="ghost-button" type="button" hidden></button>
+      <button id="homeButton" class="ghost-button" type="button">Inicio</button>
+    </div>
   </header>
 
   <main id="app" class="app-shell" aria-live="polite"></main>
