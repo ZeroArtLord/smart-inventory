@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-7';
+const CACHE_NAME = 'smart-inventory-v2-shell-8';
 
 const APP_SHELL = [
   './',
