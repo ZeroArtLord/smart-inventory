@@ -53,3 +53,22 @@ localStorage e IndexedDB dependen del origen del navegador. Si V1 y V2 se abren 
 - Comparación de conteos/productos antes y después.
 - Piloto controlado.
 - Plan de rollback validado.
+
+## Verificación del piloto en PostgreSQL
+
+Después de aplicar la migración y esperar a que la cola quede sincronizada:
+
+```powershell
+cd .\v2\server
+npm run migration:verify -- --workspace-key establo2026
+```
+
+Opcionalmente se puede guardar evidencia JSON:
+
+```powershell
+npm run migration:verify -- --workspace-key establo2026 --output C:\Temp\smart_inventory_migration_report.json
+```
+
+La verificación revisa los `ADJUSTMENT` cuyo `metadata.source` es `SMART_INVENTORY_V1`, compara el `targetStock` con `inventory_stock` cuando todavía no existen movimientos posteriores y detecta IDs V1 duplicados.
+
+Si ya hubo operaciones posteriores a la migración, el producto se reporta como advertencia en lugar de exigir que su stock siga igual al stock objetivo original.
