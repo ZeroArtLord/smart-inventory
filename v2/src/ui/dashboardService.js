@@ -9,6 +9,9 @@ import {
   summarizeMovements
 } from '../reporting/reportingEngine.js';
 import { DOCUMENT_STATUS } from '../documents/documentTypes.js';
+import {
+  calculatePendingInboundByProduct
+} from '../replenishment/replenishmentService.js';
 
 export async function getDashboardSnapshot({
   now = new Date(),
@@ -21,16 +24,24 @@ export async function getDashboardSnapshot({
     movements,
     lots,
     documents,
+    replenishments,
     syncQueue
   ] = await Promise.all([
     getAll(STORES.PRODUCTS),
     getAll(STORES.MOVEMENTS),
     getAll(STORES.LOTS),
     getAll(STORES.DOCUMENTS),
+    getAll(STORES.REPLENISHMENTS),
     getAll(STORES.SYNC_QUEUE)
   ]);
 
-  const inventoryRows = buildInventoryReport(products, movements, { now });
+  const pendingInboundByProduct =
+    calculatePendingInboundByProduct(replenishments);
+
+  const inventoryRows = buildInventoryReport(products, movements, {
+    now,
+    pendingInboundByProduct
+  });
   const inventorySummary = summarizeInventoryReport(inventoryRows);
   const expiringLots = listExpiringLots(lots, {
     now,
@@ -75,6 +86,7 @@ export async function getDashboardSnapshot({
     lowStock,
     expiringLots,
     movementSummaryToday,
+    replenishments,
     drafts,
     pendingSyncCount: pendingSync.length,
     recentMovements
