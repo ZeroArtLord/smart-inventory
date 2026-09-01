@@ -126,6 +126,8 @@ const state = {
   authMode: 'dev',
   authUser: null,
   availableWorkspaces: [],
+  workspaceReady: false,
+  authAccessOffline: false,
   migrationPreview: null,
   migrationStatus: null
 };
@@ -201,7 +203,10 @@ async function initializeApplicationAuth() {
   if (state.authMode !== 'firebase') {
     state.authUser = null;
     state.availableWorkspaces = [];
+    state.workspaceReady = true;
+    state.authAccessOffline = false;
     updateAuthUi();
+    updateNavigationUi();
     return 'authenticated';
   }
 
@@ -211,11 +216,25 @@ async function initializeApplicationAuth() {
 
   if (!state.authUser) {
     state.availableWorkspaces = [];
+    state.workspaceReady = false;
+    state.authAccessOffline = false;
+    updateNavigationUi();
     return 'signed-out';
   }
 
-  const access = await bootstrapFirebaseAccess();
+  const access = await bootstrapFirebaseAccess({
+    uid: state.authUser.uid
+  });
+
   state.availableWorkspaces = access.workspaces || [];
+  state.workspaceReady = Boolean(access.selectedWorkspace);
+  state.authAccessOffline = Boolean(access.offline);
+
+  if (access.offline && access.selectedWorkspace) {
+    state.session = sessionFromCachedAccess(access);
+  }
+
+  updateNavigationUi();
 
   return access.selectedWorkspace
     ? 'authenticated'
@@ -226,8 +245,14 @@ async function startAuthenticatedApp() {
   await refreshProducts();
   await syncAndRefresh({ renderAfter: false });
   await refreshProducts();
-  await refreshSession({ silent: true });
+
+  if (navigator.onLine) {
+    await refreshSession({ silent: true });
+    state.authAccessOffline = false;
+  }
+
   updateAuthUi();
+  updateNavigationUi();
   await render();
 }
 
@@ -304,10 +329,15 @@ async function signInWithGoogle() {
     throw new Error('No se completó el inicio de sesión');
   }
 
-  const access = await bootstrapFirebaseAccess();
+  const access = await bootstrapFirebaseAccess({
+    uid: state.authUser.uid
+  });
   state.availableWorkspaces = access.workspaces || [];
+  state.workspaceReady = Boolean(access.selectedWorkspace);
+  state.authAccessOffline = Boolean(access.offline);
 
   updateAuthUi();
+  updateNavigationUi();
   showToast('Sesión iniciada');
 
   if (!access.selectedWorkspace) {
@@ -327,6 +357,24 @@ async function chooseWorkspace(workspaceId) {
   }
 
   await selectFirebaseWorkspace(workspaceId);
+  state.workspaceReady = true;
+  state.authAccessOffline = false;
+
+  const selected = state.availableWorkspaces.find(
+    workspace => workspace.id === workspaceId
+  );
+
+  if (selected) {
+    state.session = {
+      workspaceId,
+      userId: state.authUser?.uid || null,
+      roleCode: selected.roleCode || null,
+      permissions: selected.permissions || [],
+      authMode: 'firebase'
+    };
+  }
+
+  updateNavigationUi();
   showToast('Almacén seleccionado');
   await startAuthenticatedApp();
 }
@@ -342,6 +390,8 @@ async function handleAuthButton() {
   state.authUser = null;
   state.session = null;
   state.availableWorkspaces = [];
+  state.workspaceReady = false;
+  state.authAccessOffline = false;
   state.products = [];
   state.activeDocumentId = null;
   state.activeDocumentType = null;
@@ -378,6 +428,61 @@ function updateAuthUi() {
   }
 }
 
+function sessionFromCachedAccess(access) {
+  const workspace = access?.selectedWorkspace;
+  if (!workspace) return null;
+
+  return {
+    workspaceId: workspace.id,
+    userId:
+      access.user?.id ||
+      access.user?.externalAuthId ||
+      state.authUser?.uid ||
+      null,
+    externalAuthId:
+      access.user?.externalAuthId ||
+      state.authUser?.uid ||
+      null,
+    email:
+      access.user?.email ||
+      state.authUser?.email ||
+      null,
+    roleCode: workspace.roleCode || null,
+    permissions: workspace.permissions || [],
+    authMode: 'firebase',
+    cachedOffline: true
+  };
+}
+
+function updateNavigationUi() {
+  const nav = document.querySelector('.bottom-nav');
+  const homeButton = document.getElementById('homeButton');
+
+  const locked =
+    state.authMode === 'firebase' &&
+    (!state.authUser || !state.workspaceReady);
+
+  if (nav) {
+    nav.hidden = locked;
+
+    nav.querySelectorAll('[data-view]').forEach(button => {
+      const active =
+        !locked &&
+        button.dataset.view === state.view;
+
+      button.classList.toggle('active', active);
+      button.setAttribute(
+        'aria-current',
+        active ? 'page' : 'false'
+      );
+    });
+  }
+
+  if (homeButton) {
+    homeButton.hidden = locked;
+  }
+}
+
 function currentOwnerId() {
   if (state.authMode === 'firebase') {
     if (!state.authUser?.uid) {
@@ -390,7 +495,21 @@ function currentOwnerId() {
 }
 
 async function render() {
+  if (
+    state.authMode === 'firebase' &&
+    (!state.authUser || !state.workspaceReady)
+  ) {
+    updateNavigationUi();
+
+    if (!state.authUser) {
+      return renderAuthGate();
+    }
+
+    return renderWorkspaceGate();
+  }
+
   await refreshSaveStatus();
+  updateNavigationUi();
 
   switch (state.view) {
     case 'catalog':
@@ -434,6 +553,9 @@ async function renderHome() {
       <div class="dashboard-sync">
         ${installPromptEvent
           ? '<button class="secondary" data-action="install-pwa" type="button">Instalar app</button>'
+          : ''}
+        ${state.authAccessOffline
+          ? '<span class="badge status-warning">Acceso offline verificado previamente</span>'
           : ''}
         ${snapshot.syncConflictCount
           ? `<button class="secondary status-warning" data-open-view="conflicts" type="button">⚠ ${snapshot.syncConflictCount} conflicto(s)</button>`
@@ -3175,13 +3297,25 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
       'Usuario local'
   });
 
-  if (result?.ok && result.pulled > 0) {
-    await refreshProducts();
+  if (result?.ok) {
+    if (state.authMode === 'firebase' && navigator.onLine) {
+      const liveSession = await refreshSession({
+        silent: true
+      });
 
-    const reconciled = await reconcileReplenishmentReceipts();
-    if (reconciled.length > 0) scheduleSync(100);
+      if (liveSession) {
+        state.authAccessOffline = false;
+      }
+    }
 
-    if (renderAfter && canAutoRefresh()) await render();
+    if (result.pulled > 0) {
+      await refreshProducts();
+
+      const reconciled = await reconcileReplenishmentReceipts();
+      if (reconciled.length > 0) scheduleSync(100);
+
+      if (renderAfter && canAutoRefresh()) await render();
+    }
   }
 
   await refreshSaveStatus();
