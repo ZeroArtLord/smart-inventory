@@ -114,6 +114,11 @@ jobs:
       - name: Apply PostgreSQL migrations
         run: npm run migrate
 
+      - name: Provision first admin idempotently
+        run: |
+          npm run admin:provision -- --email ci-admin@example.com --workspace-key ci-admin-workspace --workspace-name "CI Admin Workspace"
+          npm run admin:provision -- --email ci-admin@example.com --workspace-key ci-admin-workspace --workspace-name "CI Admin Workspace"
+
       - name: Start API
         run: |
           npm start > /tmp/smart-inventory-v2.log 2>&1 &
