@@ -4,6 +4,13 @@ import {
   saveSyncConfig,
   buildApiUrl
 } from '../sync/syncSettings.js';
+import {
+  STORES,
+  get,
+  put
+} from '../storage/database.js';
+
+const CACHED_ACCESS_KEY = 'auth.firebase.cachedAccess';
 
 export async function discoverServerAuthMode() {
   const current = await getSyncConfig();
@@ -44,24 +51,45 @@ export async function discoverServerAuthMode() {
   }
 }
 
-export async function bootstrapFirebaseAccess() {
+export async function bootstrapFirebaseAccess({
+  uid = null
+} = {}) {
   const config = await getSyncConfig();
+
+  if (!navigator.onLine) {
+    return getCachedFirebaseAccess({
+      uid,
+      workspaceId: config.workspaceId
+    });
+  }
+
   const token = await getAuthToken({ required: true });
 
-  const response = await fetch(
-    buildApiUrl(
-      config.apiBaseUrl,
-      '/api/v1/auth/bootstrap'
-    ),
-    {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json'
-      },
-      body: '{}'
+  let response;
+  try {
+    response = await fetch(
+      buildApiUrl(
+        config.apiBaseUrl,
+        '/api/v1/auth/bootstrap'
+      ),
+      {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json'
+        },
+        body: '{}'
+      }
+    );
+  } catch (error) {
+    if (!navigator.onLine) {
+      return getCachedFirebaseAccess({
+        uid,
+        workspaceId: config.workspaceId
+      });
     }
-  );
+    throw error;
+  }
 
   const data = await readJson(response);
 
@@ -89,11 +117,86 @@ export async function bootstrapFirebaseAccess() {
     await selectFirebaseWorkspace(selectedWorkspace.id);
   }
 
-  return {
+  const access = {
     user: data.user || null,
     workspaces,
-    selectedWorkspace
+    selectedWorkspace,
+    offline: false,
+    cachedAt: new Date().toISOString()
   };
+
+  await cacheFirebaseAccess(access);
+
+  return access;
+}
+
+export async function getCachedFirebaseAccess({
+  uid = null,
+  workspaceId = null
+} = {}) {
+  const record = await get(
+    STORES.SETTINGS,
+    CACHED_ACCESS_KEY
+  );
+
+  const cached = record?.value || null;
+
+  if (!cached?.user || !Array.isArray(cached.workspaces)) {
+    throw offlineAccessError(
+      'No hay una autorización offline guardada para este dispositivo.'
+    );
+  }
+
+  const cachedUid =
+    cached.user.externalAuthId ||
+    cached.user.uid ||
+    null;
+
+  if (uid && cachedUid && uid !== cachedUid) {
+    throw offlineAccessError(
+      'La sesión offline pertenece a otra cuenta.'
+    );
+  }
+
+  const selectedWorkspace =
+    cached.workspaces.find(
+      workspace => workspace.id === workspaceId
+    ) ||
+    (cached.workspaces.length === 1
+      ? cached.workspaces[0]
+      : null);
+
+  if (!selectedWorkspace) {
+    throw offlineAccessError(
+      'Selecciona el almacén una vez con conexión antes de usarlo offline.'
+    );
+  }
+
+  return {
+    user: cached.user,
+    workspaces: cached.workspaces,
+    selectedWorkspace,
+    offline: true,
+    cachedAt: cached.cachedAt || null
+  };
+}
+
+async function cacheFirebaseAccess(access) {
+  await put(STORES.SETTINGS, {
+    key: CACHED_ACCESS_KEY,
+    value: {
+      user: access.user,
+      workspaces: access.workspaces,
+      cachedAt: access.cachedAt
+    },
+    updatedAt: access.cachedAt
+  });
+}
+
+function offlineAccessError(message) {
+  const error = new Error(message);
+  error.code = 'OFFLINE_AUTH_CACHE_MISSING';
+  return error;
 }
 
 export async function selectFirebaseWorkspace(workspaceId) {
