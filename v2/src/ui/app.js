@@ -1503,76 +1503,89 @@ async function renderReports() {
 async function renderCatalog() {
   await refreshProducts();
 
+  const canWriteCatalog =
+    hasClientPermission('catalog.write');
+
   appRoot.innerHTML = `
     <section class="hero">
       <h2>Catálogo</h2>
       <p>Base maestra del inventario. Importa Excel con vista previa antes de tocar el catálogo.</p>
     </section>
 
-    <section class="card stack" style="margin-bottom:16px">
-      <div>
-        <h3 style="margin:0">Importar catálogo desde Excel</h3>
-        <p class="product-meta" style="margin-bottom:0">
-          Acepta .xlsx, .xls y .csv. Detecta Producto, SKU, código de barras, mínimos, máximos, categoría y unidad.
-        </p>
-      </div>
+    ${canWriteCatalog ? `
+      <section class="card stack" style="margin-bottom:16px">
+        <div>
+          <h3 style="margin:0">Importar catálogo desde Excel</h3>
+          <p class="product-meta" style="margin-bottom:0">
+            Acepta .xlsx, .xls y .csv. Detecta Producto, SKU, código de barras, mínimos, máximos, categoría y unidad.
+          </p>
+        </div>
 
-      <label>
-        Archivo
-        <input id="catalogImportFile" type="file" accept=".xlsx,.xls,.csv">
-      </label>
+        <label>
+          Archivo
+          <input id="catalogImportFile" type="file" accept=".xlsx,.xls,.csv">
+        </label>
 
-      <div class="product-meta">
-        Seguridad V2: una columna de Existencia puede leerse para validar el archivo, pero <strong>no modifica el stock</strong>.
-        La existencia real entra por Conteo o movimientos trazables.
-      </div>
+        <div class="product-meta">
+          Seguridad V2: una columna de Existencia puede leerse para validar el archivo, pero <strong>no modifica el stock</strong>.
+          La existencia real entra por Conteo o movimientos trazables.
+        </div>
 
-      ${state.importPreview ? renderCatalogImportPreview(state.importPreview) : ''}
-    </section>
+        ${state.importPreview ? renderCatalogImportPreview(state.importPreview) : ''}
+      </section>
+    ` : `
+      <section class="card" style="margin-bottom:16px">
+        <div class="product-meta">
+          Modo consulta: puedes ver el catálogo, pero no modificarlo.
+        </div>
+      </section>
+    `}
 
     <div class="operation-layout">
-      <form id="productForm" class="card stack">
-        <h3 style="margin:0">Nuevo producto</h3>
+      ${canWriteCatalog ? `
+        <form id="productForm" class="card stack">
+          <h3 style="margin:0">Nuevo producto</h3>
 
-        <label>
-          Nombre
-          <input name="name" autocomplete="off" required>
-        </label>
-
-        <div class="row">
           <label>
-            SKU / Código interno
-            <input name="sku" autocomplete="off">
+            Nombre
+            <input name="name" autocomplete="off" required>
           </label>
-          <label>
-            Código de barras
-            <input name="barcode" inputmode="numeric" autocomplete="off">
-          </label>
-        </div>
 
-        <div class="row">
-          <label>
-            Mínimo semanal
-            <input name="minStock" value="0" inputmode="decimal">
-          </label>
-          <label>
-            Máximo semanal
-            <input name="maxStock" value="0" inputmode="decimal">
-          </label>
-        </div>
+          <div class="row">
+            <label>
+              SKU / Código interno
+              <input name="sku" autocomplete="off">
+            </label>
+            <label>
+              Código de barras
+              <input name="barcode" inputmode="numeric" autocomplete="off">
+            </label>
+          </div>
 
-        <label>
-          Reposición
-          <select name="replenishmentMethod">
-            <option value="${REPLENISHMENT_METHODS.BOTH}">Compra o pedido</option>
-            <option value="${REPLENISHMENT_METHODS.PURCHASE}">Compra</option>
-            <option value="${REPLENISHMENT_METHODS.ORDER}">Pedido</option>
-            <option value="${REPLENISHMENT_METHODS.NONE}">Sin reposición automática</option>
-          </select>
-        </label>
+          <div class="row">
+            <label>
+              Mínimo semanal
+              <input name="minStock" value="0" inputmode="decimal">
+            </label>
+            <label>
+              Máximo semanal
+              <input name="maxStock" value="0" inputmode="decimal">
+            </label>
+          </div>
 
-        <button class="primary" type="submit">Agregar producto</button>
-      </form>
+          <label>
+            Reposición
+            <select name="replenishmentMethod">
+              <option value="${REPLENISHMENT_METHODS.BOTH}">Compra o pedido</option>
+              <option value="${REPLENISHMENT_METHODS.PURCHASE}">Compra</option>
+              <option value="${REPLENISHMENT_METHODS.ORDER}">Pedido</option>
+              <option value="${REPLENISHMENT_METHODS.NONE}">Sin reposición automática</option>
+            </select>
+          </label>
+
+          <button class="primary" type="submit">Agregar producto</button>
+        </form>
+      ` : ''}
 
       <section class="card">
         <div class="row">
