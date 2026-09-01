@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-5';
+const CACHE_NAME = 'smart-inventory-v2-shell-6';
 
 const APP_SHELL = [
   './',
@@ -20,6 +20,7 @@ const APP_SHELL = [
   './src/sync/syncEngine.js',
   './src/inventory/stockEngine.js',
   './src/inventory/movementService.js',
+  './src/inventory/lotEngine.js',
   './src/intelligence/replenishmentEngine.js',
   './src/documents/documentTypes.js',
   './src/documents/documentService.js'
