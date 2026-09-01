@@ -1,5 +1,8 @@
 import { getAuthToken } from './authProvider.js';
 import {
+  getFirebaseClientProjectId
+} from './firebaseClient.js';
+import {
   getSyncConfig,
   saveSyncConfig,
   buildApiUrl
@@ -40,6 +43,20 @@ export async function discoverServerAuthMode() {
       return current;
     }
 
+    if (
+      data.authMode === 'firebase' &&
+      data.firebaseProjectId &&
+      data.firebaseProjectId !==
+        getFirebaseClientProjectId()
+    ) {
+      const error = new Error(
+        'La app y el servidor apuntan a proyectos Firebase distintos.'
+      );
+      error.code =
+        'FIREBASE_PROJECT_MISMATCH';
+      throw error;
+    }
+
     if (data.authMode === current.authMode) {
       return current;
     }
@@ -50,7 +67,14 @@ export async function discoverServerAuthMode() {
         ? { serverUserId: null }
         : {})
     });
-  } catch (_) {
+  } catch (error) {
+    if (
+      error?.code ===
+      'FIREBASE_PROJECT_MISMATCH'
+    ) {
+      throw error;
+    }
+
     return current;
   }
 }
