@@ -3,6 +3,8 @@ import {
   markSyncing,
   markSynced,
   markFailed,
+  markPending,
+  markConflict,
   recoverInterruptedOperations,
   pruneSyncedOperations
 } from './localQueue.js';
@@ -74,8 +76,11 @@ export async function syncNow({
     };
   } catch (error) {
     emit({
-      state: 'error',
-      message: error?.message || String(error)
+      state: error?.code === 'SYNC_CONFLICT'
+        ? 'conflict'
+        : 'error',
+      message: error?.message || String(error),
+      details: error?.details || null
     });
 
     return {
@@ -146,8 +151,34 @@ async function pushPending(config) {
     }
 
     if (!response.ok || !data.ok) {
-      const error = new Error(data.message || 'Error enviando cambios al servidor');
-      for (const item of batch) await markFailed(item.id, error);
+      const error = new Error(
+        data.message || 'Error enviando cambios al servidor'
+      );
+      error.code = data.code || 'SYNC_PUSH_FAILED';
+      error.details = data.details || null;
+
+      if (response.status === 409 && data.code === 'SYNC_CONFLICT') {
+        const conflictId = data.details?.eventId || null;
+
+        for (const item of batch) {
+          if (item.id === conflictId) {
+            await markConflict(item.id, {
+              ...(data.details || {}),
+              message: error.message
+            });
+          } else {
+            await markPending(
+              item.id,
+              'Lote revertido por conflicto en otro evento.'
+            );
+          }
+        }
+      } else {
+        for (const item of batch) {
+          await markFailed(item.id, error);
+        }
+      }
+
       throw error;
     }
 
