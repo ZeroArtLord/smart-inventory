@@ -88,6 +88,7 @@ jobs:
       NODE_ENV: test
       AUTH_MODE: dev
       DEV_ALLOW_HEADER_AUTH: "true"
+      SMOKE_STATE_FILE: /tmp/smart-inventory-smoke.json
 
     steps:
       - name: Checkout
@@ -123,6 +124,33 @@ jobs:
 
       - name: Run real sync and stock smoke
         run: npm run smoke:integration
+
+      - name: Restart API
+        run: |
+          kill "$(cat /tmp/smart-inventory-v2.pid)"
+          for i in $(seq 1 20); do
+            if ! kill -0 "$(cat /tmp/smart-inventory-v2.pid)" 2>/dev/null; then
+              break
+            fi
+            sleep 0.25
+          done
+          npm start >> /tmp/smart-inventory-v2.log 2>&1 &
+          echo $! > /tmp/smart-inventory-v2.pid
+
+      - name: Wait after restart
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:5190/ready > /tmp/ready-after-restart.json; then
+              cat /tmp/ready-after-restart.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/smart-inventory-v2.log
+          exit 1
+
+      - name: Verify restart durability
+        run: npm run smoke:restart
 
       - name: Show server log on failure
         if: failure()
