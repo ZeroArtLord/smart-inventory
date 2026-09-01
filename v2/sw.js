@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-17';
+const CACHE_NAME = 'smart-inventory-v2-shell-18';
 
 const APP_SHELL = [
   './',
@@ -21,6 +21,7 @@ const APP_SHELL = [
   './src/storage/database.js',
   './src/sync/localQueue.js',
   './src/sync/syncSettings.js',
+  './src/sync/workspaceCache.js',
   './src/sync/remoteApply.js',
   './src/sync/syncEngine.js',
   './src/sync/conflictResolver.js',
@@ -60,16 +61,94 @@ self.addEventListener('activate', event => {
   );
 });
 
+const FIREBASE_RUNTIME_PATHS = new Set([
+  '/firebasejs/10.12.5/firebase-app-compat.js',
+  '/firebasejs/10.12.5/firebase-auth-compat.js'
+]);
+
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 
+  const url = new URL(event.request.url);
+
+  if (isApiRequest(url)) {
+    return;
+  }
+
+  if (isFirebaseRuntimeRequest(url)) {
+    event.respondWith(
+      networkFirstWithCache(event.request)
+    );
+    return;
+  }
+
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response.ok) {
+            cacheResponse(
+              event.request,
+              response.clone()
+            );
+          }
+          return response;
+        })
+        .catch(async () =>
+          (await caches.match(event.request)) ||
+          (await caches.match('./index.html')) ||
+          caches.match('./')
+        )
+    );
+    return;
+  }
+
   event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
-        return response;
-      })
-      .catch(() => caches.match(event.request))
+    networkFirstWithCache(event.request)
   );
 });
+
+async function networkFirstWithCache(request) {
+  try {
+    const response = await fetch(request);
+
+    if (
+      response.ok ||
+      response.type === 'opaque'
+    ) {
+      await cacheResponse(
+        request,
+        response.clone()
+      );
+    }
+
+    return response;
+  } catch (error) {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    throw error;
+  }
+}
+
+async function cacheResponse(request, response) {
+  const cache = await caches.open(CACHE_NAME);
+  await cache.put(request, response);
+}
+
+function isApiRequest(url) {
+  return (
+    url.origin === self.location.origin &&
+    url.pathname.startsWith('/api/')
+  );
+}
+
+function isFirebaseRuntimeRequest(url) {
+  return (
+    url.origin === 'https://www.gstatic.com' &&
+    FIREBASE_RUNTIME_PATHS.has(url.pathname)
+  );
+}
