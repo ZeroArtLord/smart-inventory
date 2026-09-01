@@ -241,6 +241,28 @@ export function buildV1MigrationPreview(snapshot = emptySnapshot()) {
     });
   });
 
+  const duplicateNames = new Map();
+
+  for (const row of rows) {
+    const group = duplicateNames.get(
+      row.nameNormalized
+    ) || [];
+
+    group.push(row);
+    duplicateNames.set(
+      row.nameNormalized,
+      group
+    );
+  }
+
+  for (const group of duplicateNames.values()) {
+    if (group.length < 2) continue;
+
+    errors.push(
+      `Producto V1 duplicado por nombre: ${group[0].name} (${group.length} registros)`
+    );
+  }
+
   return {
     rows,
     warnings,
@@ -344,6 +366,23 @@ export async function applyV1Migration(
     migratedProducts: []
   };
 
+  const migrationStartedAt =
+    new Date().toISOString();
+
+  await put(STORES.SETTINGS, {
+    key: scopedMigrationKey(
+      MIGRATION_ARCHIVE_KEY,
+      scope
+    ),
+    value: {
+      startedAt: migrationStartedAt,
+      completedAt: null,
+      sourceCounts: preview.sourceCounts,
+      snapshot: preview.snapshot
+    },
+    updatedAt: migrationStartedAt
+  });
+
   for (const row of preview.rows) {
     const categoryId = await ensureCategory(
       row.categoryName,
@@ -390,8 +429,35 @@ export async function applyV1Migration(
     );
 
     if (Math.abs(delta) > 0.000001) {
+      const movementId =
+        migrationMovementId(row);
+
+      const existingMovement = await get(
+        STORES.MOVEMENTS,
+        movementId
+      );
+
+      if (existingMovement) {
+        const sameMigration =
+          existingMovement.productId === product.id &&
+          existingMovement.metadata?.source ===
+            'SMART_INVENTORY_V1' &&
+          existingMovement.metadata?.legacyProductId ===
+            row.legacyId;
+
+        if (!sameMigration) {
+          throw new Error(
+            `Colisión de movimiento de migración para ${row.name}`
+          );
+        }
+
+        throw new Error(
+          `Migración parcial inconsistente para ${row.name}: el movimiento inicial ya existe pero el stock actual no coincide con el objetivo ${row.currentStock}.`
+        );
+      }
+
       await createMovement({
-        id: migrationMovementId(row),
+        id: movementId,
         productId: product.id,
         type: MOVEMENT_TYPES.ADJUSTMENT,
         quantity: 0,
@@ -424,7 +490,8 @@ export async function applyV1Migration(
       scope
     ),
     value: {
-      migratedAt,
+      startedAt: migrationStartedAt,
+      completedAt: migratedAt,
       sourceCounts: preview.sourceCounts,
       snapshot: preview.snapshot
     },
