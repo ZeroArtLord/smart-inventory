@@ -53,6 +53,16 @@ syncRouter.post('/push', async (req, res, next) => {
 
         await applyEvent(client, req.auth, event);
 
+        await client.query(
+          `UPDATE sync_events
+           SET payload = $2::jsonb
+           WHERE server_seq = $1`,
+          [
+            inserted.rows[0].server_seq,
+            JSON.stringify(event.payload || {})
+          ]
+        );
+
         lastCursor = Number(inserted.rows[0].server_seq);
         applied.push({
           id: event.id,
