@@ -100,6 +100,7 @@ import {
 } from '../admin/adminClient.js';
 import {
   readV1Snapshot,
+  readV1SnapshotWithIndexedDb,
   buildV1MigrationPreview,
   parseV1ArchiveText,
   applyV1Migration,
@@ -722,7 +723,7 @@ async function renderMigration() {
 
   if (!state.migrationPreview) {
     state.migrationPreview = buildV1MigrationPreview(
-      readV1Snapshot()
+      await readV1SnapshotWithIndexedDb()
     );
   }
 
