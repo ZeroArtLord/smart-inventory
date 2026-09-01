@@ -1,5 +1,5 @@
 const DB_NAME = 'smart_inventory_v2';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 export const STORES = Object.freeze({
   PRODUCTS: 'products',
@@ -11,6 +11,7 @@ export const STORES = Object.freeze({
   DOCUMENTS: 'documents',
   DOCUMENT_LINES: 'documentLines',
   LOTS: 'lots',
+  REPLENISHMENTS: 'replenishments',
   SYNC_QUEUE: 'syncQueue',
   SETTINGS: 'settings'
 });
@@ -80,6 +81,14 @@ function createDatabase() {
       ensureIndex(lots, 'productId', 'productId');
       ensureIndex(lots, 'expiresAt', 'expiresAt');
       ensureIndex(lots, 'lotNumber', 'lotNumber');
+
+      const replenishments = ensureStore(db, tx, STORES.REPLENISHMENTS, 'id');
+      ensureIndex(replenishments, 'productId', 'productId');
+      ensureIndex(replenishments, 'supplierId', 'supplierId');
+      ensureIndex(replenishments, 'status', 'status');
+      ensureIndex(replenishments, 'method', 'method');
+      ensureIndex(replenishments, 'expectedAt', 'expectedAt');
+      ensureIndex(replenishments, 'updatedAt', 'updatedAt');
 
       const syncQueue = ensureStore(db, tx, STORES.SYNC_QUEUE, 'id');
       ensureIndex(syncQueue, 'status', 'status');
