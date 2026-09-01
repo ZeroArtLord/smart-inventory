@@ -872,3 +872,52 @@ input, select {
     grid-template-columns: 1fr;
   }
 }
+
+.bottom-nav[hidden] {
+  display: none !important;
+}
+
+.bottom-nav button.active {
+  background: var(--accent);
+  color: white;
+}
+
+.bottom-nav button:focus-visible,
+.action-card:focus-visible,
+.primary:focus-visible,
+.secondary:focus-visible,
+.success:focus-visible,
+.danger:focus-visible {
+  outline: 3px solid rgba(59, 130, 246, .35);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+
+  .numeric-input {
+    min-height: 72px;
+    font-size: 2.1rem;
+  }
+
+  .math-pad button {
+    min-height: 48px;
+  }
+
+  .bottom-nav {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .bottom-nav button {
+    min-width: 0;
+    touch-action: manipulation;
+  }
+
+  .card button {
+    touch-action: manipulation;
+  }
+}
