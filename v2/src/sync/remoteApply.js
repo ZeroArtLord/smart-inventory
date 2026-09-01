@@ -13,6 +13,7 @@ const ENTITY_STORES = Object.freeze({
   document: STORES.DOCUMENTS,
   documentLine: STORES.DOCUMENT_LINES,
   lot: STORES.LOTS,
+  replenishment: STORES.REPLENISHMENTS,
   movement: STORES.MOVEMENTS
 });
 
