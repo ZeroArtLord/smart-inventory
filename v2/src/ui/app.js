@@ -1856,108 +1856,268 @@ async function renderCatalog() {
 
   const canWriteCatalog =
     hasClientPermission('catalog.write');
+  const movements = await getAll(STORES.MOVEMENTS);
+  const inventoryRows = buildInventoryReport(
+    state.products,
+    movements,
+    { now: new Date() }
+  );
+  const rowByProductId = new Map(
+    inventoryRows.map(row => [row.productId, row])
+  );
 
   appRoot.innerHTML = `
-    <section class="hero">
-      <h2>Catálogo</h2>
-      <p>Base maestra del inventario. Importa Excel con vista previa antes de tocar el catálogo.</p>
+    <section class="hero dashboard-hero">
+      <div>
+        <div class="product-meta" style="font-weight:800;color:var(--accent);margin-bottom:5px">
+          Base maestra
+        </div>
+        <h2>Catálogo</h2>
+        <p>Productos, códigos, stock derivado, mínimos, máximos y método de reposición.</p>
+      </div>
+      <div class="dashboard-sync">
+        <span class="badge">${state.products.length} producto(s)</span>
+        ${canWriteCatalog
+          ? '<span class="badge status-good">Edición habilitada</span>'
+          : '<span class="badge">Solo consulta</span>'}
+      </div>
     </section>
 
-    ${canWriteCatalog ? `
-      <section class="card stack" style="margin-bottom:16px">
-        <div>
-          <h3 style="margin:0">Importar catálogo desde Excel</h3>
-          <p class="product-meta" style="margin-bottom:0">
-            Acepta .xlsx, .xls y .csv. Detecta Producto, SKU, código de barras, mínimos, máximos, categoría y unidad.
-          </p>
-        </div>
-
-        <label>
-          Archivo
-          <input id="catalogImportFile" type="file" accept=".xlsx,.xls,.csv">
-        </label>
-
-        <div class="product-meta">
-          Seguridad V2: una columna de Existencia puede leerse para validar el archivo, pero <strong>no modifica el stock</strong>.
-          La existencia real entra por Conteo o movimientos trazables.
-        </div>
-
-        ${state.importPreview ? renderCatalogImportPreview(state.importPreview) : ''}
-      </section>
-    ` : `
-      <section class="card" style="margin-bottom:16px">
-        <div class="product-meta">
-          Modo consulta: puedes ver el catálogo, pero no modificarlo.
-        </div>
-      </section>
-    `}
-
-    <div class="operation-layout">
-      ${canWriteCatalog ? `
-        <form id="productForm" class="card stack">
-          <h3 style="margin:0">Nuevo producto</h3>
-
-          <label>
-            Nombre
-            <input name="name" autocomplete="off" required>
+    <div class="catalog-workspace-v2">
+      <section class="card catalog-table-card">
+        <div class="catalog-toolbar-v2">
+          <label class="catalog-search-v2">
+            <span>⌕</span>
+            <input
+              id="catalogLocalSearch"
+              placeholder="Buscar nombre, SKU o código..."
+              autocomplete="off"
+            >
           </label>
-
-          <div class="row">
-            <label>
-              SKU / Código interno
-              <input name="sku" autocomplete="off">
-            </label>
-            <label>
-              Código de barras
-              <input name="barcode" inputmode="numeric" autocomplete="off">
-            </label>
-          </div>
-
-          <div class="row">
-            <label>
-              Mínimo semanal
-              <input name="minStock" value="0" inputmode="decimal">
-            </label>
-            <label>
-              Máximo semanal
-              <input name="maxStock" value="0" inputmode="decimal">
-            </label>
-          </div>
-
-          <label>
-            Reposición
-            <select name="replenishmentMethod">
-              <option value="${REPLENISHMENT_METHODS.BOTH}">Compra o pedido</option>
-              <option value="${REPLENISHMENT_METHODS.PURCHASE}">Compra</option>
-              <option value="${REPLENISHMENT_METHODS.ORDER}">Pedido</option>
-              <option value="${REPLENISHMENT_METHODS.NONE}">Sin reposición automática</option>
-            </select>
-          </label>
-
-          <button class="primary" type="submit">Agregar producto</button>
-        </form>
-      ` : ''}
-
-      <section class="card">
-        <div class="row">
-          <h3 style="margin:0">Productos</h3>
-          <span class="badge">${state.products.length}</span>
+          <span class="badge">${inventoryRows.length}</span>
         </div>
-        <div class="stack" style="margin-top:12px">
+
+        <div class="catalog-table-wrap-v2">
+          <table class="catalog-table-v2">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>SKU</th>
+                <th>Stock</th>
+                <th>Mín.</th>
+                <th>Máx.</th>
+                <th>Unidad</th>
+                <th>Reposición</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="catalogRows">
+              ${state.products.length
+                ? state.products.map(product => {
+                    const row = rowByProductId.get(product.id);
+                    const stock = Number(row?.stock || 0);
+                    const min = Number(product.minStock || 0);
+                    const max = Number(product.maxStock || 0);
+                    const status = min > 0 && stock < min
+                      ? (stock <= Math.max(0, min * .5) ? 'Crítico' : 'Bajo')
+                      : 'Normal';
+                    const statusClass = status === 'Crítico'
+                      ? 'critical'
+                      : status === 'Bajo'
+                        ? 'low'
+                        : 'ok';
+
+                    return `
+                      <tr
+                        data-catalog-filter="${escapeHtml(
+                          [product.name, product.sku, product.barcode]
+                            .filter(Boolean)
+                            .join(' ')
+                            .toLowerCase()
+                        )}"
+                      >
+                        <td>
+                          <div class="catalog-product-cell">
+                            <div class="catalog-product-icon">▣</div>
+                            <div>
+                              <strong>${escapeHtml(product.name)}</strong>
+                              <small>${escapeHtml(product.barcode || 'Sin código de barras')}</small>
+                            </div>
+                          </div>
+                        </td>
+                        <td>${escapeHtml(product.sku || '—')}</td>
+                        <td class="catalog-stock-value">${formatNumber(stock)}</td>
+                        <td>${formatNumber(min)}</td>
+                        <td>${max > 0 ? formatNumber(max) : '—'}</td>
+                        <td>${escapeHtml(product.unitCode || 'UND')}</td>
+                        <td>${escapeHtml(replenishmentLabel(product.replenishmentMethod))}</td>
+                        <td>
+                          <span class="catalog-status ${statusClass}">
+                            <span></span>${status}
+                          </span>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')
+                : '<tr><td colspan="8"><div class="empty">Todavía no hay productos.</div></td></tr>'}
+            </tbody>
+          </table>
+        </div>
+
+        <div id="catalogMobileList" class="catalog-mobile-list">
           ${state.products.length
-            ? state.products.map(product => `
-              <div>
-                <strong>${escapeHtml(product.name)}</strong>
-                <div class="product-meta">
-                  Min ${product.minStock} · Max ${product.maxStock || '—'} · ${escapeHtml(replenishmentLabel(product.replenishmentMethod))}
-                </div>
-              </div>
-            `).join('')
+            ? state.products.map(product => {
+                const row = rowByProductId.get(product.id);
+                const stock = Number(row?.stock || 0);
+                const min = Number(product.minStock || 0);
+                const status = min > 0 && stock < min
+                  ? (stock <= Math.max(0, min * .5) ? 'critical' : 'low')
+                  : 'ok';
+                const statusLabel = status === 'critical'
+                  ? 'Crítico'
+                  : status === 'low'
+                    ? 'Bajo'
+                    : 'Normal';
+
+                return `
+                  <article
+                    class="catalog-mobile-card"
+                    data-catalog-filter="${escapeHtml(
+                      [product.name, product.sku, product.barcode]
+                        .filter(Boolean)
+                        .join(' ')
+                        .toLowerCase()
+                    )}"
+                  >
+                    <div class="catalog-mobile-head">
+                      <div class="catalog-product-icon">▣</div>
+                      <div>
+                        <strong>${escapeHtml(product.name)}</strong>
+                        <small>${escapeHtml(product.sku || product.barcode || 'Sin código')}</small>
+                      </div>
+                      <span class="catalog-status ${status}"><span></span>${statusLabel}</span>
+                    </div>
+                    <div class="catalog-mobile-stats">
+                      <div><small>Stock</small><strong>${formatNumber(stock)}</strong></div>
+                      <div><small>Mín.</small><strong>${formatNumber(product.minStock || 0)}</strong></div>
+                      <div><small>Máx.</small><strong>${product.maxStock ? formatNumber(product.maxStock) : '—'}</strong></div>
+                    </div>
+                    <div class="product-meta">
+                      ${escapeHtml(product.unitCode || 'UND')} ·
+                      ${escapeHtml(replenishmentLabel(product.replenishmentMethod))}
+                    </div>
+                  </article>
+                `;
+              }).join('')
             : '<div class="empty">Todavía no hay productos.</div>'}
         </div>
       </section>
+
+      <aside class="catalog-side-v2">
+        ${canWriteCatalog ? `
+          <form id="productForm" class="card stack catalog-create-card">
+            <div class="section-head">
+              <div>
+                <h3>＋ Nuevo producto</h3>
+                <p>Alta rápida al catálogo.</p>
+              </div>
+            </div>
+
+            <label>
+              Nombre
+              <input name="name" autocomplete="off" required placeholder="Ej. ARROZ 1KG">
+            </label>
+
+            <div class="form-pair-v2">
+              <label>
+                SKU / Código interno
+                <input name="sku" autocomplete="off">
+              </label>
+              <label>
+                Código de barras
+                <input name="barcode" inputmode="numeric" autocomplete="off">
+              </label>
+            </div>
+
+            <div class="form-pair-v2">
+              <label>
+                Mínimo semanal
+                <input name="minStock" value="0" inputmode="decimal">
+              </label>
+              <label>
+                Máximo semanal
+                <input name="maxStock" value="0" inputmode="decimal">
+              </label>
+            </div>
+
+            <label>
+              Reposición
+              <select name="replenishmentMethod">
+                <option value="${REPLENISHMENT_METHODS.BOTH}">Compra o pedido</option>
+                <option value="${REPLENISHMENT_METHODS.PURCHASE}">Compra</option>
+                <option value="${REPLENISHMENT_METHODS.ORDER}">Pedido</option>
+                <option value="${REPLENISHMENT_METHODS.NONE}">Sin reposición automática</option>
+              </select>
+            </label>
+
+            <button class="primary" type="submit">Agregar producto</button>
+          </form>
+
+          <section class="card stack catalog-import-card">
+            <div class="section-head">
+              <div>
+                <h3>⇧ Importador Excel V2</h3>
+                <p>Vista previa antes de modificar catálogo.</p>
+              </div>
+            </div>
+
+            <label class="import-zone-v2">
+              <span class="import-zone-icon">⇧</span>
+              <strong>Seleccionar archivo</strong>
+              <small>.xlsx, .xls o .csv</small>
+              <input
+                id="catalogImportFile"
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                hidden
+              >
+            </label>
+
+            <div class="catalog-safety-note">
+              <strong>Stock protegido.</strong>
+              Una columna Existencia puede validarse, pero nunca modifica el stock.
+            </div>
+
+            ${state.importPreview ? renderCatalogImportPreview(state.importPreview) : ''}
+          </section>
+        ` : `
+          <section class="card">
+            <strong>Modo consulta</strong>
+            <p class="product-meta">Puedes revisar el catálogo, pero no modificarlo.</p>
+          </section>
+        `}
+      </aside>
     </div>
   `;
+
+  const catalogSearch =
+    document.getElementById('catalogLocalSearch');
+
+  catalogSearch?.addEventListener('input', event => {
+    const query = String(event.target.value || '')
+      .trim()
+      .toLowerCase();
+
+    document
+      .querySelectorAll('[data-catalog-filter]')
+      .forEach(item => {
+        const haystack =
+          item.dataset.catalogFilter || '';
+        item.hidden =
+          Boolean(query) &&
+          !haystack.includes(query);
+      });
+  });
 }
 
 async function renderReplenishmentWorkspace() {
