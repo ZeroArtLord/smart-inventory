@@ -950,12 +950,22 @@ async function renderHome() {
     state.products.map(product => [product.id, product])
   );
 
+  const currentWorkspace =
+    state.availableWorkspaces.find(
+      workspace =>
+        workspace.id === state.session?.workspaceId
+    ) ||
+    state.availableWorkspaces[0] ||
+    null;
 
   appRoot.innerHTML = `
     <section class="hero dashboard-hero">
       <div>
-        <h1>Almacén</h1>
-        <p>Resumen operativo calculado desde movimientos, lotes y trabajo local.</p>
+        <div class="product-meta" style="font-weight:800;color:var(--accent);margin-bottom:5px">
+          ${escapeHtml(currentWorkspace?.name || 'Almacén principal')}
+        </div>
+        <h1>Dashboard</h1>
+        <p>Visión operativa del almacén en tiempo real, calculada desde movimientos y lotes.</p>
       </div>
       <div class="dashboard-sync">
         ${state.availableWorkspaces.length > 1
@@ -964,55 +974,53 @@ async function renderHome() {
         ${installPromptEvent
           ? '<button class="secondary" data-action="install-pwa" type="button">Instalar app</button>'
           : ''}
-        ${state.authAccessOffline
-          ? '<span class="badge status-warning">Acceso offline verificado previamente</span>'
-          : ''}
         ${snapshot.syncConflictCount
           ? `<button class="secondary status-warning" data-open-view="conflicts" type="button">⚠ ${snapshot.syncConflictCount} conflicto(s)</button>`
           : snapshot.pendingSyncCount
             ? `<span class="badge status-warning">${snapshot.pendingSyncCount} pendientes</span>`
             : navigator.onLine
-              ? '<span class="badge status-good">Todo sincronizado</span>'
+              ? '<span class="badge status-good">● Todo sincronizado</span>'
               : '<span class="badge status-warning">Modo offline</span>'}
+        <button class="primary" data-open-view="count" type="button">＋ Nuevo conteo</button>
       </div>
     </section>
 
     <section class="grid dashboard-grid">
       ${dashboardMetric(
         snapshot.inventorySummary.products,
-        'Productos activos',
-        'Catálogo'
+        'Productos',
+        'Activos en catálogo'
       )}
       ${dashboardMetric(
         snapshot.inventorySummary.critical + snapshot.inventorySummary.low,
-        'Stock con atención',
-        'Mínimos + consumo'
+        'Stock bajo',
+        'Requieren atención'
       )}
       ${dashboardMetric(
         snapshot.expiringLots.length,
-        'Lotes por vencer',
+        'Por vencer',
         'Próximos 30 días'
       )}
       ${dashboardMetric(
         snapshot.movementSummaryToday.supplyCount,
         'Surtidos hoy',
-        `${snapshot.movementSummaryToday.movementCount} movimientos hoy`
+        `${snapshot.movementSummaryToday.movementCount} movimientos`
       )}
     </section>
 
     <section class="grid dashboard-detail-grid" style="margin-top:16px">
-      <article class="card">
-        <div class="row">
+      <article class="card dashboard-section-card">
+        <div class="section-head">
           <div>
-            <h3 style="margin:0">Sugerencias de reposición</h3>
-            <div class="product-meta">Prioridad calculada con stock real y mínimos.</div>
+            <h3>🛒 Sugerencias de compra y pedido</h3>
+            <p>Stock real, mínimos, máximos y mercancía en tránsito.</p>
           </div>
           <span class="badge">${snapshot.inventorySummary.replenishmentNeeded}</span>
         </div>
 
-        <div class="stack" style="margin-top:12px">
+        <div class="stack">
           ${snapshot.lowStock.length
-            ? snapshot.lowStock.map(row => `
+            ? snapshot.lowStock.slice(0, 6).map(row => `
               <div class="dashboard-list-row">
                 <div>
                   <strong>${escapeHtml(row.name)}</strong>
@@ -1028,18 +1036,27 @@ async function renderHome() {
             `).join('')
             : '<div class="empty compact-empty">Sin productos que requieran reposición.</div>'}
         </div>
+
+        ${canOpenView('replenishment') ? `
+          <button
+            class="secondary"
+            data-open-view="replenishment"
+            type="button"
+            style="width:100%;margin-top:10px"
+          >Ver compras y pedidos</button>
+        ` : ''}
       </article>
 
-      <article class="card">
-        <div class="row">
+      <article class="card dashboard-section-card">
+        <div class="section-head">
           <div>
-            <h3 style="margin:0">Vencimientos próximos</h3>
-            <div class="product-meta">Lotes con existencia restante.</div>
+            <h3>◷ Vencimientos próximos</h3>
+            <p>Rotación FEFO con existencia restante.</p>
           </div>
           <span class="badge">${snapshot.expiringLots.length}</span>
         </div>
 
-        <div class="stack" style="margin-top:12px">
+        <div class="stack">
           ${snapshot.expiringLots.length
             ? snapshot.expiringLots.slice(0, 6).map(lot => {
                 const product = productById.get(lot.productId);
@@ -1062,18 +1079,18 @@ async function renderHome() {
         </div>
       </article>
 
-      <article class="card">
-        <div class="row">
+      <article class="card dashboard-section-card">
+        <div class="section-head">
           <div>
-            <h3 style="margin:0">Movimientos recientes</h3>
-            <div class="product-meta">El stock se deriva de este historial.</div>
+            <h3>⇅ Movimientos recientes</h3>
+            <p>Historial del que se deriva el stock.</p>
           </div>
           <span class="badge">${snapshot.recentMovements.length}</span>
         </div>
 
-        <div class="stack" style="margin-top:12px">
+        <div class="stack">
           ${snapshot.recentMovements.length
-            ? snapshot.recentMovements.map(movement => {
+            ? snapshot.recentMovements.slice(0, 6).map(movement => {
                 const product = productById.get(movement.productId);
                 return `
                   <div class="dashboard-list-row">
@@ -1095,34 +1112,88 @@ async function renderHome() {
       </article>
     </section>
 
-    <section class="grid dashboard-grid" style="margin-top:16px">
-      ${canOpenView('count')
-        ? actionCard('count', 'Conteo físico', 'Número + Enter. Ajustes trazables.')
-        : ''}
-      ${canOpenView('supply')
-        ? actionCard('supply', 'Surtido', 'Salida validada y FEFO por lotes cuando aplica.')
-        : ''}
-      ${canOpenView('entry')
-        ? actionCard('entry', 'Entrada', 'Recepción, costo, lote y vencimiento opcionales.')
-        : ''}
-      ${canOpenView('replenishment')
-        ? actionCard('replenishment', 'Comprar / Pedir', 'Sugerencias, pedidos y mercancía en tránsito.')
-        : ''}
-      ${canOpenView('reports')
-        ? actionCard('reports', 'Reportes', 'Inventario, consumo, vencimientos y movimientos.')
-        : ''}
-      ${canOpenView('users')
-        ? actionCard('users', 'Usuarios y permisos', 'Roles, visibilidad y permisos granulares.')
-        : ''}
-      ${canOpenView('audit')
-        ? actionCard('audit', 'Auditoría', 'Quién hizo qué, cuándo y desde qué operación.')
-        : ''}
-      ${canOpenView('migration')
-        ? actionCard('migration', 'Migrar Smart Inventory V1', 'Preview, archivo legado y stock inicial trazable.')
-        : ''}
-      ${canOpenView('catalog')
-        ? actionCard('catalog', 'Catálogo', 'Excel, mínimos, máximos y reposición.')
-        : ''}
+    <section class="dashboard-wide-grid">
+      <article class="card">
+        <div class="section-head">
+          <div>
+            <h3>⚡ Acciones rápidas</h3>
+            <p>Lo que más usa el almacén, a un toque.</p>
+          </div>
+        </div>
+
+        <div class="grid quick-action-grid">
+          ${canOpenView('count')
+            ? actionCard('count', '☑ Conteo físico', 'Número + Enter · ajustes trazables.')
+            : ''}
+          ${canOpenView('supply')
+            ? actionCard('supply', '↑ Surtido', 'Salida interna validada y FEFO.')
+            : ''}
+          ${canOpenView('entry')
+            ? actionCard('entry', '↓ Entrada', 'Recepción, costo, lote y vencimiento.')
+            : ''}
+          ${canOpenView('replenishment')
+            ? actionCard('replenishment', '↻ Comprar / Pedir', 'Sugerencias y mercancía en tránsito.')
+            : ''}
+          ${canOpenView('catalog')
+            ? actionCard('catalog', '◫ Catálogo', 'Productos, mínimos, máximos y Excel.')
+            : ''}
+          ${canOpenView('reports')
+            ? actionCard('reports', '▥ Reportes', 'Inventario, consumo y vencimientos.')
+            : ''}
+          ${canOpenView('users')
+            ? actionCard('users', '♙ Usuarios', 'Roles y permisos granulares.')
+            : ''}
+          ${canOpenView('audit')
+            ? actionCard('audit', '◎ Auditoría', 'Quién hizo qué y cuándo.')
+            : ''}
+          ${canOpenView('migration')
+            ? actionCard('migration', '⇄ Migrar V1', 'Migración trazable y controlada.')
+            : ''}
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="section-head">
+          <div>
+            <h3>✓ Estado del sistema</h3>
+            <p>Sesión, sincronización y trabajo local-first.</p>
+          </div>
+        </div>
+
+        <div class="dashboard-status-panel">
+          <div class="status-tile">
+            <div class="status-tile-icon">☁</div>
+            <div>
+              <strong>${navigator.onLine ? 'Conectado al servidor' : 'Trabajando offline'}</strong>
+              <small>${snapshot.pendingSyncCount ? snapshot.pendingSyncCount + ' cambio(s) pendiente(s)' : 'Sin cambios pendientes'}</small>
+            </div>
+          </div>
+
+          <div class="status-tile">
+            <div class="status-tile-icon">🔐</div>
+            <div>
+              <strong>Firebase · ${escapeHtml(state.session?.roleCode || 'sesión')}</strong>
+              <small>${state.authUser?.email ? escapeHtml(state.authUser.email) : 'Identidad protegida'}</small>
+            </div>
+          </div>
+
+          <div class="status-tile">
+            <div class="status-tile-icon">▣</div>
+            <div>
+              <strong>${escapeHtml(currentWorkspace?.name || 'Almacén principal')}</strong>
+              <small>${escapeHtml(currentWorkspace?.workspaceKey || 'workspace activo')}</small>
+            </div>
+          </div>
+
+          <div class="status-tile">
+            <div class="status-tile-icon">↺</div>
+            <div>
+              <strong>${snapshot.syncConflictCount ? snapshot.syncConflictCount + ' conflicto(s)' : 'Sin conflictos'}</strong>
+              <small>Los cambios nunca se sobrescriben en silencio</small>
+            </div>
+          </div>
+        </div>
+      </article>
     </section>
   `;
 }
