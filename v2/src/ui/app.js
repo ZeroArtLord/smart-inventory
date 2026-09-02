@@ -2221,78 +2221,150 @@ async function renderReplenishmentWorkspace() {
     row => Number(row.suggestedQuantity || 0) > 0
   );
 
+  const inTransitCount = items.filter(item =>
+    [
+      REPLENISHMENT_STATUS.ORDERED,
+      REPLENISHMENT_STATUS.IN_TRANSIT,
+      REPLENISHMENT_STATUS.PARTIALLY_RECEIVED
+    ].includes(item.status)
+  ).length;
+
+  const pendingUnits = items.reduce(
+    (sum, item) => sum + Number(item.pendingQuantity || 0),
+    0
+  );
+
   appRoot.innerHTML = `
-    <section class="hero">
-      <h2>Compras, pedidos y tránsito</h2>
-      <p>Una compra/pedido pendiente reduce la recomendación, pero nunca aumenta el stock físico.</p>
+    <section class="hero dashboard-hero">
+      <div>
+        <div class="product-meta" style="font-weight:800;color:var(--accent);margin-bottom:5px">
+          Reposición inteligente
+        </div>
+        <h2>Comprar / Pedir</h2>
+        <p>El tránsito reduce la sugerencia, pero nunca altera el stock físico hasta recibir mercancía.</p>
+      </div>
+      <div class="dashboard-sync">
+        <span class="badge">${actionableSuggestions.length} sugerencia(s)</span>
+        <span class="badge">${inTransitCount} en proceso</span>
+      </div>
     </section>
 
-    <div class="operation-layout">
-      <section class="card stack">
-        <div class="row">
+    <section class="grid replenish-kpi-grid">
+      <article class="card replenish-kpi">
+        <small>Necesitan reposición</small>
+        <strong>${snapshot.inventorySummary.replenishmentNeeded}</strong>
+        <span>según stock y mínimos</span>
+      </article>
+      <article class="card replenish-kpi">
+        <small>Compras / pedidos</small>
+        <strong>${items.length}</strong>
+        <span>registrados</span>
+      </article>
+      <article class="card replenish-kpi">
+        <small>Unidades pendientes</small>
+        <strong>${formatNumber(pendingUnits)}</strong>
+        <span>todavía no son stock</span>
+      </article>
+    </section>
+
+    <div class="replenish-layout-v2">
+      <section class="card">
+        <div class="section-head">
           <div>
-            <h3 style="margin:0">Sugerencias</h3>
-            <div class="product-meta">Calculadas con stock real + mercancía ya pedida.</div>
+            <h3>🛒 Sugerencias</h3>
+            <p>Calculadas con stock real + mercancía en tránsito.</p>
           </div>
-          <span class="badge">${snapshot.inventorySummary.replenishmentNeeded}</span>
+          <span class="badge">${actionableSuggestions.length}</span>
         </div>
 
-        ${actionableSuggestions.length
-          ? actionableSuggestions.map(row => {
-              const product = state.products.find(item => item.id === row.productId);
-              return `
-                <div class="dashboard-list-row">
-                  <div>
-                    <strong>${escapeHtml(row.name)}</strong>
-                    <div class="product-meta">
-                      Stock ${formatNumber(row.stock)} · En tránsito ${formatNumber(row.pendingInbound)} ·
-                      Min ${formatNumber(row.minStock)} · Max ${formatNumber(row.maxStock)}
+        <div class="replenish-suggestion-list">
+          ${actionableSuggestions.length
+            ? actionableSuggestions.map(row => {
+                const product = state.products.find(
+                  item => item.id === row.productId
+                );
+
+                return `
+                  <article class="replenish-suggestion-card">
+                    <div>
+                      <strong>${escapeHtml(row.name)}</strong>
+                      <small>
+                        Stock ${formatNumber(row.stock)} ·
+                        Tránsito ${formatNumber(row.pendingInbound)} ·
+                        Min ${formatNumber(row.minStock)} ·
+                        Max ${formatNumber(row.maxStock)}
+                      </small>
                     </div>
-                  </div>
-                  <div class="replenishment-actions">
-                    <span class="badge">${formatNumber(row.suggestedQuantity)} sugeridos</span>
-                    ${renderReplenishmentCreateButtons(product, row.suggestedQuantity)}
-                  </div>
-                </div>
-              `;
-            }).join('')
-          : '<div class="empty compact-empty">No hay sugerencias pendientes.</div>'}
+
+                    <div class="replenish-qty-box">
+                      <small>Sugerido</small>
+                      <strong>${formatNumber(row.suggestedQuantity)}</strong>
+                    </div>
+
+                    <div class="replenishment-actions">
+                      ${renderReplenishmentCreateButtons(
+                        product,
+                        row.suggestedQuantity
+                      )}
+                    </div>
+                  </article>
+                `;
+              }).join('')
+            : '<div class="empty compact-empty">No hay sugerencias pendientes.</div>'}
+        </div>
       </section>
 
-      <section class="card stack">
-        <div class="row">
+      <section class="card">
+        <div class="section-head">
           <div>
-            <h3 style="margin:0">Compras / pedidos</h3>
-            <div class="product-meta">Borradores, realizados, en tránsito y recibidos.</div>
+            <h3>Compras / pedidos</h3>
+            <p>Borrador → realizado → tránsito → recibido.</p>
           </div>
           <span class="badge">${items.length}</span>
         </div>
 
-        ${items.length
-          ? items.map(item => `
-            <div class="replenishment-card">
-              <div class="row">
-                <div>
-                  <strong>${escapeHtml(item.productName || item.productId)}</strong>
-                  <div class="product-meta">
-                    ${item.method === 'PURCHASE' ? 'Compra' : 'Pedido'} ·
-                    ${formatNumber(item.requestedQuantity)} solicitados ·
-                    ${formatNumber(item.pendingQuantity)} pendientes
+        <div class="replenishment-list-v2">
+          ${items.length
+            ? items.map(item => `
+              <article class="replenishment-card">
+                <div class="replenishment-card-head-v2">
+                  <div>
+                    <strong>${escapeHtml(item.productName || item.productId)}</strong>
+                    <small>
+                      ${item.method === 'PURCHASE' ? 'Compra' : 'Pedido'} ·
+                      ${formatNumber(item.requestedQuantity)} solicitados
+                    </small>
+                  </div>
+                  <span class="badge">${replenishmentStatusLabel(item.status)}</span>
+                </div>
+
+                <div class="replenishment-progress-v2">
+                  <div>
+                    <small>Pendiente</small>
+                    <strong>${formatNumber(item.pendingQuantity)}</strong>
+                  </div>
+                  <div>
+                    <small>Recibido</small>
+                    <strong>${formatNumber(
+                      Number(item.requestedQuantity || 0) -
+                      Number(item.pendingQuantity || 0)
+                    )}</strong>
+                  </div>
+                  <div>
+                    <small>Llegada</small>
+                    <strong>${item.expectedAt
+                      ? formatShortDate(item.expectedAt)
+                      : '—'}</strong>
                   </div>
                 </div>
-                <span class="badge">${replenishmentStatusLabel(item.status)}</span>
-              </div>
 
-              ${item.expectedAt
-                ? `<div class="product-meta">Llegada esperada: ${formatShortDate(item.expectedAt)}</div>`
-                : ''}
-
-              <div class="row replenishment-buttons">
-                ${renderReplenishmentStatusButtons(item)}
-              </div>
-            </div>
-          `).join('')
-          : '<div class="empty compact-empty">Todavía no hay compras o pedidos.</div>'}
+                <div class="replenishment-buttons">
+                  ${renderReplenishmentStatusButtons(item)}
+                </div>
+              </article>
+            `).join('')
+            : '<div class="empty compact-empty">Todavía no hay compras o pedidos.</div>'}
+        </div>
       </section>
     </div>
   `;
