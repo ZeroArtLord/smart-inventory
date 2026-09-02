@@ -106,7 +106,7 @@ $env:AUTH_BASE_URL = "http://127.0.0.1:5190"
 npm run auth:firebase-e2e
 ```
 
-El script crea un usuario Firebase temporal y un usuario local temporal, genera un custom token con Firebase Admin, lo intercambia mediante Identity Toolkit por un **ID Token real emitido por Firebase**, y usa ese token contra Smart Inventory.
+El script crea un usuario Firebase temporal y un usuario local temporal, carga explícitamente la service account indicada por `GOOGLE_APPLICATION_CREDENTIALS`, firma el custom token localmente con la clave privada protegida del JSON, lo intercambia mediante Identity Toolkit por un **ID Token real emitido por Firebase**, y usa ese token contra Smart Inventory. En el despliegue on-premises esto evita depender de IAM Service Account Credentials API o de conceder `Service Account Token Creator` solo para la prueba E2E.
 
 Comprueba automáticamente:
 
