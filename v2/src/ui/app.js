@@ -1490,20 +1490,51 @@ async function renderUsers() {
     return;
   }
 
+  const activeMembers = state.members.filter(
+    member => member.membershipActive
+  ).length;
+  const godMembers = state.members.filter(
+    member => member.roleCode === 'GOD'
+  ).length;
+
   appRoot.innerHTML = `
     <section class="hero dashboard-hero">
       <div>
+        <div class="product-meta" style="font-weight:800;color:var(--accent);margin-bottom:5px">
+          Seguridad y acceso
+        </div>
         <h2>Usuarios y permisos</h2>
-        <p>La interfaz oculta acciones, pero la API vuelve a validar cada permiso.</p>
+        <p>Roles, membresías y permisos granulares validados nuevamente por la API.</p>
       </div>
-      <span class="badge">${state.members.length} miembro(s)</span>
+      <div class="dashboard-sync">
+        <span class="badge">${activeMembers} activos</span>
+        ${godMembers ? `<span class="badge god-badge">👑 ${godMembers} DIOS</span>` : ''}
+      </div>
     </section>
 
-    <section class="card stack">
-      <div>
-        <h3 style="margin:0">Agregar usuario</h3>
-        <div class="product-meta">
-          Puedes preautorizar por email. En Firebase se vinculará al UID en el primer acceso válido.
+    <section class="grid user-summary-grid">
+      <article class="card user-summary-card">
+        <span>Miembros</span>
+        <strong>${state.members.length}</strong>
+        <small>registrados en el workspace</small>
+      </article>
+      <article class="card user-summary-card">
+        <span>Activos</span>
+        <strong>${activeMembers}</strong>
+        <small>con acceso al almacén</small>
+      </article>
+      <article class="card user-summary-card">
+        <span>Cuenta maestra</span>
+        <strong>${godMembers ? 'DIOS 👑' : '—'}</strong>
+        <small>protección jerárquica activa</small>
+      </article>
+    </section>
+
+    <section class="card user-create-panel">
+      <div class="section-head">
+        <div>
+          <h3>＋ Agregar usuario</h3>
+          <p>Preautoriza por email. Firebase vincula el UID en el primer acceso válido.</p>
         </div>
       </div>
 
@@ -1533,7 +1564,7 @@ async function renderUsers() {
       </form>
     </section>
 
-    <section class="stack" style="margin-top:16px">
+    <section class="user-member-grid">
       ${state.members.map(member => renderMemberCard(member)).join('')}
     </section>
   `;
@@ -1544,20 +1575,45 @@ function renderMemberCard(member) {
     ? member.permissions
     : [];
   const wildcard = permissions.includes('*');
+  const identity =
+    member.displayName ||
+    member.email ||
+    member.externalAuthId ||
+    member.userId;
+  const initials = String(identity || 'U')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0])
+    .join('')
+    .toUpperCase();
 
   return `
-    <article class="card user-member-card" data-member-card="${escapeHtml(member.userId)}">
-      <div class="row user-member-head">
-        <div>
-          <strong>${escapeHtml(member.displayName || member.email || member.externalAuthId || member.userId)}</strong>
-          <div class="product-meta">
+    <article
+      class="card user-member-card ${member.roleCode === 'GOD' ? 'user-member-god' : ''}"
+      data-member-card="${escapeHtml(member.userId)}"
+    >
+      <div class="user-member-head-v2">
+        <div class="user-avatar-v2">
+          ${member.roleCode === 'GOD' ? '👑' : escapeHtml(initials)}
+        </div>
+
+        <div class="user-member-identity">
+          <strong>${escapeHtml(identity)}</strong>
+          <small>
             ${escapeHtml(member.email || 'Sin email')} ·
             ${member.externalAuthId ? 'Identidad vinculada' : 'Pendiente de primer acceso'}
-          </div>
+          </small>
         </div>
-        <span class="badge ${member.membershipActive ? 'status-good' : 'status-warning'}">
-          ${member.membershipActive ? 'Activo' : 'Desactivado'}
-        </span>
+
+        <div class="user-badges-v2">
+          <span class="badge ${member.membershipActive ? 'status-good' : 'status-warning'}">
+            ${member.membershipActive ? 'Activo' : 'Desactivado'}
+          </span>
+          <span class="badge ${member.roleCode === 'GOD' ? 'god-badge' : ''}">
+            ${member.roleCode === 'GOD' ? 'DIOS 👑' : escapeHtml(member.roleCode)}
+          </span>
+        </div>
       </div>
 
       <div class="user-member-controls">
@@ -1588,7 +1644,9 @@ function renderMemberCard(member) {
       <details class="permission-details">
         <summary>
           Permisos granulares
-          ${wildcard ? '<span class="badge">Acceso total</span>' : `<span class="badge">${permissions.length}</span>`}
+          ${wildcard
+            ? '<span class="badge status-good">Acceso total</span>'
+            : `<span class="badge">${permissions.length}</span>`}
         </summary>
 
         <div class="permission-grid">
