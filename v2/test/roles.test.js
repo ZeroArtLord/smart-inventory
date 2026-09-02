@@ -13,6 +13,13 @@ const {
   PERMISSIONS
 } = await import('../server/src/security/permissions.js');
 
+test('DIOS obtiene wildcard total', () => {
+  assert.deepEqual(
+    permissionsForRole(ROLE_CODES.GOD),
+    ['*']
+  );
+});
+
 test('administrador obtiene wildcard', () => {
   assert.deepEqual(
     permissionsForRole(ROLE_CODES.ADMIN),
