@@ -174,22 +174,61 @@ function bindGlobalEvents() {
     handleAuthButton().catch(error => showToast(error.message || String(error)));
   });
 
-  document.getElementById('homeButton').addEventListener('click', () => {
-    state.view = 'home';
-    state.activeDocumentId = null;
-    state.activeDocumentType = null;
-    state.selectedProductId = null;
-    render();
+  document.getElementById('homeButton')?.addEventListener('click', () => {
+    openShellView('home').catch(error =>
+      showToast(error.message || String(error))
+    );
   });
 
-  document.querySelector('.bottom-nav').addEventListener('click', event => {
-    const button = event.target.closest('[data-view]');
-    if (!button) return;
-    state.view = button.dataset.view;
-    state.activeDocumentId = null;
-    state.activeDocumentType = null;
-    state.selectedProductId = null;
-    render();
+  document.getElementById('mobileMenu')?.addEventListener('click', () => {
+    document.body.classList.toggle('sidebar-open');
+  });
+
+  document.getElementById('sidebarBackdrop')?.addEventListener('click', () => {
+    closeMobileSidebar();
+  });
+
+  document.querySelectorAll('.app-nav').forEach(nav => {
+    nav.addEventListener('click', event => {
+      const button = event.target.closest('[data-view]');
+      if (!button || button.hidden) return;
+
+      openShellView(button.dataset.view).catch(error =>
+        showToast(error.message || String(error))
+      );
+    });
+  });
+
+  const globalSearch = document.getElementById('globalSearch');
+
+  globalSearch?.addEventListener('input', event => {
+    renderGlobalSearchResults(event.target.value)
+      .catch(() => hideGlobalSearchResults());
+  });
+
+  globalSearch?.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      hideGlobalSearchResults();
+      event.target.blur();
+    }
+  });
+
+  document.addEventListener('keydown', event => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      globalSearch?.focus();
+      globalSearch?.select();
+    }
+  });
+
+  document.addEventListener('click', event => {
+    if (!event.target.closest('.global-search-wrap')) {
+      hideGlobalSearchResults();
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 760) closeMobileSidebar();
   });
 
   appRoot.addEventListener('click', handleClick);
@@ -197,6 +236,76 @@ function bindGlobalEvents() {
   appRoot.addEventListener('input', handleInput);
   appRoot.addEventListener('change', handleChange);
   appRoot.addEventListener('keydown', handleKeydown);
+}
+
+async function openShellView(view) {
+  state.view = view;
+  state.activeDocumentId = null;
+  state.activeDocumentType = null;
+  state.selectedProductId = null;
+  state.searchResults = [];
+  closeMobileSidebar();
+  hideGlobalSearchResults();
+  await render();
+}
+
+function closeMobileSidebar() {
+  document.body.classList.remove('sidebar-open');
+}
+
+async function renderGlobalSearchResults(rawQuery) {
+  const container =
+    document.getElementById('globalSearchResults');
+
+  if (!container) return;
+
+  const query = String(rawQuery || '').trim();
+
+  if (query.length < 2) {
+    hideGlobalSearchResults();
+    return;
+  }
+
+  const products = await searchProducts(query, {
+    limit: 6
+  });
+
+  container.innerHTML = products.length
+    ? products.map(product => `
+      <button
+        class="global-search-result"
+        data-global-product-id="${escapeHtml(product.id)}"
+        type="button"
+      >
+        <span class="global-result-icon">▣</span>
+        <span>
+          <strong>${escapeHtml(product.name)}</strong>
+          <small>${escapeHtml(product.sku || product.barcode || 'Producto')}</small>
+        </span>
+        <span class="global-result-action">Catálogo →</span>
+      </button>
+    `).join('')
+    : '<div class="global-search-empty">Sin coincidencias</div>';
+
+  container.hidden = false;
+
+  container.querySelectorAll('[data-global-product-id]').forEach(button => {
+    button.addEventListener('click', () => {
+      openShellView('catalog').catch(error =>
+        showToast(error.message || String(error))
+      );
+    });
+  });
+}
+
+function hideGlobalSearchResults() {
+  const container =
+    document.getElementById('globalSearchResults');
+
+  if (container) {
+    container.hidden = true;
+    container.innerHTML = '';
+  }
 }
 
 async function initializeApplicationAuth() {
@@ -570,14 +679,40 @@ function updateAuthUi() {
     const roleLabel =
       state.session?.roleCode === 'GOD'
         ? ' · DIOS 👑'
-        : '';
+        : state.session?.roleCode
+          ? ' · ' + state.session.roleCode
+          : '';
 
     userStatus.textContent =
       identityLabel + roleLabel;
+
+    const avatar =
+      document.getElementById('profileAvatar');
+
+    if (avatar) {
+      const initials = identityLabel
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(part => part[0])
+        .join('')
+        .toUpperCase();
+
+      avatar.textContent =
+        state.session?.roleCode === 'GOD'
+          ? '👑'
+          : initials || 'S2';
+    }
+
     authButton.textContent = 'Salir';
   } else {
     userStatus.hidden = true;
     authButton.textContent = 'Iniciar sesión';
+
+    const avatar =
+      document.getElementById('profileAvatar');
+
+    if (avatar) avatar.textContent = 'S2';
   }
 }
 
@@ -608,14 +743,18 @@ function sessionFromCachedAccess(access) {
 }
 
 function updateNavigationUi() {
-  const nav = document.querySelector('.bottom-nav');
   const homeButton = document.getElementById('homeButton');
 
   const locked =
     state.authMode === 'firebase' &&
     (!state.authUser || !state.workspaceReady);
 
-  if (nav) {
+  document.body.classList.toggle(
+    'auth-locked',
+    locked
+  );
+
+  document.querySelectorAll('.app-nav').forEach(nav => {
     nav.hidden = locked;
 
     nav.querySelectorAll('[data-view]').forEach(button => {
@@ -635,10 +774,15 @@ function updateNavigationUi() {
         active ? 'page' : 'false'
       );
     });
-  }
+  });
 
   if (homeButton) {
     homeButton.hidden = locked;
+  }
+
+  if (locked) {
+    closeMobileSidebar();
+    hideGlobalSearchResults();
   }
 }
 
