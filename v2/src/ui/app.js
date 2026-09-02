@@ -1756,12 +1756,30 @@ async function renderReports() {
     state.products.map(product => [product.id, product])
   );
 
+  const topMovement = movementTotals
+    .slice()
+    .sort((a, b) =>
+      Number(b.supply || 0) - Number(a.supply || 0)
+    )
+    .slice(0, 6);
+
+  const maxSupply = Math.max(
+    1,
+    ...topMovement.map(row => Number(row.supply || 0))
+  );
+
+  state.reportRows = inventoryRows;
+
   appRoot.innerHTML = `
     <section class="hero dashboard-hero">
       <div>
+        <div class="product-meta" style="font-weight:800;color:var(--accent);margin-bottom:5px">
+          Inteligencia operativa
+        </div>
         <h2>Reportes</h2>
-        <p>Datos calculados desde movimientos reales. Nada de stock editable.</p>
+        <p>Análisis calculado desde movimientos reales, sin stock editable.</p>
       </div>
+
       <div class="report-actions">
         <label class="report-filter">
           Periodo
@@ -1771,6 +1789,7 @@ async function renderReports() {
             <option value="90" ${state.reportDays === 90 ? 'selected' : ''}>90 días</option>
           </select>
         </label>
+
         ${hasClientPermission('reports.export') ? `
           <button class="secondary" data-action="export-report" data-format="csv" type="button">CSV</button>
           <button class="secondary" data-action="export-report" data-format="xlsx" type="button">Excel</button>
@@ -1779,7 +1798,7 @@ async function renderReports() {
       </div>
     </section>
 
-    <section class="grid dashboard-grid">
+    <section class="grid dashboard-grid report-kpi-grid">
       ${dashboardMetric(
         inventorySummary.products,
         'Productos',
@@ -1802,11 +1821,87 @@ async function renderReports() {
       )}
     </section>
 
-    <section class="card" style="margin-top:16px">
-      <div class="row">
+    <section class="report-visual-grid">
+      <article class="card">
+        <div class="section-head">
+          <div>
+            <h3>Productos con mayor consumo</h3>
+            <p>Surtidos acumulados del periodo.</p>
+          </div>
+        </div>
+
+        <div class="report-bars-v2">
+          ${topMovement.length
+            ? topMovement.map(row => {
+                const product = productById.get(row.productId);
+                const width = Math.max(
+                  4,
+                  Math.round(
+                    (Number(row.supply || 0) / maxSupply) * 100
+                  )
+                );
+
+                return `
+                  <div class="report-bar-row-v2">
+                    <div class="report-bar-label">
+                      <strong>${escapeHtml(product?.name || row.productId)}</strong>
+                      <small>${formatNumber(row.supply)} surtido</small>
+                    </div>
+                    <div class="report-bar-track-v2">
+                      <span style="width:${width}%"></span>
+                    </div>
+                    <strong>${formatNumber(row.supply)}</strong>
+                  </div>
+                `;
+              }).join('')
+            : '<div class="empty compact-empty">Sin movimientos en el periodo.</div>'}
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="section-head">
+          <div>
+            <h3>◷ Vencimientos próximos</h3>
+            <p>Lotes vencidos o en los próximos 30 días.</p>
+          </div>
+          <span class="badge">${expiringLots.length}</span>
+        </div>
+
+        <div class="report-expiry-list">
+          ${expiringLots.length
+            ? expiringLots.slice(0, 8).map(lot => {
+                const product = productById.get(lot.productId);
+                const urgencyClass = lot.expired
+                  ? 'danger'
+                  : lot.daysRemaining <= 7
+                    ? 'warning'
+                    : 'normal';
+
+                return `
+                  <div class="report-expiry-row ${urgencyClass}">
+                    <div>
+                      <strong>${escapeHtml(product?.name || lot.productId)}</strong>
+                      <small>
+                        Lote ${escapeHtml(lot.lotNumber || '—')} ·
+                        ${formatNumber(lot.remainingQuantity)} restantes
+                      </small>
+                    </div>
+                    <span>
+                      ${lot.expired ? 'Vencido' : lot.daysRemaining + ' d'}
+                    </span>
+                  </div>
+                `;
+              }).join('')
+            : '<div class="empty compact-empty">Sin vencimientos próximos.</div>'}
+        </div>
+      </article>
+    </section>
+
+    <section class="card report-inventory-card">
+      <div class="section-head">
         <div>
-          <h3 style="margin:0">Inventario actual</h3>
-          <div class="product-meta">Stock, mínimos, máximos, cobertura y tendencia.</div>
+          <h3>Inventario actual</h3>
+          <p>Stock, mínimos, máximos, tránsito, sugerencia y cobertura.</p>
         </div>
         <span class="badge">${inventoryRows.length}</span>
       </div>
@@ -1832,7 +1927,7 @@ async function renderReports() {
                   <strong>${escapeHtml(row.name)}</strong>
                   <div class="product-meta">${escapeHtml(row.sku || '')}</div>
                 </td>
-                <td>${formatNumber(row.stock)}</td>
+                <td class="catalog-stock-value">${formatNumber(row.stock)}</td>
                 <td>${formatNumber(row.minStock)}</td>
                 <td>${formatNumber(row.maxStock)}</td>
                 <td>${formatNumber(row.pendingInbound)}</td>
@@ -1845,67 +1940,6 @@ async function renderReports() {
         </table>
       </div>
     </section>
-
-    <div class="operation-layout" style="margin-top:16px">
-      <section class="card stack">
-        <div class="row">
-          <div>
-            <h3 style="margin:0">Mayor movimiento</h3>
-            <div class="product-meta">Surtido real del periodo seleccionado.</div>
-          </div>
-        </div>
-
-        ${movementTotals.length
-          ? movementTotals.slice(0, 10).map(row => {
-              const product = productById.get(row.productId);
-              return `
-                <div class="dashboard-list-row">
-                  <div>
-                    <strong>${escapeHtml(product?.name || row.productId)}</strong>
-                    <div class="product-meta">
-                      Entradas ${formatNumber(row.entry)} · Surtidos ${formatNumber(row.supply)} · Ajustes ${formatSigned(row.adjustment)}
-                    </div>
-                  </div>
-                  <div class="dashboard-list-end">
-                    <strong>${formatNumber(row.supply)}</strong>
-                    <small>surtido</small>
-                  </div>
-                </div>
-              `;
-            }).join('')
-          : '<div class="empty compact-empty">Sin movimientos en el periodo.</div>'}
-      </section>
-
-      <section class="card stack">
-        <div class="row">
-          <div>
-            <h3 style="margin:0">Vencimientos</h3>
-            <div class="product-meta">Lotes vencidos o próximos 30 días.</div>
-          </div>
-          <span class="badge">${expiringLots.length}</span>
-        </div>
-
-        ${expiringLots.length
-          ? expiringLots.slice(0, 10).map(lot => {
-              const product = productById.get(lot.productId);
-              return `
-                <div class="dashboard-list-row">
-                  <div>
-                    <strong>${escapeHtml(product?.name || lot.productId)}</strong>
-                    <div class="product-meta">
-                      Lote ${escapeHtml(lot.lotNumber || '—')} · ${formatNumber(lot.remainingQuantity)} restantes
-                    </div>
-                  </div>
-                  <div class="dashboard-list-end ${lot.expired ? 'status-danger' : lot.daysRemaining <= 7 ? 'status-warning' : ''}">
-                    <strong>${lot.expired ? 'Vencido' : lot.daysRemaining + ' d'}</strong>
-                    <small>${formatShortDate(lot.expiresAt)}</small>
-                  </div>
-                </div>
-              `;
-            }).join('')
-          : '<div class="empty compact-empty">Sin vencimientos próximos.</div>'}
-      </section>
-    </div>
   `;
 }
 
