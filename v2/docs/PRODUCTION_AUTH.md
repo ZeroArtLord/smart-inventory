@@ -119,3 +119,24 @@ Comprueba automáticamente:
 - limpieza del usuario temporal en Firebase y PostgreSQL.
 
 Esta es la prueba automática más cercana a producción. Después solo queda validar en navegador el flujo humano **Continuar con Google** y el dominio/origen HTTPS autorizado.
+
+
+## Rol DIOS (cuenta maestra)
+
+Smart Inventory permite un rol especial `GOD` para la cuenta maestra del sistema.
+
+- `GOD` recibe permisos `["*"]`, por lo que puede ejecutar todas las operaciones autorizables de la aplicación.
+- El rol se asigna de forma deliberada desde la consola del servidor con auditoría; no se crea automáticamente durante el bootstrap normal.
+- Un `ADMIN` no puede crear, degradar, desactivar ni modificar una membresía `GOD`.
+- Una cuenta `GOD` puede administrar otros roles, incluido crear otra cuenta `GOD` de forma explícita.
+- La cuenta `GOD` no puede degradarse accidentalmente desde la interfaz.
+- `GOD` no elimina las invariantes del sistema: los movimientos siguen siendo inmutables, las correcciones siguen siendo compensaciones auditadas y las validaciones de integridad continúan activas.
+
+Promoción:
+
+```powershell
+cd v2\server
+npm run god:promote -- --email usuario@dominio.com --workspace-key establo2026
+```
+
+El comando exige que el usuario ya exista y pertenezca al workspace, asigna `role_code=GOD`, mantiene `permissions=["*"]` y registra `GOD_PROMOTED_CLI` en auditoría.
