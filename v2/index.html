@@ -55,11 +55,14 @@
       <header class="topbar">
         <button id="mobileMenu" class="mobile-menu" type="button" aria-label="Abrir menú">☰</button>
 
-        <label class="global-search" for="globalSearch">
-          <span class="search-icon">⌕</span>
-          <input id="globalSearch" placeholder="Buscar productos, SKU o código de barras..." autocomplete="off">
-          <span class="kbd">Ctrl + K</span>
-        </label>
+        <div class="global-search-wrap">
+          <label class="global-search" for="globalSearch">
+            <span class="search-icon">⌕</span>
+            <input id="globalSearch" placeholder="Buscar productos, SKU o código de barras..." autocomplete="off">
+            <span class="kbd">Ctrl + K</span>
+          </label>
+          <div id="globalSearchResults" class="global-search-results" hidden></div>
+        </div>
 
         <div class="topbar-spacer"></div>
 
