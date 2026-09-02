@@ -56,6 +56,7 @@ export function can(session, permission) {
 
 
 export const ROLE_OPTIONS = Object.freeze([
+  { code: 'GOD', label: 'DIOS · Cuenta maestra' },
   { code: 'ADMIN', label: 'Administrador' },
   { code: 'SUPERVISOR', label: 'Supervisor' },
   { code: 'WAREHOUSE', label: 'Almacenista' },
