@@ -3160,3 +3160,154 @@ body.auth-locked .sidebar-foot {
     text-align: center;
   }
 }
+
+
+.report-visual-grid {
+  display: grid;
+  grid-template-columns: 1.1fr .9fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.report-bars-v2,
+.report-expiry-list {
+  display: grid;
+  gap: 10px;
+}
+
+.report-bar-row-v2 {
+  display: grid;
+  grid-template-columns: minmax(130px, .9fr) minmax(120px, 1.4fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.report-bar-label strong,
+.report-bar-label small {
+  display: block;
+}
+
+.report-bar-label strong {
+  overflow: hidden;
+  color: #2b374c;
+  font-size: .72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-bar-label small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: .61rem;
+}
+
+.report-bar-track-v2 {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf1f6;
+}
+
+.report-bar-track-v2 > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #5b8cff, #2f6fed);
+}
+
+.report-bar-row-v2 > strong {
+  min-width: 44px;
+  color: var(--accent);
+  font-size: .72rem;
+  text-align: right;
+}
+
+.report-expiry-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 11px;
+  border: 1px solid #edf1f6;
+  border-radius: 12px;
+  background: #fcfdff;
+}
+
+.report-expiry-row strong,
+.report-expiry-row small {
+  display: block;
+}
+
+.report-expiry-row strong {
+  color: #2d394f;
+  font-size: .73rem;
+}
+
+.report-expiry-row small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: .61rem;
+}
+
+.report-expiry-row > span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: .62rem;
+  font-weight: 850;
+}
+
+.report-expiry-row.normal > span {
+  color: #476083;
+  background: #eef3fa;
+}
+
+.report-expiry-row.warning > span {
+  color: #ad6900;
+  background: var(--warning-soft);
+}
+
+.report-expiry-row.danger > span {
+  color: #c83a3a;
+  background: var(--danger-soft);
+}
+
+.report-inventory-card {
+  margin-top: 16px;
+}
+
+@media (max-width: 980px) {
+  .report-visual-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .report-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .report-filter {
+    flex: 1 1 100%;
+  }
+
+  .report-filter select {
+    width: 100%;
+  }
+
+  .report-bar-row-v2 {
+    grid-template-columns: minmax(100px, .8fr) minmax(90px, 1fr) auto;
+    gap: 7px;
+  }
+}
+
+@media (max-width: 480px) {
+  .report-bar-row-v2 {
+    grid-template-columns: 1fr auto;
+  }
+
+  .report-bar-track-v2 {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
