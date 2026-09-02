@@ -75,6 +75,11 @@
 - El cache operativo local queda ligado a un único workspace y el cambio de almacén limpia datos locales solo si no existen operaciones pendientes.
 - Navegación móvil optimizada para uso con una mano y entradas numéricas grandes.
 - Dashboard operativo conectado a datos locales reales: stock con atención, lotes por vencer, movimientos recientes y sugerencias de reposición.
+- Rediseño visual 2026 integrado sobre la app real: sidebar desktop, topbar, búsqueda global, shell responsive, drawer móvil y navegación inferior táctil.
+- Catálogo con tabla desktop y tarjetas móviles usando stock derivado real.
+- Conteo rediseñado para una mano con cantidad protagonista, resumen y últimos contados.
+- Entrada/Surtido, Comprar/Pedir, Reportes, Usuarios, Alertas y Configuración adaptados a desktop/tablet/teléfono sin duplicar la lógica operativa.
+- Cuenta maestra GOD se representa visualmente como DIOS 👑 sin saltarse invariantes ni auditoría.
 
 ### Fase 7 — Backend propio (fundación)
 - Node.js API.
@@ -139,8 +144,8 @@
 
 ## Pendiente inmediato
 
-1. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC.
-2. Probar Firebase real con token firmado y usuarios provisionados.
-3. Ejecutar el piloto de migración V1 con una copia real.
-4. Preparar despliegue controlado en el servidor definitivo.
+1. Validar visualmente en el servidor el nuevo shell desktop y la vista móvil responsive.
+2. Completar IIS + HTTPS + hostname estable para acceso LAN seguro.
+3. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC.
+4. Ejecutar el piloto de migración V1 con una copia real.
 5. Integración SAINT Enterprise como última etapa.
