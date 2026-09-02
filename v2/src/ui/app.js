@@ -2343,26 +2343,64 @@ async function renderCartWorkspace(type) {
   const selected = state.products.find(
     product => product.id === selectedProductId
   );
+  const isEntry = type === DOCUMENT_TYPES.ENTRY;
+
+  const totalQuantity = lines.reduce(
+    (sum, line) => sum + Number(line.quantity || 0),
+    0
+  );
+  const lotCount = lines.filter(line =>
+    Boolean(line.lotNumber)
+  ).length;
+  const expiringCount = lines.filter(line =>
+    Boolean(line.expiresAt)
+  ).length;
 
   appRoot.innerHTML = `
-    <section class="hero">
-      <h2>${documentTitle(type)}</h2>
-      <p>${escapeHtml(state.activeDocumentId)}</p>
+    <section class="hero dashboard-hero document-page-head">
+      <div>
+        <div class="product-meta" style="font-weight:800;color:var(--accent);margin-bottom:5px">
+          ${isEntry ? 'Recepción de mercancía' : 'Salida interna'}
+        </div>
+        <h2>${documentTitle(type)}</h2>
+        <p>${isEntry
+          ? 'Recepción con cantidades, costo, lote y vencimiento opcionales.'
+          : 'Carrito validado contra stock real y FEFO cuando corresponde.'}</p>
+      </div>
+      <div class="dashboard-sync">
+        <span class="badge">Borrador</span>
+        <span class="badge">${lines.length} línea(s)</span>
+      </div>
     </section>
 
-    <div class="operation-layout">
-      <section class="card stack">
+    <div class="document-workspace-v2">
+      <section class="card document-editor-card">
+        <div class="section-head">
+          <div>
+            <h3>${isEntry ? 'Documento de entrada' : 'Surtido'}</h3>
+            <p>${escapeHtml(state.activeDocumentId)}</p>
+          </div>
+          <span class="badge">Local-first</span>
+        </div>
+
         ${linkedReplenishment ? `
-          <div class="status-warning">
-            Recepción vinculada a ${linkedReplenishment.method === 'PURCHASE' ? 'Compra' : 'Pedido'}.
-            Pendiente: <strong>${formatNumber(linkedReplenishment.pendingQuantity)}</strong>.
-            Solo puede recibirse ${escapeHtml(linkedReplenishment.productName || linkedReplenishment.productId)}.
+          <div class="document-linked-note">
+            <strong>Recepción vinculada</strong>
+            <span>
+              ${linkedReplenishment.method === 'PURCHASE' ? 'Compra' : 'Pedido'} ·
+              pendiente ${formatNumber(linkedReplenishment.pendingQuantity)} ·
+              ${escapeHtml(linkedReplenishment.productName || linkedReplenishment.productId)}
+            </span>
           </div>
         ` : `
-          <div class="scanner-search-row">
+          <div class="scanner-search-row document-product-search">
             <label>
               Buscar producto
-              <input id="productSearch" autocomplete="off" placeholder="Nombre, alias, SKU o código">
+              <input
+                id="productSearch"
+                autocomplete="off"
+                placeholder="Nombre, SKU, alias o código de barras"
+              >
             </label>
 
             <button
@@ -2377,28 +2415,39 @@ async function renderCartWorkspace(type) {
           </div>
 
           <div class="product-meta">
-            Los lectores USB/Bluetooth también funcionan: escanea y presiona Enter.
+            También puedes usar lector USB/Bluetooth y presionar Enter.
           </div>
           <div id="searchResults" class="search-results"></div>
         `}
 
         ${selected ? `
-          <div class="card" style="box-shadow:none">
-            <strong>${escapeHtml(selected.name)}</strong>
-            <div class="product-meta">
-              Min ${selected.minStock} · Max ${selected.maxStock || '—'}
+          <div class="selected-product-v2">
+            <div class="selected-product-icon">▣</div>
+            <div>
+              <strong>${escapeHtml(selected.name)}</strong>
+              <small>
+                ${selected.sku ? 'SKU ' + escapeHtml(selected.sku) + ' · ' : ''}
+                Min ${formatNumber(selected.minStock)} ·
+                Max ${formatNumber(selected.maxStock || 0)}
+              </small>
             </div>
           </div>
 
-          <label>
+          <label class="document-quantity-label">
             Cantidad
-            <input id="operationQuantity" class="numeric-input" inputmode="decimal" autocomplete="off" placeholder="0">
+            <input
+              id="operationQuantity"
+              class="numeric-input document-quantity-input"
+              inputmode="decimal"
+              autocomplete="off"
+              placeholder="0"
+            >
           </label>
 
           ${mathPad('operationQuantity')}
 
-          ${type === DOCUMENT_TYPES.ENTRY ? `
-            <div class="row">
+          ${isEntry ? `
+            <div class="document-extra-fields">
               <label>
                 Costo unitario opcional
                 <input id="unitCost" inputmode="decimal" autocomplete="off">
@@ -2407,46 +2456,92 @@ async function renderCartWorkspace(type) {
                 Lote opcional
                 <input id="lotNumber" autocomplete="off">
               </label>
+              <label>
+                Vencimiento opcional
+                <input id="expiresAt" type="date">
+              </label>
             </div>
-            <label>
-              Vencimiento opcional
-              <input id="expiresAt" type="date">
-            </label>
           ` : ''}
 
-          <button class="primary" data-action="add-line" data-type="${type}" type="button">
-            Agregar
+          <button class="primary document-add-line" data-action="add-line" data-type="${type}" type="button">
+            ＋ Agregar al documento
           </button>
-        ` : '<div class="empty">Busca y selecciona un producto.</div>'}
+        ` : `
+          <div class="document-empty-product">
+            <div class="document-empty-icon">⌕</div>
+            <strong>Selecciona un producto</strong>
+            <span>Busca por nombre, SKU o escanea un código.</span>
+          </div>
+        `}
       </section>
 
-      <section class="card stack">
-        <div class="row">
-          <h3 style="margin:0">${type === DOCUMENT_TYPES.SUPPLY ? 'Surtido' : 'Entrada'}</h3>
-          <span class="badge">${lines.length} líneas</span>
-        </div>
+      <aside class="document-summary-column">
+        <article class="card">
+          <div class="section-head">
+            <div>
+              <h3>Resumen</h3>
+              <p>Validación previa al cierre.</p>
+            </div>
+          </div>
 
-        <div>
+          <div class="summary-list-v2">
+            <div><span>Productos / líneas</span><strong>${lines.length}</strong></div>
+            <div><span>Unidades</span><strong>${formatNumber(totalQuantity)}</strong></div>
+            ${isEntry ? `
+              <div><span>Lotes</span><strong>${lotCount}</strong></div>
+              <div><span>Con vencimiento</span><strong>${expiringCount}</strong></div>
+            ` : `
+              <div><span>Tipo</span><strong>Surtido interno</strong></div>
+              <div><span>Stock</span><strong class="status-good">Validación al cerrar</strong></div>
+            `}
+          </div>
+
           ${lines.length
-            ? lines.map(line => `
-              <div class="cart-line">
-                <div>
-                  <strong>${escapeHtml(line.productName)}</strong>
-                  <div class="product-meta">
-                    ${line.lotNumber ? 'Lote ' + escapeHtml(line.lotNumber) : ''}
-                    ${line.expiresAt ? ' · Vence ' + formatDate(line.expiresAt) : ''}
-                  </div>
-                </div>
-                <strong>${line.quantity}</strong>
-              </div>
-            `).join('')
-            : '<div class="empty">Carrito vacío.</div>'}
-        </div>
+            ? `<button class="success document-close-button" data-action="close-document" type="button">
+                Cerrar ${isEntry ? 'entrada' : 'surtido'}
+              </button>`
+            : ''}
+        </article>
 
-        ${lines.length
-          ? '<button class="success" data-action="close-document" type="button">Cerrar documento</button>'
-          : ''}
-      </section>
+        <article class="card document-lines-card">
+          <div class="section-head">
+            <div>
+              <h3>Líneas del documento</h3>
+              <p>Trabajo guardado localmente.</p>
+            </div>
+            <span class="badge">${lines.length}</span>
+          </div>
+
+          <div class="document-line-list">
+            ${lines.length
+              ? lines.map(line => `
+                <div class="document-line-v2">
+                  <div class="document-line-icon">▣</div>
+                  <div>
+                    <strong>${escapeHtml(line.productName)}</strong>
+                    <small>
+                      ${line.lotNumber ? 'Lote ' + escapeHtml(line.lotNumber) : 'Sin lote'}
+                      ${line.expiresAt ? ' · vence ' + formatShortDate(line.expiresAt) : ''}
+                    </small>
+                  </div>
+                  <span>${formatNumber(line.quantity)}</span>
+                </div>
+              `).join('')
+              : '<div class="empty compact-empty">El documento está vacío.</div>'}
+          </div>
+        </article>
+
+        ${type === DOCUMENT_TYPES.SUPPLY ? `
+          <article class="card saint-card-v2">
+            <div class="saint-mark">S</div>
+            <div>
+              <strong>Preparado para SAINT</strong>
+              <p>La integración final enviará descargos EN ESPERA. Nunca se postea automáticamente.</p>
+            </div>
+            <button class="secondary" type="button" disabled>Fase 26 · pendiente</button>
+          </article>
+        ` : ''}
+      </aside>
     </div>
   `;
 
