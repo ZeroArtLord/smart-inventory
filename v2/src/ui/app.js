@@ -823,6 +823,13 @@ function canOpenView(view) {
       return hasClientPermission('purchases.write');
     case 'reports':
       return hasClientPermission('reports.view');
+    case 'alerts':
+      return true;
+    case 'settings':
+      return hasAnyClientPermission([
+        'users.manage',
+        'audit.view'
+      ]);
     case 'users':
       return hasClientPermission('users.manage');
     case 'audit':
@@ -931,6 +938,10 @@ async function render() {
       return renderReplenishmentWorkspace();
     case 'reports':
       return renderReports();
+    case 'alerts':
+      return renderAlerts();
+    case 'settings':
+      return renderSettings();
     case 'conflicts':
       return renderConflicts();
     case 'users':
@@ -1195,6 +1206,278 @@ async function renderHome() {
         </div>
       </article>
     </section>
+  `;
+}
+
+async function renderAlerts() {
+  const snapshot = await getDashboardSnapshot({
+    lowStockLimit: 1000
+  });
+
+  const productById = new Map(
+    state.products.map(product => [product.id, product])
+  );
+
+  const criticalRows = snapshot.lowStock
+    .filter(row => Number(row.stock || 0) < Number(row.minStock || 0))
+    .slice(0, 12);
+
+  const expiring = snapshot.expiringLots.slice(0, 12);
+
+  appRoot.innerHTML = `
+    <section class="hero dashboard-hero">
+      <div>
+        <div class="product-meta" style="font-weight:800;color:var(--accent);margin-bottom:5px">
+          Atención operativa
+        </div>
+        <h2>Alertas</h2>
+        <p>Situaciones derivadas de stock, vencimientos y sincronización que requieren revisión.</p>
+      </div>
+      <div class="dashboard-sync">
+        <span class="badge ${criticalRows.length ? 'status-warning' : 'status-good'}">
+          ${criticalRows.length} stock
+        </span>
+        <span class="badge ${expiring.length ? 'status-warning' : 'status-good'}">
+          ${expiring.length} vencimiento(s)
+        </span>
+        <span class="badge ${snapshot.syncConflictCount ? 'status-danger' : 'status-good'}">
+          ${snapshot.syncConflictCount} conflicto(s)
+        </span>
+      </div>
+    </section>
+
+    <div class="alerts-grid-v2">
+      <section class="card alert-panel-v2">
+        <div class="section-head">
+          <div>
+            <h3>Stock crítico / bajo</h3>
+            <p>Productos por debajo del mínimo configurado.</p>
+          </div>
+          <span class="badge">${criticalRows.length}</span>
+        </div>
+
+        <div class="alert-list-v2">
+          ${criticalRows.length
+            ? criticalRows.map(row => `
+              <div class="alert-row-v2 stock">
+                <div class="alert-icon-v2">!</div>
+                <div>
+                  <strong>${escapeHtml(row.name)}</strong>
+                  <small>
+                    Stock ${formatNumber(row.stock)} ·
+                    mínimo ${formatNumber(row.minStock)} ·
+                    sugerencia ${formatNumber(row.suggestedQuantity)}
+                  </small>
+                </div>
+                ${canOpenView('replenishment') ? `
+                  <button
+                    class="secondary"
+                    data-open-view="replenishment"
+                    type="button"
+                  >Resolver</button>
+                ` : ''}
+              </div>
+            `).join('')
+            : '<div class="empty compact-empty">No hay productos bajo mínimo.</div>'}
+        </div>
+      </section>
+
+      <section class="card alert-panel-v2">
+        <div class="section-head">
+          <div>
+            <h3>Vencimientos</h3>
+            <p>Lotes vencidos o dentro de los próximos 30 días.</p>
+          </div>
+          <span class="badge">${expiring.length}</span>
+        </div>
+
+        <div class="alert-list-v2">
+          ${expiring.length
+            ? expiring.map(lot => {
+                const product = productById.get(lot.productId);
+                return `
+                  <div class="alert-row-v2 expiry">
+                    <div class="alert-icon-v2">◷</div>
+                    <div>
+                      <strong>${escapeHtml(product?.name || lot.productId)}</strong>
+                      <small>
+                        Lote ${escapeHtml(lot.lotNumber || '—')} ·
+                        ${formatNumber(lot.remainingQuantity)} restante(s)
+                      </small>
+                    </div>
+                    <span class="badge ${lot.expired ? 'status-danger' : lot.daysRemaining <= 7 ? 'status-warning' : ''}">
+                      ${lot.expired ? 'Vencido' : lot.daysRemaining + ' d'}
+                    </span>
+                  </div>
+                `;
+              }).join('')
+            : '<div class="empty compact-empty">Sin vencimientos próximos.</div>'}
+        </div>
+      </section>
+
+      <section class="card alert-panel-v2 system-alert-panel">
+        <div class="section-head">
+          <div>
+            <h3>Sistema</h3>
+            <p>Estado de trabajo local-first y conflictos.</p>
+          </div>
+        </div>
+
+        <div class="system-status-list-v2">
+          <div>
+            <span class="system-status-dot ${navigator.onLine ? 'ok' : 'warning'}"></span>
+            <div>
+              <strong>${navigator.onLine ? 'Conectado' : 'Sin conexión'}</strong>
+              <small>${snapshot.pendingSyncCount} cambio(s) pendiente(s)</small>
+            </div>
+          </div>
+
+          <div>
+            <span class="system-status-dot ${snapshot.syncConflictCount ? 'danger' : 'ok'}"></span>
+            <div>
+              <strong>${snapshot.syncConflictCount ? 'Conflictos pendientes' : 'Sin conflictos'}</strong>
+              <small>Los cambios no se sobrescriben en silencio.</small>
+            </div>
+          </div>
+
+          ${snapshot.syncConflictCount ? `
+            <button class="secondary" data-open-view="conflicts" type="button">
+              Revisar conflictos
+            </button>
+          ` : ''}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+async function renderSettings() {
+  const currentWorkspace =
+    state.availableWorkspaces.find(
+      workspace =>
+        workspace.id === state.session?.workspaceId
+    ) ||
+    state.availableWorkspaces[0] ||
+    null;
+
+  const pending = await getPendingSyncCount();
+
+  appRoot.innerHTML = `
+    <section class="hero dashboard-hero">
+      <div>
+        <div class="product-meta" style="font-weight:800;color:var(--accent);margin-bottom:5px">
+          Workspace y sistema
+        </div>
+        <h2>Configuración</h2>
+        <p>Estado operativo y decisiones de arquitectura. Los cambios sensibles siguen protegidos.</p>
+      </div>
+      <span class="badge status-good">Producción protegida</span>
+    </section>
+
+    <div class="settings-grid-v2">
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <h3>General</h3>
+            <p>Workspace y sesión actual.</p>
+          </div>
+        </div>
+
+        <div class="settings-list-v2">
+          <div class="settings-row-v2">
+            <div>
+              <strong>Almacén principal</strong>
+              <small>${escapeHtml(currentWorkspace?.name || 'Almacén principal')}</small>
+            </div>
+            <span class="badge">${escapeHtml(currentWorkspace?.workspaceKey || 'activo')}</span>
+          </div>
+
+          <div class="settings-row-v2">
+            <div>
+              <strong>Rol actual</strong>
+              <small>${escapeHtml(state.authUser?.email || 'Sesión local')}</small>
+            </div>
+            <span class="badge ${state.session?.roleCode === 'GOD' ? 'god-badge' : ''}">
+              ${state.session?.roleCode === 'GOD' ? 'DIOS 👑' : escapeHtml(state.session?.roleCode || '—')}
+            </span>
+          </div>
+
+          <div class="settings-row-v2">
+            <div>
+              <strong>Autenticación</strong>
+              <small>Firebase Authentication con validación del servidor.</small>
+            </div>
+            <span class="badge status-good">Activa</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <h3>Sincronización</h3>
+            <p>Cliente local-first y backend.</p>
+          </div>
+        </div>
+
+        <div class="settings-list-v2">
+          <div class="settings-row-v2">
+            <div>
+              <strong>Estado de red</strong>
+              <small>${navigator.onLine ? 'El dispositivo tiene conectividad.' : 'El dispositivo trabaja offline.'}</small>
+            </div>
+            <span class="badge ${navigator.onLine ? 'status-good' : 'status-warning'}">
+              ${navigator.onLine ? 'Online' : 'Offline'}
+            </span>
+          </div>
+
+          <div class="settings-row-v2">
+            <div>
+              <strong>Trabajo pendiente</strong>
+              <small>Cambios locales esperando sincronización.</small>
+            </div>
+            <span class="badge ${pending ? 'status-warning' : 'status-good'}">${pending}</span>
+          </div>
+
+          <div class="settings-row-v2">
+            <div>
+              <strong>Intervalo visible</strong>
+              <small>Sincronización automática mientras la app está activa.</small>
+            </div>
+            <span class="badge">15 s</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card settings-saint-card">
+        <div class="section-head">
+          <div>
+            <h3>SAINT Enterprise · Fase 26</h3>
+            <p>Integración final deliberadamente congelada hasta completar piloto y despliegue.</p>
+          </div>
+          <span class="badge">Planificado</span>
+        </div>
+
+        <div class="saint-rules-grid">
+          <div>
+            <strong>1 · Validación</strong>
+            <span>SKU ↔ código SAINT debe estar verificado.</span>
+          </div>
+          <div>
+            <strong>2 · EN ESPERA</strong>
+            <span>Smart Inventory no postea automáticamente.</span>
+          </div>
+          <div>
+            <strong>3 · Antiduplicado</strong>
+            <span>Referencia externa persistida y reenvíos bloqueados.</span>
+          </div>
+        </div>
+
+        <button class="secondary" type="button" disabled>
+          Configurar en ETAPA 26
+        </button>
+      </section>
+    </div>
   `;
 }
 
@@ -4493,7 +4776,13 @@ function readInitialView() {
       'entry',
       'replenishment',
       'catalog',
-      'reports'
+      'reports',
+      'alerts',
+      'settings',
+      'users',
+      'audit',
+      'migration',
+      'conflicts'
     ]);
 
     return allowed.has(requested) ? requested : 'home';
