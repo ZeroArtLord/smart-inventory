@@ -563,10 +563,17 @@ function updateAuthUi() {
 
   if (state.authUser) {
     userStatus.hidden = false;
-    userStatus.textContent =
+    const identityLabel =
       state.authUser.displayName ||
       state.authUser.email ||
       'Usuario';
+    const roleLabel =
+      state.session?.roleCode === 'GOD'
+        ? ' · DIOS 👑'
+        : '';
+
+    userStatus.textContent =
+      identityLabel + roleLabel;
     authButton.textContent = 'Salir';
   } else {
     userStatus.hidden = true;
