@@ -2226,77 +2226,144 @@ async function renderDocumentWorkspace(type) {
       )
       .slice(0, 10);
 
+    const icon = type === DOCUMENT_TYPES.COUNT
+      ? '☑'
+      : type === DOCUMENT_TYPES.ENTRY
+        ? '↓'
+        : '↑';
+
     appRoot.innerHTML = `
-      <section class="hero">
-        <h2>${documentTitle(type)}</h2>
-        <p>${documentSubtitle(type)}</p>
-      </section>
-
-      <section class="card stack">
-        <button class="primary" data-action="new-document" data-type="${type}" type="button">
-          Nuevo ${documentTitle(type).toLowerCase()}
+      <section class="hero dashboard-hero">
+        <div>
+          <div class="product-meta" style="font-weight:800;color:var(--accent);margin-bottom:5px">
+            ${type === DOCUMENT_TYPES.COUNT
+              ? 'Inventario físico'
+              : type === DOCUMENT_TYPES.ENTRY
+                ? 'Recepción'
+                : 'Salida interna'}
+          </div>
+          <h2>${documentTitle(type)}</h2>
+          <p>${documentSubtitle(type)}</p>
+        </div>
+        <button
+          class="primary"
+          data-action="new-document"
+          data-type="${type}"
+          type="button"
+        >
+          ＋ Nuevo ${documentTitle(type).toLowerCase()}
         </button>
-
-        ${drafts.length
-          ? `
-            <div>
-              <strong>Continuar trabajo</strong>
-              <div class="stack" style="margin-top:8px">
-                ${drafts.map(document => `
-                  <div class="row">
-                    <button class="secondary" style="flex:1" data-action="open-document" data-id="${escapeHtml(document.id)}" data-type="${type}" type="button">
-                      ${escapeHtml(document.id)} · ${formatDate(document.updatedAt)}
-                    </button>
-                    <button class="danger" data-action="cancel-document" data-id="${escapeHtml(document.id)}" type="button">
-                      Cancelar
-                    </button>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          `
-          : '<div class="empty">No hay borradores pendientes.</div>'}
       </section>
+
+      <div class="document-landing-grid">
+        <section class="card document-start-card">
+          <div class="document-start-icon">${icon}</div>
+          <div>
+            <h3>Empezar ${documentTitle(type).toLowerCase()}</h3>
+            <p>
+              ${type === DOCUMENT_TYPES.COUNT
+                ? 'Recorre el catálogo producto por producto y guarda cada cantidad inmediatamente.'
+                : type === DOCUMENT_TYPES.ENTRY
+                  ? 'Agrega mercancía recibida con trazabilidad de lote, costo y vencimiento.'
+                  : 'Prepara un carrito interno y valida el stock real antes de cerrar.'}
+            </p>
+          </div>
+          <button
+            class="primary"
+            data-action="new-document"
+            data-type="${type}"
+            type="button"
+          >
+            Comenzar ahora
+          </button>
+        </section>
+
+        <section class="card">
+          <div class="section-head">
+            <div>
+              <h3>Continuar trabajo</h3>
+              <p>Borradores recuperables.</p>
+            </div>
+            <span class="badge">${drafts.length}</span>
+          </div>
+
+          <div class="draft-list-v2">
+            ${drafts.length
+              ? drafts.map(document => `
+                <div class="draft-row-v2">
+                  <div class="draft-icon-v2">${icon}</div>
+                  <div>
+                    <strong>${escapeHtml(document.id)}</strong>
+                    <small>${formatDate(document.updatedAt)}</small>
+                  </div>
+                  <div class="draft-actions-v2">
+                    <button
+                      class="secondary"
+                      data-action="open-document"
+                      data-id="${escapeHtml(document.id)}"
+                      data-type="${type}"
+                      type="button"
+                    >Continuar</button>
+                    <button
+                      class="danger"
+                      data-action="cancel-document"
+                      data-id="${escapeHtml(document.id)}"
+                      type="button"
+                    >×</button>
+                  </div>
+                </div>
+              `).join('')
+              : '<div class="empty compact-empty">No hay borradores pendientes.</div>'}
+          </div>
+        </section>
+      </div>
 
       ${closedDocuments.length ? `
-        <section class="card stack" style="margin-top:16px">
-          <div class="row">
+        <section class="card document-history-card">
+          <div class="section-head">
             <div>
-              <strong>Documentos cerrados</strong>
-              <div class="product-meta">Imprime, guarda como PDF o exporta sin modificar inventario.</div>
+              <h3>Historial reciente</h3>
+              <p>Exporta o imprime documentos cerrados sin modificar inventario.</p>
             </div>
             <span class="badge">${closedDocuments.length}</span>
           </div>
 
-          ${closedDocuments.map(document => `
-            <div class="closed-document-row">
-              <div>
-                <strong>${escapeHtml(document.id)}</strong>
-                <div class="product-meta">
-                  ${escapeHtml(document.status)} · ${formatDate(document.closedAt || document.updatedAt)}
+          <div class="document-history-list">
+            ${closedDocuments.map(document => `
+              <div class="closed-document-row">
+                <div class="history-doc-title">
+                  <div class="history-doc-icon">${icon}</div>
+                  <div>
+                    <strong>${escapeHtml(document.id)}</strong>
+                    <small>
+                      ${escapeHtml(document.status)} ·
+                      ${formatDate(document.closedAt || document.updatedAt)}
+                    </small>
+                  </div>
+                </div>
+
+                <div class="document-export-actions">
+                  <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="csv" type="button">CSV</button>
+                  <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="xlsx" type="button">Excel</button>
+                  <button class="primary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="print" type="button">Imprimir / PDF</button>
+                  ${document.status === DOCUMENT_STATUS.CLOSED &&
+                    !document.metadata?.correctionDraftId &&
+                    canCorrectDocument(type)
+                      ? `<button
+                          class="danger"
+                          data-action="correct-document"
+                          data-id="${escapeHtml(document.id)}"
+                          data-type="${escapeHtml(type)}"
+                          type="button"
+                        >Corregir</button>`
+                      : ''}
+                  ${document.metadata?.correctionDraftId
+                    ? '<span class="badge status-warning">Con corrección</span>'
+                    : ''}
                 </div>
               </div>
-              <div class="document-export-actions">
-                <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="csv" type="button">CSV</button>
-                <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="xlsx" type="button">Excel</button>
-                <button class="primary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="print" type="button">Imprimir / PDF</button>
-                ${document.status === DOCUMENT_STATUS.CLOSED &&
-                  !document.metadata?.correctionDraftId &&
-                  canCorrectDocument(type)
-                    ? `<button
-                        class="danger"
-                        data-action="correct-document"
-                        data-id="${escapeHtml(document.id)}"
-                        data-type="${escapeHtml(type)}"
-                        type="button"
-                      >Corregir</button>`
-                    : ''}
-                ${document.metadata?.correctionDraftId
-                  ? '<span class="badge status-warning">Con corrección</span>'
-                  : ''}
-              </div>
-            </div>
-          `).join('')}
+            `).join('')}
+          </div>
         </section>
       ` : ''}
     `;
