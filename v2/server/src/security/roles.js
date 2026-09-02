@@ -1,6 +1,7 @@
 import { PERMISSIONS } from './permissions.js';
 
 export const ROLE_CODES = Object.freeze({
+  GOD: 'GOD',
   ADMIN: 'ADMIN',
   SUPERVISOR: 'SUPERVISOR',
   WAREHOUSE: 'WAREHOUSE',
@@ -8,6 +9,7 @@ export const ROLE_CODES = Object.freeze({
 });
 
 export const ROLE_TEMPLATES = Object.freeze({
+  [ROLE_CODES.GOD]: Object.freeze(['*']),
   [ROLE_CODES.ADMIN]: Object.freeze(['*']),
   [ROLE_CODES.SUPERVISOR]: Object.freeze([
     PERMISSIONS.CATALOG_VIEW,
@@ -85,4 +87,8 @@ export function resolveMemberPermissions({
   }
 
   return validatePermissionList(permissions);
+}
+
+export function isGodRole(roleCode) {
+  return roleCode === ROLE_CODES.GOD;
 }
