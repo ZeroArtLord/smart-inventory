@@ -1,6 +1,7 @@
 import 'dotenv/config';
+import { readFile } from 'node:fs/promises';
 import {
-  applicationDefault,
+  cert,
   getApps,
   initializeApp
 } from 'firebase-admin/app';
@@ -18,9 +19,19 @@ const webApiKey = requiredEnv(
   'FIREBASE_WEB_API_KEY'
 );
 
-requiredEnv(
+const credentialPath = requiredEnv(
   'GOOGLE_APPLICATION_CREDENTIALS'
 );
+
+const serviceAccount = JSON.parse(
+  await readFile(credentialPath, 'utf8')
+);
+
+if (serviceAccount.project_id !== projectId) {
+  throw new Error(
+    `Service account Firebase pertenece a ${serviceAccount.project_id || 'proyecto desconocido'}, no a ${projectId}`
+  );
+}
 
 const baseUrl = String(
   process.env.AUTH_BASE_URL ||
@@ -42,7 +53,7 @@ const email =
 
 const firebaseApp = getApps()[0] ||
   initializeApp({
-    credential: applicationDefault(),
+    credential: cert(serviceAccount),
     projectId
   });
 
