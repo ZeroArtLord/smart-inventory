@@ -2160,44 +2160,117 @@ async function renderCountWorkspace() {
     ? Math.round((lines.length / state.products.length) * 100)
     : 0;
 
+  const equalCount = lines.filter(line =>
+    Number(line.difference || 0) === 0
+  ).length;
+  const positiveCount = lines.filter(line =>
+    Number(line.difference || 0) > 0
+  ).length;
+  const negativeCount = lines.filter(line =>
+    Number(line.difference || 0) < 0
+  ).length;
+
   appRoot.innerHTML = `
-    <section class="hero">
-      <h2>Conteo físico</h2>
-      <p>${lines.length} de ${state.products.length} productos.</p>
+    <section class="hero dashboard-hero count-page-head">
+      <div>
+        <div class="product-meta" style="font-weight:800;color:var(--accent);margin-bottom:5px">
+          Conteo activo
+        </div>
+        <h2>Conteo físico</h2>
+        <p>Producto → cantidad → Enter → siguiente. Cada línea queda guardada inmediatamente.</p>
+      </div>
+      <div class="dashboard-sync">
+        <span class="badge">${lines.length} de ${state.products.length}</span>
+        <span class="badge ${percent === 100 ? 'status-good' : ''}">${percent}%</span>
+      </div>
     </section>
 
-    <div class="card stack">
-      <div class="progress-track"><div style="width:${percent}%"></div></div>
-      <div class="row">
-        <span class="badge">${percent}%</span>
-        <span class="product-meta">${escapeHtml(state.activeDocumentId)}</span>
-      </div>
-    </div>
-
-    ${nextProduct ? renderCountProduct(nextProduct) : `
-      <section class="card stack" style="margin-top:16px">
-        <h3 style="margin:0">Conteo completo</h3>
-        <p class="product-meta">Todas las líneas están guardadas. Al cerrar se generarán únicamente los ajustes necesarios.</p>
-        <button class="success" data-action="close-document" type="button">Cerrar conteo</button>
-      </section>
-    `}
-
-    ${lines.length ? `
-      <section class="card" style="margin-top:16px">
-        <strong>Últimos contados</strong>
-        <div class="stack" style="margin-top:10px">
-          ${lines.slice(-8).reverse().map(line => `
-            <div class="cart-line">
-              <div>
-                <strong>${escapeHtml(line.productName)}</strong>
-                <div class="product-meta">Esperado ${line.expectedStock} · Contado ${line.countedStock}</div>
-              </div>
-              <span class="badge">${formatSigned(line.difference)}</span>
+    <div class="count-workspace-v2">
+      <section class="count-main-column">
+        <article class="card count-progress-card">
+          <div class="section-head">
+            <div>
+              <h3>Conteo General</h3>
+              <p>${escapeHtml(state.activeDocumentId)}</p>
             </div>
-          `).join('')}
-        </div>
+            <span class="badge">${percent}% completado</span>
+          </div>
+          <div class="progress-track count-progress-track">
+            <div style="width:${percent}%"></div>
+          </div>
+        </article>
+
+        ${nextProduct ? renderCountProduct(nextProduct) : `
+          <article class="card count-finished-card">
+            <div class="count-complete-icon">✓</div>
+            <h3>Conteo completo</h3>
+            <p class="product-meta">
+              Todas las líneas están guardadas. Al cerrar se generan únicamente los ajustes necesarios.
+            </p>
+            <button class="success count-close-button" data-action="close-document" type="button">
+              Cerrar conteo
+            </button>
+          </article>
+        `}
       </section>
-    ` : ''}
+
+      <aside class="count-side-column">
+        <article class="card">
+          <div class="section-head">
+            <div>
+              <h3>Últimos contados</h3>
+              <p>Guardados inmediatamente.</p>
+            </div>
+          </div>
+
+          <div class="recent-list-v2">
+            ${lines.length
+              ? lines.slice(-7).reverse().map(line => {
+                  const difference = Number(line.difference || 0);
+                  const deltaClass = difference > 0
+                    ? 'delta-positive'
+                    : difference < 0
+                      ? 'delta-negative'
+                      : 'delta-neutral';
+
+                  return `
+                    <div class="recent-count-item">
+                      <div>
+                        <strong>${escapeHtml(line.productName)}</strong>
+                        <small>
+                          Esperado ${formatNumber(line.expectedStock)} ·
+                          Contado ${formatNumber(line.countedStock)}
+                        </small>
+                      </div>
+                      <span class="${deltaClass}">${formatSigned(difference)}</span>
+                    </div>
+                  `;
+                }).join('')
+              : '<div class="empty compact-empty">Todavía no has contado productos.</div>'}
+          </div>
+        </article>
+
+        <article class="card count-summary-card">
+          <div class="section-head">
+            <div>
+              <h3>Resumen del conteo</h3>
+              <p>Estado acumulado del borrador.</p>
+            </div>
+          </div>
+
+          <div class="summary-list-v2">
+            <div><span>Productos contados</span><strong>${lines.length}</strong></div>
+            <div><span>Sin diferencia</span><strong>${equalCount}</strong></div>
+            <div><span>Sobrantes</span><strong class="status-good">${positiveCount}</strong></div>
+            <div><span>Faltantes</span><strong class="status-danger">${negativeCount}</strong></div>
+          </div>
+
+          ${!nextProduct && lines.length
+            ? '<button class="success count-close-button" data-action="close-document" type="button">Cerrar conteo</button>'
+            : ''}
+        </article>
+      </aside>
+    </div>
   `;
 
   requestAnimationFrame(() => {
@@ -2207,19 +2280,30 @@ async function renderCountWorkspace() {
 
 function renderCountProduct(product) {
   return `
-    <section class="card stack" style="margin-top:16px">
-      <div>
-        <h3 class="product-title">${escapeHtml(product.name)}</h3>
-        <div class="product-meta">
-          Mínimo ${product.minStock} · Máximo ${product.maxStock || '—'}
+    <article class="count-product-v2">
+      <div class="count-product-head">
+        <div class="count-product-icon">▣</div>
+        <div>
+          <div class="product-meta">Producto actual</div>
+          <h2>${escapeHtml(product.name)}</h2>
+          <div class="product-meta">
+            ${product.sku ? 'SKU ' + escapeHtml(product.sku) + ' · ' : ''}
+            ${product.barcode ? 'Código ' + escapeHtml(product.barcode) : ''}
+          </div>
         </div>
       </div>
 
-      <label>
+      <div class="count-meta-v2">
+        <span>Mínimo <strong>${formatNumber(product.minStock)}</strong></span>
+        <span>Máximo <strong>${formatNumber(product.maxStock || 0)}</strong></span>
+        <span>Unidad <strong>${escapeHtml(product.unitCode || 'UND')}</strong></span>
+      </div>
+
+      <label class="count-value-label">
         Existencia física
         <input
           id="countValue"
-          class="numeric-input"
+          class="numeric-input count-input-v2"
           inputmode="decimal"
           autocomplete="off"
           data-product-id="${escapeHtml(product.id)}"
@@ -2227,19 +2311,21 @@ function renderCountProduct(product) {
         >
       </label>
 
+      <div class="product-meta count-help">
+        Puedes escribir expresiones como 12+3, 24/2, (10+5)*2 o 12,5.
+      </div>
+
       ${mathPad('countValue')}
 
       <button
-        class="primary"
+        class="primary count-save-button"
         data-action="save-count"
         data-product-id="${escapeHtml(product.id)}"
         type="button"
       >
-        Guardar y siguiente
+        Guardar y siguiente · Enter
       </button>
-
-      <small class="product-meta">Puedes escribir 12+4-2 y presionar Enter.</small>
-    </section>
+    </article>
   `;
 }
 
