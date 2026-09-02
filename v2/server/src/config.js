@@ -8,6 +8,8 @@ function requireEnv(name) {
 
 const nodeEnv = process.env.NODE_ENV || 'development';
 const authMode = process.env.AUTH_MODE || 'dev';
+const host =
+  String(process.env.HOST || '127.0.0.1').trim() || '127.0.0.1';
 const devAllowHeaderAuth =
   String(process.env.DEV_ALLOW_HEADER_AUTH || 'false') === 'true';
 const firebaseProjectId =
@@ -36,6 +38,7 @@ if (nodeEnv === 'production' && devAllowHeaderAuth) {
 }
 
 export const config = Object.freeze({
+  host,
   port: Number(process.env.PORT || 5190),
   databaseUrl: requireEnv('DATABASE_URL'),
   nodeEnv,
