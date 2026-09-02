@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool, withTransaction } from '../db.js';
 import { PERMISSIONS } from '../security/permissions.js';
 import {
+  ROLE_CODES,
   resolveMemberPermissions,
   validateRoleCode
 } from '../security/roles.js';
@@ -51,6 +52,17 @@ adminRouter.post('/members', async (req, res, next) => {
       roleCode,
       permissions: req.body?.permissions
     });
+
+    if (
+      roleCode === ROLE_CODES.GOD &&
+      req.auth.roleCode !== ROLE_CODES.GOD
+    ) {
+      return res.status(403).json({
+        ok: false,
+        code: 'GOD_ROLE_REQUIRED',
+        message: 'Solo una cuenta DIOS puede otorgar el rol DIOS.'
+      });
+    }
 
     if (!email && !externalAuthId) {
       return res.status(400).json({
@@ -198,6 +210,60 @@ adminRouter.patch('/members/:userId', async (req, res, next) => {
     }
 
     const member = await withTransaction(async client => {
+      const current = await client.query(
+        `SELECT role_code
+         FROM workspace_members
+         WHERE workspace_id = $1
+           AND user_id = $2
+         FOR UPDATE`,
+        [
+          req.auth.workspaceId,
+          targetUserId
+        ]
+      );
+
+      if (current.rowCount === 0) return null;
+
+      const currentRole =
+        current.rows[0].role_code;
+
+      if (
+        currentRole === ROLE_CODES.GOD &&
+        req.auth.roleCode !== ROLE_CODES.GOD
+      ) {
+        const error = new Error(
+          'Una cuenta Administrador no puede modificar una cuenta DIOS.'
+        );
+        error.code = 'GOD_ROLE_REQUIRED';
+        error.statusCode = 403;
+        throw error;
+      }
+
+      if (
+        roleCode === ROLE_CODES.GOD &&
+        req.auth.roleCode !== ROLE_CODES.GOD
+      ) {
+        const error = new Error(
+          'Solo una cuenta DIOS puede otorgar el rol DIOS.'
+        );
+        error.code = 'GOD_ROLE_REQUIRED';
+        error.statusCode = 403;
+        throw error;
+      }
+
+      if (
+        targetUserId === req.auth.userId &&
+        currentRole === ROLE_CODES.GOD &&
+        roleCode !== ROLE_CODES.GOD
+      ) {
+        const error = new Error(
+          'La cuenta DIOS no puede degradarse desde la interfaz; usa la consola del servidor para un cambio deliberado.'
+        );
+        error.code = 'GOD_SELF_DEMOTION_BLOCKED';
+        error.statusCode = 400;
+        throw error;
+      }
+
       const result = await client.query(
         `UPDATE workspace_members
          SET role_code = $3,
@@ -215,8 +281,6 @@ adminRouter.patch('/members/:userId', async (req, res, next) => {
         ]
       );
 
-      if (result.rowCount === 0) return null;
-
       const row = result.rows[0];
 
       await writeAuditEvent(client, req.auth, {
@@ -224,6 +288,7 @@ adminRouter.patch('/members/:userId', async (req, res, next) => {
         entityType: 'workspaceMember',
         entityId: targetUserId,
         metadata: {
+          previousRoleCode: currentRole,
           roleCode: row.role_code,
           active: row.active,
           permissions: row.permissions || []
@@ -249,6 +314,14 @@ adminRouter.patch('/members/:userId', async (req, res, next) => {
 
     res.json({ ok: true, member });
   } catch (error) {
+    if (error?.statusCode && error?.code) {
+      return res.status(error.statusCode).json({
+        ok: false,
+        code: error.code,
+        message: error.message
+      });
+    }
+
     if (
       error?.message === 'Rol inválido' ||
       error?.message?.startsWith('Permiso')
