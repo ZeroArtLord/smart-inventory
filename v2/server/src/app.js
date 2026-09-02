@@ -203,8 +203,10 @@ app.use((error, _req, res, _next) => {
   });
 });
 
-const server = app.listen(config.port, () => {
-  console.log(`Smart Inventory V2 disponible en http://localhost:${config.port}`);
+const server = app.listen(config.port, config.host, () => {
+  console.log(
+    `Smart Inventory V2 disponible en http://${config.host}:${config.port}`
+  );
 });
 
 async function shutdown(signal) {
