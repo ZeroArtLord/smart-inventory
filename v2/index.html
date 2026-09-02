@@ -3,33 +3,98 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#111827">
+  <meta name="theme-color" content="#f5f7fb">
   <title>Smart Inventory V2</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="stylesheet" href="./css/app.css">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <strong>Smart Inventory V2</strong>
-      <small id="saveStatus">Iniciando…</small>
-    </div>
-    <div class="topbar-actions">
-      <span id="authUserStatus" class="topbar-user" hidden></span>
-      <button id="authButton" class="ghost-button" type="button" hidden></button>
-      <button id="homeButton" class="ghost-button" type="button">Inicio</button>
-    </div>
-  </header>
+  <div class="si-layout">
+    <aside id="appSidebar" class="sidebar" aria-label="Navegación lateral">
+      <div class="brand">
+        <div class="brand-logo">S2</div>
+        <div class="brand-copy">
+          <strong>Smart Inventory</strong>
+          <small>Warehouse Intelligence</small>
+        </div>
+      </div>
 
-  <main id="app" class="app-shell" aria-live="polite"></main>
+      <nav class="side-nav app-nav" aria-label="Navegación principal">
+        <button data-view="home" type="button"><span class="nav-icon">⌂</span><span>Dashboard</span></button>
+        <button data-view="catalog" type="button"><span class="nav-icon">◫</span><span>Catálogo</span></button>
+        <button data-view="count" type="button"><span class="nav-icon">☑</span><span>Conteo</span></button>
+        <button data-view="entry" type="button"><span class="nav-icon">↓</span><span>Entradas</span></button>
+        <button data-view="supply" type="button"><span class="nav-icon">↑</span><span>Surtidos</span></button>
+        <button data-view="replenishment" type="button"><span class="nav-icon">↻</span><span>Comprar / Pedir</span></button>
+        <button data-view="reports" type="button"><span class="nav-icon">▥</span><span>Reportes</span></button>
+        <button data-view="users" type="button"><span class="nav-icon">♙</span><span>Usuarios</span></button>
+        <button data-view="audit" type="button"><span class="nav-icon">◎</span><span>Auditoría</span></button>
+        <button data-view="migration" type="button"><span class="nav-icon">⇄</span><span>Migrar V1</span></button>
+        <button data-view="conflicts" type="button"><span class="nav-icon">⚠</span><span>Conflictos</span></button>
+      </nav>
 
-  <nav class="bottom-nav" aria-label="Navegación principal">
-    <button data-view="count" type="button">Conteo</button>
-    <button data-view="supply" type="button">Surtido</button>
-    <button data-view="entry" type="button">Entrada</button>
-    <button data-view="replenishment" type="button">Abastecer</button>
-    <button data-view="catalog" type="button">Catálogo</button>
-  </nav>
+      <div class="shortcut-box app-nav">
+        <div class="shortcut-title">ATAJOS</div>
+        <button data-view="count" type="button">＋ Nuevo conteo</button>
+        <button data-view="entry" type="button">↓ Entrada rápida</button>
+        <button data-view="supply" type="button">↑ Surtido rápido</button>
+      </div>
+
+      <div class="sidebar-foot">
+        <span class="sidebar-dot"></span>
+        <div>
+          <strong>Servidor protegido</strong>
+          <small>Firebase · PostgreSQL</small>
+        </div>
+      </div>
+    </aside>
+
+    <button id="sidebarBackdrop" class="sidebar-backdrop" type="button" aria-label="Cerrar menú"></button>
+
+    <div class="main-frame">
+      <header class="topbar">
+        <button id="mobileMenu" class="mobile-menu" type="button" aria-label="Abrir menú">☰</button>
+
+        <label class="global-search" for="globalSearch">
+          <span class="search-icon">⌕</span>
+          <input id="globalSearch" placeholder="Buscar productos, SKU o código de barras..." autocomplete="off">
+          <span class="kbd">Ctrl + K</span>
+        </label>
+
+        <div class="topbar-spacer"></div>
+
+        <div class="sync-chip" title="Estado de guardado y sincronización">
+          <span class="sync-dot"></span>
+          <div>
+            <strong>Estado</strong>
+            <small id="saveStatus">Iniciando…</small>
+          </div>
+        </div>
+
+        <button id="homeButton" class="warehouse-button" type="button">
+          <span>▣</span>
+          <span>Almacén principal</span>
+        </button>
+
+        <div class="profile">
+          <div id="profileAvatar" class="profile-avatar">S2</div>
+          <span id="authUserStatus" class="topbar-user" hidden></span>
+        </div>
+
+        <button id="authButton" class="icon-button auth-exit" type="button" hidden aria-label="Cerrar sesión">Salir</button>
+      </header>
+
+      <main id="app" class="app-shell" aria-live="polite"></main>
+    </div>
+
+    <nav class="bottom-nav app-nav" aria-label="Navegación móvil">
+      <button data-view="home" type="button"><span>⌂</span><small>Inicio</small></button>
+      <button data-view="count" type="button"><span>☑</span><small>Conteo</small></button>
+      <button data-view="supply" type="button"><span>↑</span><small>Surtido</small></button>
+      <button data-view="entry" type="button"><span>↓</span><small>Entrada</small></button>
+      <button data-view="catalog" type="button"><span>◫</span><small>Catálogo</small></button>
+    </nav>
+  </div>
 
   <script src="./vendor/xlsx.full.min.js"></script>
   <script type="module" src="./src/ui/app.js"></script>
