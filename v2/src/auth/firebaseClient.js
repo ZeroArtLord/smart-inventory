@@ -131,6 +131,19 @@ export function getCurrentFirebaseUser() {
   return currentUser;
 }
 
+export async function refreshFirebaseToken() {
+  ensureAuth();
+
+  if (!currentUser) {
+    const error = new Error('La sesión Firebase ya no está disponible');
+    error.code = 'AUTH_SESSION_MISSING';
+    throw error;
+  }
+
+  return currentUser.getIdToken(true);
+}
+
+
 export function firebaseUserSummary(user = currentUser) {
   if (!user) return null;
 
