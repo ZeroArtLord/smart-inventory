@@ -167,6 +167,84 @@ export function buildSaintInitialLoadTemplateMatrix() {
   ];
 }
 
+export function buildSaintInitialLoadInstructionsMatrix() {
+  return [
+    ['SMART INVENTORY V2 · CARGA INICIAL SAINT'],
+    ['Campo', 'Cómo llenarlo', 'Ejemplo'],
+    [
+      'USAR',
+      'SI incluye el producto. NO lo deja fuera del catálogo operacional.',
+      'SI'
+    ],
+    [
+      'CÓDIGO SAINT',
+      'Código único del producto en SAINT. No lo repitas.',
+      'REF001'
+    ],
+    [
+      'PRODUCTO',
+      'Nombre único y descriptivo. No dupliques nombres.',
+      'REFRESCO COLA 350 ML'
+    ],
+    [
+      'EXISTENCIA SAINT',
+      'Existencia real en unidad base. Debe ser explícita; escribe 0 si no hay stock.',
+      '485 UND'
+    ],
+    [
+      'UNIDAD BASE',
+      'Unidades soportadas: UND, KG, LT, CAJA, BULTO. Una unidad desconocida bloqueará la importación.',
+      'UND'
+    ],
+    [
+      'PRESENTACIÓN',
+      'Empaque humano principal. Puede ser CAJA, BULTO, PAQUETE u otro nombre.',
+      'CAJA'
+    ],
+    [
+      'UNIDADES POR PRESENTACIÓN',
+      'Cantidad de unidad base contenida en una presentación principal.',
+      '24'
+    ],
+    [
+      'PRESENTACIÓN SECUNDARIA',
+      'Opcional. Segundo empaque humano.',
+      'BULTO'
+    ],
+    [
+      'UND PRESENTACIÓN SECUNDARIA',
+      'Cantidad de unidad base contenida en la presentación secundaria.',
+      '96'
+    ],
+    [
+      'MÍNIMO / MÁXIMO',
+      'Puede escribirse en unidad base o en una presentación configurada.',
+      '5 CAJAS / 10 BULTOS'
+    ],
+    [
+      'CATEGORÍA',
+      'Se crea automáticamente si todavía no existe.',
+      'BEBIDAS'
+    ],
+    [
+      'REPOSICIÓN',
+      'Valores: COMPRA, PEDIDO, AMBOS o NINGUNA.',
+      'COMPRA'
+    ],
+    [
+      'CÓDIGO DE BARRAS',
+      'Opcional, pero si existe debe identificar un solo producto.',
+      '7590000000012'
+    ],
+    [],
+    [
+      'IMPORTANTE',
+      'Importar esta plantilla configura catálogo y empaques, pero NO modifica stock. La existencia se aplica después mediante una apertura SAINT única y trazable.',
+      ''
+    ]
+  ];
+}
+
 export function downloadSaintInitialLoadTemplate(
   xlsx = globalThis.XLSX
 ) {
@@ -206,6 +284,22 @@ export function downloadSaintInitialLoadTemplate(
     workbook,
     worksheet,
     'Carga inicial SAINT'
+  );
+
+  const instructions = xlsx.utils.aoa_to_sheet(
+    buildSaintInitialLoadInstructionsMatrix()
+  );
+
+  instructions['!cols'] = [
+    { wch: 30 },
+    { wch: 86 },
+    { wch: 28 }
+  ];
+
+  xlsx.utils.book_append_sheet(
+    workbook,
+    instructions,
+    'Instrucciones'
   );
 
   const date = new Date().toISOString().slice(0, 10);
