@@ -6,7 +6,7 @@ Este documento traduce el Plan Maestro a 26 checkpoints ejecutables. Cada etapa 
 2. **Fundación del repositorio y CI** — LISTO
 3. **Backend Node + PostgreSQL + health/migraciones** — LISTO
 4. **IndexedDB V2 + outbox/idempotencia/local-first** — LISTO
-5. **Catálogo maestro + importador Excel/CSV** — LISTO
+5. **Catálogo maestro + importador Excel/CSV + empaques/presentaciones** — LISTO
 6. **Motor matemático seguro en campos numéricos** — LISTO
 7. **Conteos físicos + cierre + ajustes** — LISTO
 8. **Libro de movimientos inmutable + stock derivado** — LISTO
