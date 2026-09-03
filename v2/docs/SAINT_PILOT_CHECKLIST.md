@@ -11,7 +11,7 @@ Usar un workspace limpio y un archivo controlado de aproximadamente 5 productos.
 ## Archivo piloto recomendado
 
 | USAR | CÓDIGO SAINT | SKU SMART | PRODUCTO | EXISTENCIA SAINT | UNIDAD BASE | PRESENTACIÓN | UND POR PRESENTACIÓN | PRESENTACIÓN SECUNDARIA | UND SECUNDARIA | MÍNIMO | MÁXIMO | CATEGORÍA | REPOSICIÓN |
-| --- | --- | --- | ---: | --- | --- | ---: | --- | ---: | --- | --- | --- | --- |
+| --- | --- | --- | --- | ---: | --- | --- | ---: | --- | ---: | --- | --- | --- | --- |
 | SI | PIL001 |  | REFRESCO PILOTO | 485 UND | UND | CAJA | 24 | BULTO | 96 | 5 CAJAS | 10 BULTOS | BEBIDAS | COMPRA |
 | SI | PIL002 |  | AGUA PILOTO | 0 UND | UND | CAJA | 12 |  |  | 2 CAJAS | 10 CAJAS | BEBIDAS | COMPRA |
 | SI | PIL003 |  | ACEITE PILOTO | 18 UND | UND | CAJA | 6 |  |  | 2 CAJAS | 6 CAJAS | ALIMENTOS | AMBOS |
@@ -22,7 +22,7 @@ Usar un workspace limpio y un archivo controlado de aproximadamente 5 productos.
 ## A. Preflight antes de importar
 
 - [ ] Git/CI de la rama están verdes.
-- [ ] Migraciones 010 y 011 están aplicadas.
+- [ ] Migraciones 010, 011 y 012 están aplicadas.
 - [ ] `npm run saint:preflight -- --workspace-key <workspace_key>` devuelve `READY_FOR_SAINT_INITIAL_LOAD`.
 - [ ] El workspace tiene 0 movimientos.
 - [ ] El workspace tiene 0 aperturas previas.
@@ -57,7 +57,7 @@ Hacer copias del archivo piloto, una prueba por vez. No usar estas copias para l
 - [ ] Duplicar un SKU Smart en otra fila → importación bloqueada.
 - [ ] Duplicar un código de barras → importación bloqueada.
 - [ ] Duplicar el nombre exacto de un producto → importación bloqueada.
-- [ ] Usar SKU de un producto y código de barras de otro → importación bloqueada.
+- [ ] Usar Código SAINT de un producto y SKU Smart/código de barras de otro → importación bloqueada.
 - [ ] Poner unidad base desconocida, por ejemplo GR → importación bloqueada.
 - [ ] Usar CAJA como principal y secundaria en la misma fila → importación bloqueada.
 - [ ] Dejar una existencia SAINT vacía → catálogo puede revisarse/importarse, pero apertura no se prepara.
