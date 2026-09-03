@@ -4,6 +4,9 @@ import {
   requestToPromise,
   runTransaction
 } from '../storage/database.js';
+import {
+  reconstructSaintInitialLoad
+} from '../catalog/saintInitialLoad.js';
 
 const ENTITY_STORES = Object.freeze({
   product: STORES.PRODUCTS,
@@ -21,6 +24,14 @@ export async function applyRemoteEvents(events = []) {
   let applied = 0;
 
   for (const event of events) {
+    if (
+      event.entityType === 'initialLoad' &&
+      event.payload?.id
+    ) {
+      applied += await applyInitialLoadRemoteEvent(event);
+      continue;
+    }
+
     const storeName = ENTITY_STORES[event.entityType];
     if (!storeName || !event.payload?.id) continue;
 
@@ -41,5 +52,54 @@ export async function applyRemoteEvents(events = []) {
     applied += 1;
   }
 
+  return applied;
+}
+
+async function applyInitialLoadRemoteEvent(event) {
+  const {
+    document,
+    lines,
+    movements
+  } = reconstructSaintInitialLoad(event);
+
+  let applied = 0;
+
+  await runTransaction(
+    [
+      STORES.DOCUMENTS,
+      STORES.DOCUMENT_LINES,
+      STORES.MOVEMENTS
+    ],
+    'readwrite',
+    async (
+      documentStore,
+      lineStore,
+      movementStore
+    ) => {
+      await requestToPromise(
+        documentStore.put(document)
+      );
+
+      for (const line of lines) {
+        await requestToPromise(
+          lineStore.put(line)
+        );
+      }
+
+      for (const movement of movements) {
+        const existing = await requestToPromise(
+          movementStore.get(movement.id)
+        );
+
+        if (existing) continue;
+
+        await requestToPromise(
+          movementStore.add(movement)
+        );
+      }
+    }
+  );
+
+  applied += 1;
   return applied;
 }
