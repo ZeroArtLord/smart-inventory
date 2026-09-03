@@ -23,11 +23,16 @@ Cada producto maneja tres identificadores distintos:
 - `saintCode`: Código SAINT. Es la clave externa estable que utilizará el futuro SAINT Enterprise Bridge para relacionar el producto de Smart con el producto de SAINT.
 - `sku`: SKU Smart. Es un código interno humano para control dentro de Smart Inventory y no sustituye al Código SAINT.
 
-En la plantilla de carga inicial, `CÓDIGO SAINT` es obligatorio para las filas usadas. `SKU SMART` es opcional. Si queda vacío, Smart genera uno de forma determinista desde el Código SAINT, por ejemplo:
+En la plantilla de carga inicial, `CÓDIGO SAINT` es obligatorio para las filas usadas. Puede ser numérico, alfanumérico o estar compuesto solamente por letras; Smart no exige que contenga números. El valor externo se conserva como texto para no alterar la futura integración con SAINT.
+
+`SKU SMART` es opcional. Si queda vacío, Smart genera uno de forma determinista desde el Código SAINT, por ejemplo:
 
 ```text
 CÓDIGO SAINT = REF001
 SKU SMART    = SM-REF001
+
+CÓDIGO SAINT = REFRESCO
+SKU SMART    = SM-REFRESCO
 ```
 
 El SKU Smart puede personalizarse posteriormente sin romper la relación con SAINT, porque la integración siempre usa `saintCode`.
