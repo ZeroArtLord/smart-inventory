@@ -310,3 +310,18 @@ test('una existencia SAINT vacía no se convierte silenciosamente en cero', () =
     null
   );
 });
+
+
+test('rechaza unidad base desconocida en vez de asumir UND', () => {
+  const preview = parseCatalogMatrix([
+    ['Producto', 'SKU', 'Unidad base', 'Mínimo', 'Máximo'],
+    ['PRODUCTO EN GRAMOS', 'GR001', 'GR', 100, 500]
+  ]);
+
+  assert.equal(preview.rows.length, 0);
+  assert.equal(preview.errors.length, 1);
+  assert.match(
+    preview.errors[0],
+    /unidad base "GR" no soportada/i
+  );
+});
