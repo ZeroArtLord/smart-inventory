@@ -28,7 +28,10 @@
 - Modelo de empaques/presentaciones implementado: unidad base inmutable, múltiples presentaciones con factor de conversión y compatibilidad con purchaseUnit/purchaseConversion.
 - Editor visual de producto con unidad base, presentación principal/secundaria y mínimos/máximos expresables en unidad base o empaques.
 - El parser de carga SAINT reconoce USAR, presentación principal/secundaria y convierte mínimos/máximos expresados en empaques hacia unidad base.
-- Smart Inventory puede generar la plantilla Excel de carga inicial SAINT desde la propia interfaz.
+- El preflight bloquea SKU, códigos de barras, nombres duplicados y cruces ambiguos contra el catálogo existente antes de modificar datos.
+- La vista previa muestra altas, actualizaciones y categorías nuevas previstas.
+- Ausencia de columna Existencia SAINT y celdas vacías ya no se convierten silenciosamente en cero.
+- Smart Inventory puede generar la plantilla Excel de carga inicial SAINT desde la propia interfaz y calcula SHA-256 del archivo fuente para auditoría cuando Web Crypto está disponible.
 
 ### Fase 3 — Inventario transaccional
 - ENTRY.
@@ -140,6 +143,7 @@
 - Empaques/presentaciones: modelo, persistencia PostgreSQL, importador y editor visual implementados.
 - Flujo de existencia inicial SAINT implementado en código como operación única por workspace: exige catálogo sincronizado, almacén sin movimientos previos y permisos catalog.write + adjustment.write.
 - La apertura crea un documento ADJUSTMENT cerrado y movimientos trazables SAINT_INITIAL_LOAD; nunca edita stock directamente.
+- La UI exige doble confirmación (confirmación visual + texto exacto APLICAR SAINT) y muestra una muestra de existencias antes de ejecutar la apertura.
 - El servidor registra la apertura en workspace_initial_loads para impedir una segunda aplicación accidental.
 - El evento de apertura se reconstruye en IndexedDB al sincronizar, de modo que PC/teléfono reciben el mismo documento y movimientos.
 - Las importaciones posteriores de catálogo no pueden sobrescribir existencia.
