@@ -135,6 +135,11 @@ export async function createProduct(data = {}) {
     inventoryUnitId
   );
 
+  await assertProductIdentityAvailable({
+    saintCode,
+    sku
+  });
+
   const now = new Date().toISOString();
   const product = {
     id: data.id || createLocalId('prd'),
@@ -290,6 +295,12 @@ export async function updateProduct(productId, patch = {}) {
     );
   }
 
+  await assertProductIdentityAvailable({
+    productId,
+    saintCode: next.saintCode,
+    sku: next.sku
+  });
+
   await writeEntityWithSync(STORES.PRODUCTS, 'product', next, 'UPDATE');
   return next;
 }
@@ -320,6 +331,64 @@ export async function searchProducts(query, { limit = 30 } = {}) {
   });
 
   return matches.slice(0, limit);
+}
+
+async function assertProductIdentityAvailable({
+  productId = null,
+  saintCode = '',
+  sku = ''
+} = {}) {
+  const normalizedSaintCode =
+    normalizeSearchText(saintCode);
+  const normalizedSku =
+    normalizeSearchText(sku);
+
+  if (
+    !normalizedSaintCode &&
+    !normalizedSku
+  ) {
+    return;
+  }
+
+  const products =
+    await getAll(STORES.PRODUCTS);
+
+  for (const product of products) {
+    if (
+      productId &&
+      product.id === productId
+    ) {
+      continue;
+    }
+
+    if (
+      normalizedSaintCode &&
+      normalizeSearchText(
+        product.saintCode
+      ) === normalizedSaintCode
+    ) {
+      const error = new Error(
+        `El Código SAINT "${saintCode}" ya pertenece a otro producto`
+      );
+      error.code =
+        'SAINT_CODE_DUPLICATE';
+      throw error;
+    }
+
+    if (
+      normalizedSku &&
+      normalizeSearchText(
+        product.sku
+      ) === normalizedSku
+    ) {
+      const error = new Error(
+        `El SKU Smart "${sku}" ya pertenece a otro producto`
+      );
+      error.code =
+        'SMART_SKU_DUPLICATE';
+      throw error;
+    }
+  }
 }
 
 async function writeEntityWithSync(storeName, entityType, entity, operation) {
