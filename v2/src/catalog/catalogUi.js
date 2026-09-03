@@ -241,7 +241,10 @@ export function renderCatalogProductEditor(
   const value = catalogEditorDefaults(product);
   const editing = Boolean(value.productId);
   const sortedCategories = [...categories]
-    .filter(category => category?.active !== false)
+    .filter(category =>
+      category?.active !== false ||
+      category?.id === value.categoryId
+    )
     .sort((a, b) =>
       String(a.name || '').localeCompare(
         String(b.name || ''),
