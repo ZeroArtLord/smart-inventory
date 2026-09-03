@@ -382,14 +382,29 @@ export function parseCatalogMatrix(matrix) {
       continue;
     }
 
-    const rawStock = columns.currentStock !== undefined
+    const hasStockColumn =
+      columns.currentStock !== undefined;
+    const rawStock = hasStockColumn
       ? raw[columns.currentStock]
       : undefined;
-    const stockParsed = parseQuantityCell(rawStock);
+    const hasExplicitStock =
+      hasStockColumn &&
+      normalizeText(rawStock) !== '';
+    const stockParsed =
+      hasExplicitStock
+        ? parseQuantityCell(rawStock)
+        : {
+            value: null,
+            unit: '',
+            error: null
+          };
 
     let ignoredStock = null;
 
-    if (!stockParsed.error) {
+    if (
+      hasExplicitStock &&
+      !stockParsed.error
+    ) {
       try {
         ignoredStock = quantityToBaseStock(
           stockParsed,
@@ -403,8 +418,7 @@ export function parseCatalogMatrix(matrix) {
     }
 
     if (
-      columns.currentStock !== undefined &&
-      normalizeText(rawStock) !== '' &&
+      hasExplicitStock &&
       ignoredStock !== null &&
       ignoredStock !== undefined
     ) {
@@ -427,7 +441,10 @@ export function parseCatalogMatrix(matrix) {
         raw[columns.replenishmentMethod]
       ),
       ignoredStock,
-      saintInitialStock: ignoredStock
+      saintInitialStock:
+        hasExplicitStock
+          ? ignoredStock
+          : null
     });
   }
 
@@ -445,6 +462,8 @@ export function parseCatalogMatrix(matrix) {
     usedFallbackColumns: !hasRecognizedHeader,
     ignoredStockRows,
     skippedRows,
+    hasInitialStockColumn:
+      columns.currentStock !== undefined,
     totalRows: rows.length
   };
 }
@@ -877,6 +896,7 @@ function emptyPreview(message) {
     usedFallbackColumns: false,
     ignoredStockRows: 0,
     skippedRows: 0,
+    hasInitialStockColumn: false,
     totalRows: 0
   };
 }
