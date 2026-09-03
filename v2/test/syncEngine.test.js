@@ -132,3 +132,66 @@ function jsonResponse(data, status = 200) {
     }
   };
 }
+
+
+test('una llamada concurrente espera el ciclo activo en vez de devolver already-syncing', async () => {
+  let releaseFirstPull;
+  let markFirstPullStarted;
+  const firstPullStarted = new Promise(resolve => {
+    markFirstPullStarted = resolve;
+  });
+  const firstPullGate = new Promise(resolve => {
+    releaseFirstPull = resolve;
+  });
+  let pullCalls = 0;
+
+  globalThis.fetch = async url => {
+    const href = String(url);
+
+    if (href.includes('/api/v1/sync/pull')) {
+      pullCalls += 1;
+
+      if (pullCalls === 1) {
+        markFirstPullStarted();
+        await firstPullGate;
+      }
+
+      return jsonResponse({
+        ok: true,
+        cursor: 10,
+        events: []
+      });
+    }
+
+    throw new Error(`URL inesperada: ${href}`);
+  };
+
+  const first = syncNow({
+    localUserId: 'almacenista-dev',
+    displayName: 'Almacenista'
+  });
+
+  await firstPullStarted;
+
+  let secondSettled = false;
+  const second = syncNow({
+    localUserId: 'almacenista-dev',
+    displayName: 'Almacenista'
+  }).finally(() => {
+    secondSettled = true;
+  });
+
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(secondSettled, false);
+
+  releaseFirstPull();
+
+  const [firstResult, secondResult] = await Promise.all([
+    first,
+    second
+  ]);
+
+  assert.equal(firstResult.ok, true);
+  assert.equal(secondResult.ok, true);
+  assert.equal(pullCalls, 2);
+});
