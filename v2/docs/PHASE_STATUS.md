@@ -24,7 +24,9 @@
 - Importador Excel/CSV con detección flexible de columnas.
 - Vista previa antes de aplicar.
 - Actualización por SKU, código de barras o nombre.
-- La columna Existencia nunca altera stock directamente; queda reservada a Conteos/Entradas trazables.
+- La columna Existencia nunca altera stock directamente en el importador de catálogo; queda reservada a movimientos trazables.
+- Modelo de empaques/presentaciones en implementación: unidad base inmutable, múltiples presentaciones con factor de conversión y compatibilidad con purchaseUnit/purchaseConversion.
+- El parser de carga SAINT ya reconoce USAR, presentación principal/secundaria y convierte mínimos/máximos expresados en empaques hacia unidad base.
 
 ### Fase 3 — Inventario transaccional
 - ENTRY.
@@ -133,13 +135,15 @@
 ### Fase 11 — Baseline productivo
 - Smart Inventory V1 queda retirado como fuente de datos porque nunca se utilizó en producción.
 - El catálogo inicial vendrá desde SAINT y se depurará antes de activar productos en Smart Inventory.
+- Empaques/presentaciones: backend, persistencia PostgreSQL e importador base en curso; falta editor visual y flujo final de carga inicial.
 - La existencia inicial se registrará mediante movimientos trazables de carga inicial, nunca editando stock directamente.
 - Las importaciones posteriores de catálogo no podrán sobrescribir existencia.
 
 ## Pendiente inmediato
 
-1. Validar visualmente en el servidor el nuevo shell desktop y la vista móvil responsive.
-2. Completar IIS + HTTPS + hostname estable para acceso LAN seguro.
-3. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC.
-4. Ejecutar el piloto de migración V1 con una copia real.
-5. Integración SAINT Enterprise como última etapa.
+1. Completar editor visual de producto con unidad base y presentaciones/empaques.
+2. Completar plantilla Excel de carga inicial SAINT y su vista previa.
+3. Implementar aplicación única y trazable de existencia inicial SAINT mediante movimientos de apertura.
+4. Aplicar migración PostgreSQL 010_product_presentations.sql en el servidor y validar sincronización real.
+5. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC y el piloto con catálogo SAINT depurado.
+6. Integración SAINT Enterprise como última etapa.
