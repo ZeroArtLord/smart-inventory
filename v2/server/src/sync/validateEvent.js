@@ -100,6 +100,14 @@ export function validateSyncEvent(event) {
 
 function validateProduct(product) {
   requireText(product.name, 'Nombre de producto');
+  optionalCode(
+    product.saintCode,
+    'Código SAINT'
+  );
+  optionalCode(
+    product.sku,
+    'SKU Smart'
+  );
 
   const min = finiteNonNegative(product.minStock ?? 0, 'Stock mínimo');
   const max = finiteNonNegative(product.maxStock ?? 0, 'Stock máximo');
@@ -405,6 +413,33 @@ function finiteNonNegative(value, fieldName) {
     throw new Error(`${fieldName} inválido`);
   }
   return number;
+}
+
+function optionalCode(
+  value,
+  fieldName
+) {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ''
+  ) {
+    return;
+  }
+
+  if (typeof value !== 'string') {
+    throw new Error(
+      `${fieldName} inválido`
+    );
+  }
+
+  const clean = value.trim();
+
+  if (clean.length > 128) {
+    throw new Error(
+      `${fieldName} supera 128 caracteres`
+    );
+  }
 }
 
 function requireText(value, fieldName) {
