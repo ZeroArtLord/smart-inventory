@@ -114,7 +114,7 @@ export async function createProduct(data = {}) {
   const saintCode =
     normalizeText(
       data.saintCode
-    ).toUpperCase();
+    );
   const sku =
     normalizeText(data.sku) ||
     buildSmartSkuFromSaintCode(
@@ -217,7 +217,7 @@ export async function updateProduct(productId, patch = {}) {
     next.saintCode =
       normalizeText(
         patch.saintCode
-      ).toUpperCase();
+      );
   }
   if (patch.sku !== undefined) {
     next.sku = normalizeText(patch.sku);
