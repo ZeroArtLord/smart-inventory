@@ -172,6 +172,9 @@ jobs:
       - name: Run PostgreSQL integrity audit
         run: npm run integrity:check
 
+      - name: Inspect SAINT initial-load readiness
+        run: npm run saint:preflight
+
       - name: Create fake Firebase credential for preflight
         run: |
           cat > /tmp/firebase-service-account.json <<'JSON'
