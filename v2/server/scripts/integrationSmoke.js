@@ -736,6 +736,8 @@ async function runSaintInitialLoadSmoke(db) {
               id: runId,
               source: 'SAINT',
               fileName: 'ci-saint.xlsx',
+              fileSize: 1234,
+              fileSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
               sheetName: 'Carga',
               createdAt: now,
               rows: [
@@ -804,7 +806,10 @@ async function runSaintInitialLoadSmoke(db) {
     Number(
       registry.rows[0]
         .positive_stock_count
-    ) !== 1
+    ) !== 1 ||
+    registry.rows[0]
+      .metadata?.fileSha256 !==
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   ) {
     throw new Error(
       'El registro único de carga inicial SAINT es incorrecto.'
