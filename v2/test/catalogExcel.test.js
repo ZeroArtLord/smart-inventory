@@ -263,3 +263,50 @@ test('la plantilla SAINT contiene las columnas de depuración, empaques y existe
     );
   }
 });
+
+
+test('distingue ausencia de columna de existencia de un cero explícito', () => {
+  const withoutStock = parseCatalogMatrix([
+    ['Producto', 'SKU', 'Mínimo', 'Máximo'],
+    ['PRODUCTO A', 'A001', 1, 5]
+  ]);
+
+  assert.equal(
+    withoutStock.hasInitialStockColumn,
+    false
+  );
+  assert.equal(
+    withoutStock.rows[0].saintInitialStock,
+    null
+  );
+
+  const withZero = parseCatalogMatrix([
+    ['Producto', 'SKU', 'Existencia SAINT', 'Mínimo', 'Máximo'],
+    ['PRODUCTO A', 'A001', 0, 1, 5]
+  ]);
+
+  assert.equal(
+    withZero.hasInitialStockColumn,
+    true
+  );
+  assert.equal(
+    withZero.rows[0].saintInitialStock,
+    0
+  );
+});
+
+test('una existencia SAINT vacía no se convierte silenciosamente en cero', () => {
+  const preview = parseCatalogMatrix([
+    ['Producto', 'SKU', 'Existencia SAINT', 'Mínimo', 'Máximo'],
+    ['PRODUCTO A', 'A001', '', 1, 5]
+  ]);
+
+  assert.equal(
+    preview.hasInitialStockColumn,
+    true
+  );
+  assert.equal(
+    preview.rows[0].saintInitialStock,
+    null
+  );
+});
