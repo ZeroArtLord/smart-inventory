@@ -893,6 +893,53 @@ async function runSaintInitialLoadSmoke(db) {
     );
   }
 
+  const baseUnitChange =
+    await fetch(
+      `${baseUrl}/api/v1/sync/push`,
+      {
+        method: 'POST',
+        headers: saintHeaders,
+        body: JSON.stringify({
+          events: [
+            {
+              id:
+                `evt_saint_base_unit_lock_${localStamp}`,
+              entityType: 'product',
+              entityId: productA,
+              operation: 'UPDATE',
+              payload: {
+                ...productPayload(
+                  productA,
+                  `SAINT-A-${localStamp}`,
+                  'SAINT PRODUCT A'
+                ),
+                inventoryUnitId:
+                  'unit_kg',
+                version: 2,
+                updatedAt:
+                  new Date(
+                    Date.now() + 500
+                  ).toISOString()
+              }
+            }
+          ]
+        })
+      }
+    );
+
+  const baseUnitBody =
+    await baseUnitChange.json();
+
+  if (
+    baseUnitChange.status !== 409 ||
+    baseUnitBody.code !==
+      'BASE_UNIT_LOCKED'
+  ) {
+    throw new Error(
+      `Se esperaba BASE_UNIT_LOCKED 409 y llegó ${baseUnitChange.status}: ${JSON.stringify(baseUnitBody)}`
+    );
+  }
+
   const updatedProduct = {
     ...productPayload(
       productA,
