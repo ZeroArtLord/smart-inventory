@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   analyzeCatalogImportConflicts,
   buildCatalogIdentityIndexes,
+  buildCatalogImportPlan,
   replaceCatalogProductInIdentityIndexes,
   resolveCatalogProductIdentity
 } from '../src/catalog/catalogImportGuard.js';
@@ -146,4 +147,50 @@ test('reindexar elimina los identificadores anteriores del producto', () => {
     ).product?.id,
     'prd_a'
   );
+});
+
+
+test('resume cuántos productos se crearán, actualizarán y cuántas categorías son nuevas', () => {
+  const products = [
+    {
+      id: 'prd_a',
+      name: 'PRODUCTO A',
+      sku: 'A001',
+      barcode: ''
+    }
+  ];
+
+  const categories = [
+    {
+      id: 'cat_1',
+      name: 'BEBIDAS',
+      active: true
+    }
+  ];
+
+  const plan = buildCatalogImportPlan(
+    [
+      {
+        excelRow: 2,
+        name: 'PRODUCTO A',
+        sku: 'A001',
+        categoryName: 'BEBIDAS'
+      },
+      {
+        excelRow: 3,
+        name: 'PRODUCTO B',
+        sku: 'B001',
+        categoryName: 'ALIMENTOS'
+      }
+    ],
+    products,
+    categories
+  );
+
+  assert.deepEqual(plan, {
+    creates: 1,
+    updates: 1,
+    unresolved: 0,
+    categoriesToCreate: 1
+  });
 });
