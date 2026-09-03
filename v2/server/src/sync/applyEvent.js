@@ -67,6 +67,17 @@ export async function applyEvent(client, auth, event) {
         payload
       );
       break;
+    case 'initialLoad':
+      if (operation !== 'CREATE') {
+        throw new Error('La carga inicial solo admite CREATE');
+      }
+      result = await applyInitialLoad(
+        client,
+        workspaceId,
+        userId,
+        payload
+      );
+      break;
     default:
       throw new Error(`Entidad no soportada: ${entityType}`);
   }
@@ -268,6 +279,227 @@ async function upsertReplenishment(client, workspaceId, userId, p) {
       p.createdAt,p.updatedAt
     ]
   );
+}
+
+async function applyInitialLoad(
+  client,
+  workspaceId,
+  userId,
+  payload
+) {
+  await client.query(
+    `SELECT id
+     FROM workspaces
+     WHERE id = $1
+     FOR UPDATE`,
+    [workspaceId]
+  );
+
+  const alreadyApplied = await client.query(
+    `SELECT run_id, document_id, applied_at
+     FROM workspace_initial_loads
+     WHERE workspace_id = $1`,
+    [workspaceId]
+  );
+
+  if (alreadyApplied.rowCount > 0) {
+    throw initialLoadError(
+      'INITIAL_LOAD_ALREADY_APPLIED',
+      'La existencia inicial SAINT ya fue aplicada en este almacén'
+    );
+  }
+
+  const existingMovements = await client.query(
+    `SELECT COUNT(*)::int AS total
+     FROM movements
+     WHERE workspace_id = $1`,
+    [workspaceId]
+  );
+
+  if (Number(existingMovements.rows[0]?.total || 0) > 0) {
+    throw initialLoadError(
+      'INITIAL_LOAD_NOT_CLEAN',
+      'La carga inicial requiere un almacén sin movimientos previos'
+    );
+  }
+
+  const productIds = payload.rows.map(row => row.productId);
+  const productResult = await client.query(
+    `SELECT id
+     FROM products
+     WHERE workspace_id = $1
+       AND id = ANY($2::text[])`,
+    [workspaceId, productIds]
+  );
+
+  const found = new Set(
+    productResult.rows.map(row => row.id)
+  );
+  const missing = productIds.filter(id => !found.has(id));
+
+  if (missing.length > 0) {
+    throw initialLoadError(
+      'INITIAL_LOAD_PRODUCT_MISSING',
+      `Hay ${missing.length} producto(s) que todavía no existen en el servidor`,
+      409,
+      { productIds: missing.slice(0, 20) }
+    );
+  }
+
+  const now = new Date().toISOString();
+  const documentId = initialLoadDocumentId(payload.id);
+  const positiveRows = payload.rows.filter(
+    row => Number(row.quantity || 0) > 0
+  );
+
+  await client.query(
+    `INSERT INTO documents (
+      workspace_id,id,type,status,owner_id,location_id,destination_id,supplier_id,
+      reference,notes,metadata,created_at,updated_at,closed_at,closed_by,version
+    ) VALUES (
+      $1,$2,'ADJUSTMENT','CLOSED',$3,NULL,NULL,NULL,
+      $4,$5,$6::jsonb,$7,$7,$7,$3,1
+    )`,
+    [
+      workspaceId,
+      documentId,
+      userId || null,
+      'CARGA INICIAL SAINT',
+      'Existencia inicial importada una sola vez desde SAINT.',
+      JSON.stringify({
+        kind: 'SAINT_INITIAL_LOAD',
+        initialLoadId: payload.id,
+        source: payload.source || 'SAINT',
+        productCount: payload.rows.length,
+        positiveStockCount: positiveRows.length
+      }),
+      now
+    ]
+  );
+
+  for (let index = 0; index < payload.rows.length; index++) {
+    const row = payload.rows[index];
+    const quantity = Number(row.quantity || 0);
+    const lineId = initialLoadLineId(payload.id, index);
+
+    const linePayload = {
+      id: lineId,
+      documentId,
+      documentType: 'ADJUSTMENT',
+      productId: row.productId,
+      expectedStock: 0,
+      countedStock: quantity,
+      quantity,
+      sourceCode: row.sourceCode || null,
+      sourceRow: row.sourceRow || null,
+      version: 1,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await client.query(
+      `INSERT INTO document_lines (
+        workspace_id,id,document_id,product_id,payload,created_at,updated_at,version
+      ) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$6,1)`,
+      [
+        workspaceId,
+        lineId,
+        documentId,
+        row.productId,
+        JSON.stringify(linePayload),
+        now
+      ]
+    );
+
+    if (!(quantity > 0)) continue;
+
+    await insertMovement(
+      client,
+      workspaceId,
+      userId,
+      {
+        id: initialLoadMovementId(payload.id, index),
+        productId: row.productId,
+        type: 'ADJUSTMENT',
+        quantity,
+        delta: quantity,
+        documentId,
+        lotId: null,
+        locationId: null,
+        userId,
+        reversedMovementId: null,
+        metadata: {
+          kind: 'SAINT_INITIAL_LOAD',
+          initialLoadId: payload.id,
+          source: payload.source || 'SAINT',
+          sourceCode: row.sourceCode || null,
+          sourceRow: row.sourceRow || null,
+          saintInitialStock: quantity
+        },
+        effectiveAt: now,
+        createdAt: now
+      }
+    );
+  }
+
+  await client.query(
+    `INSERT INTO workspace_initial_loads (
+      workspace_id,run_id,source,document_id,product_count,
+      positive_stock_count,applied_by,applied_at,metadata
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+    [
+      workspaceId,
+      payload.id,
+      payload.source || 'SAINT',
+      documentId,
+      payload.rows.length,
+      positiveRows.length,
+      userId || null,
+      now,
+      JSON.stringify({
+        fileName: payload.fileName || null,
+        sheetName: payload.sheetName || null
+      })
+    ]
+  );
+
+  payload.appliedAt = now;
+  payload.documentId = documentId;
+  payload.appliedBy = userId || null;
+  payload.positiveStockCount = positiveRows.length;
+
+  return {
+    runId: payload.id,
+    documentId,
+    productCount: payload.rows.length,
+    positiveStockCount: positiveRows.length,
+    appliedAt: now
+  };
+}
+
+function initialLoadDocumentId(runId) {
+  return `adj_saint_initial_${runId}`;
+}
+
+function initialLoadLineId(runId, index) {
+  return `line_saint_initial_${runId}_${String(index + 1).padStart(5, '0')}`;
+}
+
+function initialLoadMovementId(runId, index) {
+  return `mov_saint_initial_${runId}_${String(index + 1).padStart(5, '0')}`;
+}
+
+function initialLoadError(
+  code,
+  message,
+  statusCode = 409,
+  details = null
+) {
+  const error = new Error(message);
+  error.code = code;
+  error.statusCode = statusCode;
+  error.details = details;
+  return error;
 }
 
 async function insertMovement(client, workspaceId, userId, p) {
