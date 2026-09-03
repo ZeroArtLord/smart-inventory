@@ -42,11 +42,12 @@ export function normalizePresentations(
 
       if (!presentation || presentation.active === false) return;
 
-      const key = [
-        normalizeSearchText(presentation.code),
-        presentation.unitId || '',
-        presentation.conversion
-      ].join('|');
+      const key =
+        normalizeSearchText(
+          presentation.code ||
+          presentation.name ||
+          presentation.unitId
+        );
 
       if (seen.has(key)) return;
       seen.add(key);
