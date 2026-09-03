@@ -3708,3 +3708,108 @@ body.auth-locked .sidebar-foot {
     flex-direction: column;
   }
 }
+
+
+/* Catálogo enriquecido: unidad base + empaques/presentaciones */
+.catalog-quantity {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.catalog-quantity strong {
+  line-height: 1.15;
+}
+
+.catalog-quantity small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.catalog-edit-link {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 850;
+  margin-top: 4px;
+  padding: 0;
+  text-align: left;
+  width: max-content;
+}
+
+.catalog-edit-link:hover {
+  text-decoration: underline;
+}
+
+.catalog-editor-card {
+  scroll-margin-top: 16px;
+}
+
+.catalog-editor-section {
+  background: color-mix(in srgb, var(--panel) 86%, var(--accent) 14%);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.catalog-editor-section-head {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.catalog-editor-section-head small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+.catalog-stock-editor-pair {
+  align-items: start;
+}
+
+.catalog-stock-editor {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.catalog-stock-editor label {
+  margin: 0;
+}
+
+.catalog-import-card .section-head {
+  align-items: flex-start;
+}
+
+@media (max-width: 760px) {
+  .catalog-editor-section-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .catalog-editor-section-head small {
+    text-align: left;
+  }
+
+  .catalog-import-card .section-head {
+    gap: 10px;
+  }
+
+  .catalog-import-card .section-head > button {
+    width: 100%;
+  }
+}
