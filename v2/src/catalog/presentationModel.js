@@ -232,9 +232,15 @@ export function presentationDisplay(
   const presentationCode =
     normalizeText(presentation.code || presentation.name) || 'PRESENTACIÓN';
 
+  const presentationLabel =
+    pluralizePresentationCode(
+      presentationCode,
+      parts.whole
+    );
+
   const human = parts.remainder > 0
-    ? `${formatNumber(parts.whole)} ${presentationCode} + ${formatNumber(parts.remainder)} ${baseCode}`
-    : `${formatNumber(parts.whole)} ${presentationCode}`;
+    ? `${formatNumber(parts.whole)} ${presentationLabel} + ${formatNumber(parts.remainder)} ${baseCode}`
+    : `${formatNumber(parts.whole)} ${presentationLabel}`;
 
   return {
     baseQuantity: Number(baseQuantity),
@@ -319,6 +325,31 @@ function formatNumber(value) {
   return new Intl.NumberFormat('es-VE', {
     maximumFractionDigits: 6
   }).format(number);
+}
+
+function pluralizePresentationCode(
+  code,
+  count
+) {
+  const value =
+    normalizeText(code).toUpperCase();
+
+  if (Number(count) === 1) {
+    return value;
+  }
+
+  if (
+    value.endsWith('S') ||
+    value.endsWith('X')
+  ) {
+    return value;
+  }
+
+  if (/[AEIOUÁÉÍÓÚ]$/.test(value)) {
+    return value + 'S';
+  }
+
+  return value + 'ES';
 }
 
 function titleCase(value) {
