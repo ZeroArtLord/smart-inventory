@@ -755,12 +755,40 @@ function detectHeaders(row) {
 }
 
 export function parseQuantityCell(rawValue) {
-  if (rawValue === undefined || rawValue === null || normalizeText(rawValue) === '') {
-    return { value: 0, unit: '', error: null };
+  if (
+    rawValue === undefined ||
+    rawValue === null ||
+    normalizeText(rawValue) === ''
+  ) {
+    return {
+      value: 0,
+      unit: '',
+      error: null
+    };
   }
 
-  const text = normalizeText(rawValue).replace(',', '.');
-  const match = /^(-?\d+(?:\.\d+)?)\s*([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)?$/.exec(text);
+  if (
+    typeof rawValue === 'number' &&
+    Number.isFinite(rawValue)
+  ) {
+    if (rawValue < 0) {
+      return {
+        value: null,
+        unit: '',
+        error: `"${normalizeText(rawValue)}"`
+      };
+    }
+
+    return {
+      value: rawValue,
+      unit: '',
+      error: null
+    };
+  }
+
+  const text = normalizeText(rawValue);
+  const match =
+    /^(-?[0-9.,]+)\s*([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)?$/.exec(text);
 
   if (!match) {
     return {
@@ -770,7 +798,12 @@ export function parseQuantityCell(rawValue) {
     };
   }
 
-  const value = Number(match[1]);
+  const unit = normalizeUnit(match[2]);
+  const value = parseLocalizedNumber(
+    match[1],
+    unit
+  );
+
   if (!Number.isFinite(value) || value < 0) {
     return {
       value: null,
@@ -781,9 +814,96 @@ export function parseQuantityCell(rawValue) {
 
   return {
     value,
-    unit: normalizeUnit(match[2]),
+    unit,
     error: null
   };
+}
+
+function parseLocalizedNumber(
+  token,
+  unit
+) {
+  let text = String(token || '').trim();
+  if (!text) return NaN;
+
+  const negative = text.startsWith('-');
+  if (negative) {
+    text = text.slice(1);
+  }
+
+  if (!/^[0-9.,]+$/.test(text)) {
+    return NaN;
+  }
+
+  const comma = text.lastIndexOf(',');
+  const dot = text.lastIndexOf('.');
+
+  let normalized;
+
+  if (comma >= 0 && dot >= 0) {
+    const decimalSeparator =
+      comma > dot ? ',' : '.';
+    const thousandsSeparator =
+      decimalSeparator === ','
+        ? '.'
+        : ',';
+
+    normalized = text
+      .split(thousandsSeparator)
+      .join('');
+
+    const lastDecimal =
+      normalized.lastIndexOf(
+        decimalSeparator
+      );
+
+    normalized =
+      normalized.slice(0, lastDecimal)
+        .split(decimalSeparator)
+        .join('') +
+      '.' +
+      normalized.slice(lastDecimal + 1);
+  } else if (comma >= 0) {
+    const parts = text.split(',');
+    normalized =
+      parts.length === 2
+        ? parts[0] + '.' + parts[1]
+        : parts.slice(0, -1).join('') +
+          '.' +
+          parts.at(-1);
+  } else if (dot >= 0) {
+    const integerLikeUnit = [
+      'UND',
+      'CAJA',
+      'BULTO'
+    ].includes(unit);
+
+    if (
+      integerLikeUnit &&
+      /^\d{1,3}(?:\.\d{3})+$/.test(text)
+    ) {
+      normalized = text
+        .split('.')
+        .join('');
+    } else {
+      const parts = text.split('.');
+      normalized =
+        parts.length === 2
+          ? text
+          : parts.slice(0, -1).join('') +
+            '.' +
+            parts.at(-1);
+    }
+  } else {
+    normalized = text;
+  }
+
+  const number = Number(
+    (negative ? '-' : '') +
+    normalized
+  );
+
+  return number;
 }
 
 function normalizeUnit(value) {
