@@ -233,3 +233,29 @@ test('rechaza fuente distinta de SAINT en carga inicial', () => {
     payload
   }), /solo admite fuente SAINT/i);
 });
+
+
+test('servidor rechaza presentaciones duplicadas por código', () => {
+  const product = {
+    ...baseProduct(),
+    presentations: [
+      {
+        code: 'CAJA',
+        conversion: 24,
+        primary: true
+      },
+      {
+        code: 'CAJA',
+        conversion: 36,
+        primary: false
+      }
+    ]
+  };
+
+  assert.throws(() => validateSyncEvent({
+    entityType: 'product',
+    entityId: product.id,
+    operation: 'UPDATE',
+    payload: product
+  }), /Presentación duplicada/i);
+});
