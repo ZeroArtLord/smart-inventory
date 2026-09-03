@@ -107,7 +107,7 @@ export function buildSaintInitialLoadDraft(
 
   const now = new Date().toISOString();
 
-  return {
+  const draft = {
     id: createLocalId('saintload'),
     source: 'SAINT',
     fileName: preview.fileName || null,
@@ -117,6 +117,9 @@ export function buildSaintInitialLoadDraft(
     createdAt: now,
     rows: mappedRows
   };
+
+  validateClientDraft(draft);
+  return draft;
 }
 
 export async function enqueueSaintInitialLoad(
