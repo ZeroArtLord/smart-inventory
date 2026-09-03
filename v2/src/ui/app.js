@@ -4,13 +4,22 @@ import { REPLENISHMENT_METHODS } from '../core/catalog.js';
 import {
   seedDefaultUnits,
   createProduct,
+  updateProduct,
   listProducts,
   searchProducts
 } from '../catalog/catalogService.js';
 import {
   readCatalogFile,
-  applyCatalogImport
+  applyCatalogImport,
+  downloadSaintInitialLoadTemplate
 } from '../catalog/catalogExcel.js';
+import {
+  buildProductPayloadFromEditor,
+  catalogPresentationSummary,
+  catalogQuantityDisplay,
+  catalogUnitCode,
+  renderCatalogProductEditor
+} from '../catalog/catalogUi.js';
 import {
   STORES,
   openDatabase,
@@ -110,6 +119,7 @@ const state = {
   selectedProductId: null,
   searchResults: [],
   importPreview: null,
+  editingProductId: null,
   reportDays: 30,
   reportRows: [],
   session: null,
@@ -2079,6 +2089,16 @@ async function renderCatalog() {
   const rowByProductId = new Map(
     inventoryRows.map(row => [row.productId, row])
   );
+  const editingProduct =
+    state.editingProductId
+      ? state.products.find(
+          product => product.id === state.editingProductId
+        ) || null
+      : null;
+
+  if (state.editingProductId && !editingProduct) {
+    state.editingProductId = null;
+  }
 
   appRoot.innerHTML = `
     <section class="hero dashboard-hero">
@@ -2156,14 +2176,23 @@ async function renderCatalog() {
                             <div>
                               <strong>${escapeHtml(product.name)}</strong>
                               <small>${escapeHtml(product.barcode || 'Sin código de barras')}</small>
+                              <small>${escapeHtml(catalogPresentationSummary(product))}</small>
+                              ${canWriteCatalog ? `
+                                <button
+                                  class="catalog-edit-link"
+                                  data-action="edit-product"
+                                  data-product-id="${escapeHtml(product.id)}"
+                                  type="button"
+                                >Editar</button>
+                              ` : ''}
                             </div>
                           </div>
                         </td>
                         <td>${escapeHtml(product.sku || '—')}</td>
-                        <td class="catalog-stock-value">${formatNumber(stock)}</td>
-                        <td>${formatNumber(min)}</td>
-                        <td>${max > 0 ? formatNumber(max) : '—'}</td>
-                        <td>${escapeHtml(product.unitCode || 'UND')}</td>
+                        <td class="catalog-stock-value">${renderCatalogQuantity(product, stock)}</td>
+                        <td>${renderCatalogQuantity(product, min)}</td>
+                        <td>${max > 0 ? renderCatalogQuantity(product, max) : '—'}</td>
+                        <td>${escapeHtml(catalogUnitCode(product))}</td>
                         <td>${escapeHtml(replenishmentLabel(product.replenishmentMethod))}</td>
                         <td>
                           <span class="catalog-status ${statusClass}">
@@ -2208,16 +2237,25 @@ async function renderCatalog() {
                       <div>
                         <strong>${escapeHtml(product.name)}</strong>
                         <small>${escapeHtml(product.sku || product.barcode || 'Sin código')}</small>
+                        <small>${escapeHtml(catalogPresentationSummary(product))}</small>
+                        ${canWriteCatalog ? `
+                          <button
+                            class="catalog-edit-link"
+                            data-action="edit-product"
+                            data-product-id="${escapeHtml(product.id)}"
+                            type="button"
+                          >Editar</button>
+                        ` : ''}
                       </div>
                       <span class="catalog-status ${status}"><span></span>${statusLabel}</span>
                     </div>
                     <div class="catalog-mobile-stats">
-                      <div><small>Stock</small><strong>${formatNumber(stock)}</strong></div>
-                      <div><small>Mín.</small><strong>${formatNumber(product.minStock || 0)}</strong></div>
-                      <div><small>Máx.</small><strong>${product.maxStock ? formatNumber(product.maxStock) : '—'}</strong></div>
+                      <div><small>Stock</small>${renderCatalogQuantity(product, stock)}</div>
+                      <div><small>Mín.</small>${renderCatalogQuantity(product, product.minStock || 0)}</div>
+                      <div><small>Máx.</small>${product.maxStock ? renderCatalogQuantity(product, product.maxStock) : '<strong>—</strong>'}</div>
                     </div>
                     <div class="product-meta">
-                      ${escapeHtml(product.unitCode || 'UND')} ·
+                      ${escapeHtml(catalogUnitCode(product))} ·
                       ${escapeHtml(replenishmentLabel(product.replenishmentMethod))}
                     </div>
                   </article>
@@ -2229,60 +2267,19 @@ async function renderCatalog() {
 
       <aside class="catalog-side-v2">
         ${canWriteCatalog ? `
-          <form id="productForm" class="card stack catalog-create-card">
-            <div class="section-head">
-              <div>
-                <h3>＋ Nuevo producto</h3>
-                <p>Alta rápida al catálogo.</p>
-              </div>
-            </div>
-
-            <label>
-              Nombre
-              <input name="name" autocomplete="off" required placeholder="Ej. ARROZ 1KG">
-            </label>
-
-            <div class="form-pair-v2">
-              <label>
-                SKU / Código interno
-                <input name="sku" autocomplete="off">
-              </label>
-              <label>
-                Código de barras
-                <input name="barcode" inputmode="numeric" autocomplete="off">
-              </label>
-            </div>
-
-            <div class="form-pair-v2">
-              <label>
-                Mínimo semanal
-                <input name="minStock" value="0" inputmode="decimal">
-              </label>
-              <label>
-                Máximo semanal
-                <input name="maxStock" value="0" inputmode="decimal">
-              </label>
-            </div>
-
-            <label>
-              Reposición
-              <select name="replenishmentMethod">
-                <option value="${REPLENISHMENT_METHODS.BOTH}">Compra o pedido</option>
-                <option value="${REPLENISHMENT_METHODS.PURCHASE}">Compra</option>
-                <option value="${REPLENISHMENT_METHODS.ORDER}">Pedido</option>
-                <option value="${REPLENISHMENT_METHODS.NONE}">Sin reposición automática</option>
-              </select>
-            </label>
-
-            <button class="primary" type="submit">Agregar producto</button>
-          </form>
+          ${renderCatalogProductEditor(editingProduct)}
 
           <section class="card stack catalog-import-card">
             <div class="section-head">
               <div>
-                <h3>⇧ Importador Excel V2</h3>
-                <p>Vista previa antes de modificar catálogo.</p>
+                <h3>⇧ Carga de catálogo SAINT</h3>
+                <p>Depura productos, empaques y mínimos/máximos antes de importar.</p>
               </div>
+              <button
+                class="secondary"
+                data-action="download-saint-template"
+                type="button"
+              >Descargar plantilla</button>
             </div>
 
             <label class="import-zone-v2">
@@ -2299,7 +2296,7 @@ async function renderCatalog() {
 
             <div class="catalog-safety-note">
               <strong>Stock protegido.</strong>
-              Una columna Existencia puede validarse, pero nunca modifica el stock.
+              La Existencia SAINT se conserva solo como referencia para el futuro movimiento de apertura. Importar catálogo nunca pisa stock.
             </div>
 
             ${state.importPreview ? renderCatalogImportPreview(state.importPreview) : ''}
@@ -3103,6 +3100,16 @@ async function handleClick(event) {
         return finishDocument();
       case 'apply-catalog-import':
         return applyCatalogPreview();
+      case 'edit-product':
+        state.editingProductId = button.dataset.productId;
+        return render();
+      case 'cancel-product-edit':
+        state.editingProductId = null;
+        return render();
+      case 'download-saint-template':
+        downloadSaintInitialLoadTemplate();
+        showToast('Plantilla SAINT generada');
+        return;
       case 'create-replenishment':
         return createReplenishmentFromSuggestion(button);
       case 'set-replenishment-status':
@@ -3398,20 +3405,25 @@ async function handleSubmit(event) {
     requireClientPermission('catalog.write');
 
     const form = new FormData(event.target);
-    const minStock = evaluateNumericExpression(form.get('minStock'));
-    const maxStock = evaluateNumericExpression(form.get('maxStock'));
+    const productId = String(form.get('productId') || '').trim();
+    const existingProduct = productId
+      ? state.products.find(product => product.id === productId) || null
+      : null;
+    const payload = buildProductPayloadFromEditor(
+      form,
+      existingProduct
+    );
 
-    await createProduct({
-      name: form.get('name'),
-      sku: form.get('sku'),
-      barcode: form.get('barcode'),
-      minStock,
-      maxStock,
-      replenishmentMethod: form.get('replenishmentMethod')
-    });
+    if (existingProduct) {
+      await updateProduct(existingProduct.id, payload);
+      showToast('Producto actualizado');
+    } else {
+      await createProduct(payload);
+      showToast('Producto guardado');
+    }
 
+    state.editingProductId = null;
     await refreshProducts();
-    showToast('Producto guardado');
     scheduleSync();
     await render();
   } catch (error) {
@@ -4011,6 +4023,9 @@ function renderCatalogImportPreview(preview) {
           </div>
         </div>
         <span class="badge">${rows.length} válidos</span>
+        ${preview.skippedRows
+          ? `<span class="badge">${preview.skippedRows} omitidos</span>`
+          : ''}
         <span class="badge">${errors.length} errores</span>
       </div>
 
@@ -4046,8 +4061,12 @@ function renderCatalogImportPreview(preview) {
                   <strong>${escapeHtml(row.name)}</strong>
                   <div class="product-meta">
                     ${row.sku ? 'SKU ' + escapeHtml(row.sku) + ' · ' : ''}
-                    Min ${row.minStock} · Max ${row.maxStock || '—'} ·
-                    ${escapeHtml(row.unitCode)}
+                    Min ${formatNumber(row.minStock)} ${escapeHtml(row.unitCode)} ·
+                    Max ${row.maxStock ? formatNumber(row.maxStock) + ' ' + escapeHtml(row.unitCode) : '—'} ·
+                    ${escapeHtml(catalogPresentationSummary(row))}
+                    ${row.saintInitialStock !== null && row.saintInitialStock !== undefined
+                      ? ' · SAINT ' + formatNumber(row.saintInitialStock) + ' ' + escapeHtml(row.unitCode)
+                      : ''}
                     ${row.categoryName ? ' · ' + escapeHtml(row.categoryName) : ''}
                   </div>
                 </div>
@@ -4314,6 +4333,22 @@ function getLocalOwnerId() {
   }
 
   return id;
+}
+
+function renderCatalogQuantity(product, quantity) {
+  const display = catalogQuantityDisplay(
+    product,
+    Number(quantity || 0)
+  );
+
+  return `
+    <span class="catalog-quantity">
+      <strong>${escapeHtml(display.baseText)}</strong>
+      ${display.humanText
+        ? `<small>${escapeHtml(display.humanText)}</small>`
+        : ''}
+    </span>
+  `;
 }
 
 function replenishmentLabel(method) {
