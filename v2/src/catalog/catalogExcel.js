@@ -13,6 +13,13 @@ import {
   STORES,
   getAll
 } from '../storage/database.js';
+import {
+  analyzeCatalogImportConflicts,
+  buildCatalogIdentityIndexes,
+  indexCatalogProduct,
+  replaceCatalogProductInIdentityIndexes,
+  resolveCatalogProductIdentity
+} from './catalogImportGuard.js';
 
 const MAX_FILE_SIZE = 8 * 1024 * 1024;
 const VALID_EXTENSIONS = ['.xlsx', '.xls', '.csv'];
@@ -447,19 +454,32 @@ export async function applyCatalogImport(preview) {
     throw new Error('No hay filas válidas para importar');
   }
 
+  if (preview.errors?.length) {
+    throw new Error(
+      `Corrige los errores del archivo antes de importar (${preview.errors.length})`
+    );
+  }
+
   const products = await listProducts({ includeInactive: true });
   const categories = await getAll(STORES.CATEGORIES);
 
-  const bySku = new Map();
-  const byBarcode = new Map();
-  const byName = new Map();
-  const categoryByName = new Map();
+  const guard = analyzeCatalogImportConflicts(
+    preview.rows,
+    products
+  );
 
-  for (const product of products) addProductToIndexes(product, {
-    bySku,
-    byBarcode,
-    byName
-  });
+  if (guard.errors.length) {
+    const error = new Error(
+      `La importación tiene conflictos de identidad (${guard.errors.length})`
+    );
+    error.code = 'CATALOG_IMPORT_CONFLICT';
+    error.details = guard.errors;
+    throw error;
+  }
+
+  const identityIndexes =
+    buildCatalogIdentityIndexes(products);
+  const categoryByName = new Map();
 
   for (const category of categories) {
     categoryByName.set(normalizeSearchText(category.name), category);
@@ -489,10 +509,20 @@ export async function applyCatalogImport(preview) {
         categoryId = category.id;
       }
 
+      const resolution =
+        resolveCatalogProductIdentity(
+          row,
+          identityIndexes
+        );
+
+      if (resolution.error) {
+        throw new Error(
+          resolution.error
+        );
+      }
+
       const existing =
-        (row.sku && bySku.get(normalizeSearchText(row.sku))) ||
-        (row.barcode && byBarcode.get(normalizeSearchText(row.barcode))) ||
-        byName.get(normalizeSearchText(row.name));
+        resolution.product;
 
       const baseData = {
         name: row.name,
@@ -529,7 +559,18 @@ export async function applyCatalogImport(preview) {
         result.created++;
       }
 
-      addProductToIndexes(saved, { bySku, byBarcode, byName });
+      if (existing) {
+        replaceCatalogProductInIdentityIndexes(
+          identityIndexes,
+          existing,
+          saved
+        );
+      } else {
+        indexCatalogProduct(
+          identityIndexes,
+          saved
+        );
+      }
     } catch (error) {
       result.errors.push(
         `Fila ${row.excelRow}: ${error?.message || String(error)}`
@@ -538,16 +579,6 @@ export async function applyCatalogImport(preview) {
   }
 
   return result;
-}
-
-function addProductToIndexes(product, indexes) {
-  if (product.sku) {
-    indexes.bySku.set(normalizeSearchText(product.sku), product);
-  }
-  if (product.barcode) {
-    indexes.byBarcode.set(normalizeSearchText(product.barcode), product);
-  }
-  indexes.byName.set(normalizeSearchText(product.name), product);
 }
 
 function detectHeaders(row) {
