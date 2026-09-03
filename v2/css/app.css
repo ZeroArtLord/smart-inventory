@@ -3813,3 +3813,48 @@ body.auth-locked .sidebar-foot {
     width: 100%;
   }
 }
+
+
+.saint-initial-load-card {
+  border-color: color-mix(in srgb, var(--border) 78%, var(--accent) 22%);
+}
+
+.catalog-initial-load-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.catalog-initial-load-grid > div {
+  background: color-mix(in srgb, var(--panel) 90%, var(--accent) 10%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+}
+
+.catalog-initial-load-grid small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.catalog-initial-load-grid strong {
+  font-size: 1.05rem;
+}
+
+@media (max-width: 520px) {
+  .catalog-initial-load-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .saint-initial-load-card .row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .saint-initial-load-card .row > button {
+    width: 100%;
+  }
+}
