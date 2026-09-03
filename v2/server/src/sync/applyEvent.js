@@ -28,7 +28,12 @@ export async function applyEvent(client, auth, event) {
 
   switch (entityType) {
     case 'product':
-      result = await upsertProduct(client, workspaceId, payload);
+      result = await upsertProduct(
+        client,
+        workspaceId,
+        payload,
+        operation
+      );
       break;
     case 'category':
       result = await upsertCategory(client, workspaceId, payload);
@@ -91,7 +96,59 @@ export async function applyEvent(client, auth, event) {
   return result;
 }
 
-async function upsertProduct(client, workspaceId, p) {
+async function upsertProduct(
+  client,
+  workspaceId,
+  p,
+  operation
+) {
+  if (operation === 'UPDATE') {
+    const current = await client.query(
+      `SELECT inventory_unit_id
+       FROM products
+       WHERE workspace_id = $1
+         AND id = $2`,
+      [workspaceId, p.id]
+    );
+
+    const currentUnit =
+      current.rows[0]?.inventory_unit_id ||
+      null;
+    const nextUnit =
+      p.inventoryUnitId ||
+      null;
+
+    if (
+      current.rowCount > 0 &&
+      currentUnit &&
+      nextUnit &&
+      currentUnit !== nextUnit
+    ) {
+      const movementCount =
+        await client.query(
+          `SELECT COUNT(*)::int AS total
+           FROM movements
+           WHERE workspace_id = $1
+             AND product_id = $2`,
+          [workspaceId, p.id]
+        );
+
+      if (
+        Number(
+          movementCount.rows[0]?.total ||
+          0
+        ) > 0
+      ) {
+        const error = new Error(
+          'La unidad base no puede cambiarse porque el producto ya tiene movimientos'
+        );
+        error.code = 'BASE_UNIT_LOCKED';
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+  }
+
   await client.query(
     `INSERT INTO products (
       workspace_id,id,sku,name,name_normalized,aliases,barcode,category_id,
