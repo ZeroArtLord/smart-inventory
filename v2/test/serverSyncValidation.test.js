@@ -120,3 +120,71 @@ test('acepta ajuste con delta negativo', () => {
     payload: movement
   }));
 });
+
+
+test('acepta carga inicial SAINT válida', () => {
+  const payload = {
+    id: 'saintload_test',
+    source: 'SAINT',
+    createdAt: '2026-09-03T14:00:00.000Z',
+    rows: [
+      {
+        productId: 'prd_test',
+        quantity: 25
+      }
+    ]
+  };
+
+  assert.doesNotThrow(() => validateSyncEvent({
+    entityType: 'initialLoad',
+    entityId: payload.id,
+    operation: 'CREATE',
+    payload
+  }));
+});
+
+test('rechaza productos duplicados en carga inicial', () => {
+  const payload = {
+    id: 'saintload_dup',
+    source: 'SAINT',
+    createdAt: '2026-09-03T14:00:00.000Z',
+    rows: [
+      {
+        productId: 'prd_test',
+        quantity: 10
+      },
+      {
+        productId: 'prd_test',
+        quantity: 20
+      }
+    ]
+  };
+
+  assert.throws(() => validateSyncEvent({
+    entityType: 'initialLoad',
+    entityId: payload.id,
+    operation: 'CREATE',
+    payload
+  }), /duplicados/i);
+});
+
+test('rechaza existencia negativa en carga inicial', () => {
+  const payload = {
+    id: 'saintload_negative',
+    source: 'SAINT',
+    createdAt: '2026-09-03T14:00:00.000Z',
+    rows: [
+      {
+        productId: 'prd_test',
+        quantity: -1
+      }
+    ]
+  };
+
+  assert.throws(() => validateSyncEvent({
+    entityType: 'initialLoad',
+    entityId: payload.id,
+    operation: 'CREATE',
+    payload
+  }), /Existencia inicial/i);
+});
