@@ -3685,21 +3685,43 @@ async function applyCatalogPreview() {
   const initialLoadStatus =
     await getLocalSaintInitialLoadStatus();
 
+  const missingInitialStockRows =
+    preview.hasInitialStockColumn
+      ? preview.rows.filter(
+          row =>
+            row.saintInitialStock === null ||
+            row.saintInitialStock === undefined
+        ).length
+      : 0;
+
+  const canPrepareInitialLoad =
+    !initialLoadStatus &&
+    preview.hasInitialStockColumn &&
+    missingInitialStockRows === 0;
+
   state.saintInitialLoadDraft =
-    initialLoadStatus
-      ? null
-      : buildSaintInitialLoadDraft(
+    canPrepareInitialLoad
+      ? buildSaintInitialLoadDraft(
           preview,
           state.products
-        );
+        )
+      : null;
 
   state.importPreview = null;
 
-  showToast(
+  const baseMessage =
+    `Catálogo listo · ${result.created} nuevos · ${result.updated} actualizados`;
+
+  const loadMessage =
     initialLoadStatus
-      ? `Catálogo actualizado · ${result.created} nuevos · ${result.updated} actualizados`
-      : `Catálogo listo · ${result.created} nuevos · ${result.updated} actualizados · existencia inicial preparada`
-  );
+      ? ' · apertura SAINT ya existente'
+      : !preview.hasInitialStockColumn
+        ? ' · sin columna de existencia'
+        : missingInitialStockRows > 0
+          ? ` · apertura no preparada: ${missingInitialStockRows} fila(s) sin existencia`
+          : ' · existencia inicial preparada';
+
+  showToast(baseMessage + loadMessage);
 
   scheduleSync(100);
   await render();
@@ -4322,6 +4344,14 @@ function renderCatalogImportPreview(preview) {
   const rows = preview.rows || [];
   const errors = preview.errors || [];
   const warnings = preview.warnings || [];
+  const missingInitialStockRows =
+    preview.hasInitialStockColumn
+      ? rows.filter(
+          row =>
+            row.saintInitialStock === null ||
+            row.saintInitialStock === undefined
+        ).length
+      : 0;
 
   return `
     <div class="stack" style="border-top:1px solid var(--border);padding-top:12px">
@@ -4337,6 +4367,11 @@ function renderCatalogImportPreview(preview) {
           ? `<span class="badge">${preview.skippedRows} omitidos</span>`
           : ''}
         <span class="badge">${errors.length} errores</span>
+        ${preview.hasInitialStockColumn
+          ? missingInitialStockRows
+            ? `<span class="badge status-warning">Existencia incompleta</span>`
+            : `<span class="badge status-good">Existencia SAINT lista</span>`
+          : `<span class="badge">Sin existencia SAINT</span>`}
       </div>
 
       ${warnings.length ? `
@@ -4344,6 +4379,12 @@ function renderCatalogImportPreview(preview) {
           ${warnings.slice(0, 8).map(warning => `
             <div class="status-warning">⚠ ${escapeHtml(warning)}</div>
           `).join('')}
+        </div>
+      ` : ''}
+
+      ${preview.hasInitialStockColumn && missingInitialStockRows > 0 ? `
+        <div class="status-warning">
+          ⚠ Hay ${missingInitialStockRows} producto(s) sin Existencia SAINT explícita. El catálogo sí puede importarse, pero la apertura de stock no se preparará hasta que cada fila tenga un valor; escribe 0 cuando corresponda.
         </div>
       ` : ''}
 
