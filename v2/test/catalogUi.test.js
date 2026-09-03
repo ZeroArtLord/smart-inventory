@@ -14,6 +14,7 @@ test('convierte mínimos y máximos desde empaques del editor', () => {
     name: 'REFRESCO COLA',
     sku: 'REF001',
     barcode: '',
+    categoryId: 'cat_bebidas',
     inventoryUnitId: 'unit_und',
     primaryPresentationCode: 'CAJA',
     primaryPresentationConversion: '24',
@@ -26,6 +27,7 @@ test('convierte mínimos y máximos desde empaques del editor', () => {
     replenishmentMethod: 'PURCHASE'
   });
 
+  assert.equal(payload.categoryId, 'cat_bebidas');
   assert.equal(payload.minStock, 120);
   assert.equal(payload.maxStock, 960);
   assert.equal(payload.presentations.length, 2);
@@ -118,4 +120,19 @@ test('al editar usa empaques cuando min/max equivalen a paquetes enteros', () =>
   assert.equal(defaults.minUnit, 'PRIMARY');
   assert.equal(defaults.maxValue, 485);
   assert.equal(defaults.maxUnit, 'BASE');
+});
+
+
+test('defaults del editor conservan la categoría del producto', () => {
+  const defaults = catalogEditorDefaults({
+    id: 'prd_cat',
+    name: 'PRODUCTO',
+    categoryId: 'cat_1',
+    inventoryUnitId: 'unit_und',
+    minStock: 0,
+    maxStock: 0,
+    replenishmentMethod: 'BOTH'
+  });
+
+  assert.equal(defaults.categoryId, 'cat_1');
 });
