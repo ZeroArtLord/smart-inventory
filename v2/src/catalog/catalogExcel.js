@@ -33,7 +33,8 @@ const HEADER_ALIASES = Object.freeze({
     'codigo saint', 'cod saint', 'saint code', 'codigo producto saint'
   ],
   sku: [
-    'sku smart', 'sku interno smart', 'sku interno', 'sku'
+    'sku smart', 'sku interno smart', 'sku interno',
+    'codigo interno', 'cod interno', 'sku'
   ],
   barcode: [
     'codigo de barras', 'cod barras', 'barcode', 'ean', 'upc'
