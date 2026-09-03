@@ -975,7 +975,25 @@ function parsePresentations(raw, columns, excelRow) {
 
   if (secondary.error) return secondary;
   if (secondary.presentation) {
-    presentations.push(secondary.presentation);
+    const duplicate = presentations.find(
+      item =>
+        normalizeSearchText(item.code) ===
+        normalizeSearchText(
+          secondary.presentation.code
+        )
+    );
+
+    if (duplicate) {
+      return {
+        presentations: [],
+        error:
+          `Fila ${excelRow}: presentación duplicada "${secondary.presentation.code}"`
+      };
+    }
+
+    presentations.push(
+      secondary.presentation
+    );
   }
 
   return { presentations, error: null };
@@ -1000,9 +1018,17 @@ function parsePresentationColumns(
     ? raw[conversionColumn]
     : '';
 
-  const hasConversion = normalizeText(rawConversion) !== '';
+  const hasConversion =
+    normalizeText(rawConversion) !== '';
   const conversion = hasConversion
-    ? Number(String(rawConversion).replace(',', '.'))
+    ? (
+        typeof rawConversion === 'number'
+          ? rawConversion
+          : parseLocalizedNumber(
+              String(rawConversion),
+              ''
+            )
+      )
     : null;
 
   if (!code && !hasConversion) {
