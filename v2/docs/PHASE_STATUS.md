@@ -25,8 +25,10 @@
 - Vista previa antes de aplicar.
 - Actualización por SKU, código de barras o nombre.
 - La columna Existencia nunca altera stock directamente en el importador de catálogo; queda reservada a movimientos trazables.
-- Modelo de empaques/presentaciones en implementación: unidad base inmutable, múltiples presentaciones con factor de conversión y compatibilidad con purchaseUnit/purchaseConversion.
-- El parser de carga SAINT ya reconoce USAR, presentación principal/secundaria y convierte mínimos/máximos expresados en empaques hacia unidad base.
+- Modelo de empaques/presentaciones implementado: unidad base inmutable, múltiples presentaciones con factor de conversión y compatibilidad con purchaseUnit/purchaseConversion.
+- Editor visual de producto con unidad base, presentación principal/secundaria y mínimos/máximos expresables en unidad base o empaques.
+- El parser de carga SAINT reconoce USAR, presentación principal/secundaria y convierte mínimos/máximos expresados en empaques hacia unidad base.
+- Smart Inventory puede generar la plantilla Excel de carga inicial SAINT desde la propia interfaz.
 
 ### Fase 3 — Inventario transaccional
 - ENTRY.
@@ -135,15 +137,18 @@
 ### Fase 11 — Baseline productivo
 - Smart Inventory V1 queda retirado como fuente de datos porque nunca se utilizó en producción.
 - El catálogo inicial vendrá desde SAINT y se depurará antes de activar productos en Smart Inventory.
-- Empaques/presentaciones: backend, persistencia PostgreSQL e importador base en curso; falta editor visual y flujo final de carga inicial.
-- La existencia inicial se registrará mediante movimientos trazables de carga inicial, nunca editando stock directamente.
-- Las importaciones posteriores de catálogo no podrán sobrescribir existencia.
+- Empaques/presentaciones: modelo, persistencia PostgreSQL, importador y editor visual implementados.
+- Flujo de existencia inicial SAINT implementado en código como operación única por workspace: exige catálogo sincronizado, almacén sin movimientos previos y permisos catalog.write + adjustment.write.
+- La apertura crea un documento ADJUSTMENT cerrado y movimientos trazables SAINT_INITIAL_LOAD; nunca edita stock directamente.
+- El servidor registra la apertura en workspace_initial_loads para impedir una segunda aplicación accidental.
+- El evento de apertura se reconstruye en IndexedDB al sincronizar, de modo que PC/teléfono reciben el mismo documento y movimientos.
+- Las importaciones posteriores de catálogo no pueden sobrescribir existencia.
 
 ## Pendiente inmediato
 
-1. Completar editor visual de producto con unidad base y presentaciones/empaques.
-2. Completar plantilla Excel de carga inicial SAINT y su vista previa.
-3. Implementar aplicación única y trazable de existencia inicial SAINT mediante movimientos de apertura.
-4. Aplicar migración PostgreSQL 010_product_presentations.sql en el servidor y validar sincronización real.
-5. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC y el piloto con catálogo SAINT depurado.
+1. Esperar CI verde del bloque de carga inicial SAINT y revisar cualquier regresión.
+2. En una sola ventana de mantenimiento, actualizar el servidor y aplicar migraciones 010_product_presentations.sql + 011_saint_initial_load.sql.
+3. Probar primero con un Excel SAINT controlado de pocos productos: catálogo → empaques → apertura única → stock derivado.
+4. Validar que una segunda apertura sea rechazada y que una importación posterior de catálogo no cambie stock.
+5. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC y después el piloto con catálogo SAINT depurado.
 6. Integración SAINT Enterprise como última etapa.
