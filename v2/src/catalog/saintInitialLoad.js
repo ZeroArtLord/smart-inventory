@@ -56,6 +56,7 @@ export function buildSaintInitialLoadDraft(
 
     if (!product) {
       missing.push(
+        row.saintCode ||
         row.sku ||
         row.barcode ||
         row.name ||
@@ -86,7 +87,10 @@ export function buildSaintInitialLoadDraft(
     mappedRows.push({
       productId: product.id,
       quantity,
-      sourceCode: row.sku || null,
+      sourceCode:
+        row.saintCode ||
+        row.sku ||
+        null,
       sourceRow: row.excelRow || null,
       name: product.name,
       unitCode: row.unitCode || 'UND'
