@@ -211,3 +211,25 @@ test('rechaza huella SHA-256 inválida en carga inicial', () => {
     payload
   }), /SHA-256/i);
 });
+
+
+test('rechaza fuente distinta de SAINT en carga inicial', () => {
+  const payload = {
+    id: 'saintload_other_source',
+    source: 'OTRA',
+    createdAt: '2026-09-03T14:00:00.000Z',
+    rows: [
+      {
+        productId: 'prd_test',
+        quantity: 0
+      }
+    ]
+  };
+
+  assert.throws(() => validateSyncEvent({
+    entityType: 'initialLoad',
+    entityId: payload.id,
+    operation: 'CREATE',
+    payload
+  }), /solo admite fuente SAINT/i);
+});
