@@ -213,7 +213,8 @@ test('preflight bloquea cambiar unidad base de producto con movimientos', () => 
       name: 'PRODUCTO HISTÓRICO',
       sku: 'H001',
       barcode: '',
-      inventoryUnitId: 'unit_kg'
+      inventoryUnitId: 'unit_kg',
+      hasExplicitUnit: true
     }
   ];
 
