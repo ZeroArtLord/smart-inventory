@@ -390,6 +390,16 @@ function validateClientDraft(draft) {
   }
 
   if (
+    String(draft.source || 'SAINT')
+      .trim()
+      .toUpperCase() !== 'SAINT'
+  ) {
+    throw new Error(
+      'La carga inicial solo admite fuente SAINT'
+    );
+  }
+
+  if (
     draft.fileSha256 &&
     !/^[a-f0-9]{64}$/i.test(
       String(draft.fileSha256)
