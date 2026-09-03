@@ -159,6 +159,7 @@ async function databaseSummary(client) {
       (SELECT COUNT(*)::bigint FROM replenishments) AS replenishments,
       (SELECT COUNT(*)::bigint FROM sync_events) AS sync_events,
       (SELECT COUNT(*)::bigint FROM audit_events) AS audit_events,
+      (SELECT COUNT(*)::bigint FROM workspace_initial_loads) AS workspace_initial_loads,
       (SELECT COUNT(*)::bigint FROM schema_migrations) AS schema_migrations`
   );
 
