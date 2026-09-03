@@ -44,6 +44,33 @@ export function indexCatalogProduct(
   return indexes;
 }
 
+export function replaceCatalogProductInIdentityIndexes(
+  indexes,
+  previousProduct,
+  nextProduct
+) {
+  removeIndexValue(
+    indexes.bySku,
+    previousProduct?.sku,
+    previousProduct?.id
+  );
+  removeIndexValue(
+    indexes.byBarcode,
+    previousProduct?.barcode,
+    previousProduct?.id
+  );
+  removeIndexValue(
+    indexes.byName,
+    previousProduct?.name,
+    previousProduct?.id
+  );
+
+  return indexCatalogProduct(
+    indexes,
+    nextProduct
+  );
+}
+
 export function analyzeCatalogImportConflicts(
   rows = [],
   products = []
@@ -287,13 +314,43 @@ function addIndexValue(
   product
 ) {
   const key = normalized(value);
-  if (!key) return;
+  if (!key || !product) return;
 
   const items =
     map.get(key) || [];
 
-  items.push(product);
+  if (
+    !items.some(
+      item => item.id === product.id
+    )
+  ) {
+    items.push(product);
+  }
+
   map.set(key, items);
+}
+
+function removeIndexValue(
+  map,
+  value,
+  productId
+) {
+  const key = normalized(value);
+  if (!key || !productId) return;
+
+  const items =
+    map.get(key) || [];
+
+  const remaining =
+    items.filter(
+      item => item.id !== productId
+    );
+
+  if (remaining.length) {
+    map.set(key, remaining);
+  } else {
+    map.delete(key);
+  }
 }
 
 function collectMatches(
