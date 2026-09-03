@@ -150,6 +150,33 @@ const checks = [
             )`
   },
   {
+    code: 'INITIAL_LOAD_ORPHAN_DOCUMENT',
+    label: 'Carga inicial SAINT sin documento válido',
+    sql: `SELECT COUNT(*)::int AS total
+          FROM workspace_initial_loads w
+          LEFT JOIN documents d
+            ON d.workspace_id = w.workspace_id
+           AND d.id = w.document_id
+          WHERE d.id IS NULL
+             OR d.type <> 'ADJUSTMENT'
+             OR d.status <> 'CLOSED'
+             OR d.metadata->>'kind' <> 'SAINT_INITIAL_LOAD'`
+  },
+  {
+    code: 'INITIAL_LOAD_MOVEMENT_MISMATCH',
+    label: 'Carga inicial SAINT con movimientos inconsistentes',
+    sql: `SELECT COUNT(*)::int AS total
+          FROM workspace_initial_loads w
+          LEFT JOIN LATERAL (
+            SELECT COUNT(*)::int AS total
+            FROM movements m
+            WHERE m.workspace_id = w.workspace_id
+              AND m.metadata->>'kind' = 'SAINT_INITIAL_LOAD'
+              AND m.metadata->>'initialLoadId' = w.run_id
+          ) q ON true
+          WHERE COALESCE(q.total, 0) <> w.positive_stock_count`
+  },
+  {
     code: 'CLOSED_EMPTY_DOCUMENT',
     label: 'Documentos cerrados sin líneas',
     sql: `SELECT COUNT(*)::int AS total
