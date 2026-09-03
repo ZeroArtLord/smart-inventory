@@ -444,3 +444,49 @@ test('acepta conversión de empaque con coma decimal cuando la unidad base lo pe
     1.5
   );
 });
+
+
+test('una actualización SAINT parcial conserva unidad, empaques, mínimos y reposición existentes', async () => {
+  await createProduct({
+    name: 'ACEITE PRESERVADO',
+    sku: 'ACE-PRES',
+    barcode: '759999000001',
+    inventoryUnitId: 'unit_lt',
+    presentations: [
+      {
+        id: 'presentation_primary',
+        code: 'CAJA',
+        unitId: 'unit_box',
+        conversion: 12,
+        primary: true,
+        active: true
+      }
+    ],
+    minStock: 24,
+    maxStock: 120,
+    replenishmentMethod: 'PURCHASE'
+  });
+
+  const preview = parseCatalogMatrix([
+    ['Producto', 'SKU', 'Categoría'],
+    ['ACEITE PRESERVADO', 'ACE-PRES', 'ALIMENTOS']
+  ]);
+
+  const result = await applyCatalogImport(preview);
+  assert.equal(result.updated, 1);
+  assert.equal(result.errors.length, 0);
+
+  const products = await listProducts();
+  const saved = products.find(
+    product => product.sku === 'ACE-PRES'
+  );
+
+  assert.ok(saved);
+  assert.equal(saved.inventoryUnitId, 'unit_lt');
+  assert.equal(saved.minStock, 24);
+  assert.equal(saved.maxStock, 120);
+  assert.equal(saved.replenishmentMethod, 'PURCHASE');
+  assert.equal(saved.presentations.length, 1);
+  assert.equal(saved.presentations[0].code, 'CAJA');
+  assert.equal(saved.presentations[0].conversion, 12);
+});
