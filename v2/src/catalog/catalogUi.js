@@ -105,6 +105,9 @@ export function buildProductPayloadFromEditor(
     name: field(source, 'name'),
     sku: field(source, 'sku'),
     barcode: field(source, 'barcode'),
+    categoryId:
+      clean(field(source, 'categoryId')) ||
+      null,
     inventoryUnitId,
     presentations,
     minStock,
@@ -176,6 +179,7 @@ export function catalogEditorDefaults(product = null) {
       name: '',
       sku: '',
       barcode: '',
+      categoryId: '',
       inventoryUnitId: 'unit_und',
       primaryCode: '',
       primaryConversion: '',
@@ -214,6 +218,7 @@ export function catalogEditorDefaults(product = null) {
     name: product.name || '',
     sku: product.sku || '',
     barcode: product.barcode || '',
+    categoryId: product.categoryId || '',
     inventoryUnitId: product.inventoryUnitId || 'unit_und',
     primaryCode: primary?.code || '',
     primaryConversion: primary?.conversion ?? '',
@@ -229,9 +234,21 @@ export function catalogEditorDefaults(product = null) {
   };
 }
 
-export function renderCatalogProductEditor(product = null) {
+export function renderCatalogProductEditor(
+  product = null,
+  categories = []
+) {
   const value = catalogEditorDefaults(product);
   const editing = Boolean(value.productId);
+  const sortedCategories = [...categories]
+    .filter(category => category?.active !== false)
+    .sort((a, b) =>
+      String(a.name || '').localeCompare(
+        String(b.name || ''),
+        'es',
+        { sensitivity: 'base' }
+      )
+    );
 
   return `
     <form id="productForm" class="card stack catalog-create-card catalog-editor-card">
@@ -275,6 +292,22 @@ export function renderCatalogProductEditor(product = null) {
           >
         </label>
       </div>
+
+      <label>
+        Categoría
+        <select name="categoryId">
+          <option value="">Sin categoría</option>
+          ${sortedCategories.map(category => `
+            <option
+              value="${escapeHtml(category.id)}"
+              ${category.id === value.categoryId ? 'selected' : ''}
+            >${escapeHtml(category.name)}</option>
+          `).join('')}
+        </select>
+        <small class="product-meta">
+          Las categorías nuevas también pueden crearse automáticamente al importar la plantilla SAINT.
+        </small>
+      </label>
 
       <label>
         Unidad base
