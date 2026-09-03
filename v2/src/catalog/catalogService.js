@@ -2,6 +2,7 @@ import { createLocalId } from '../core/ids.js';
 import {
   REPLENISHMENT_METHODS,
   DEFAULT_UNITS,
+  buildSmartSkuFromSaintCode,
   normalizeText,
   normalizeSearchText,
   assertNonNegativeNumber
@@ -110,6 +111,16 @@ export async function createProduct(data = {}) {
     throw new Error('Método de reposición inválido');
   }
 
+  const saintCode =
+    normalizeText(
+      data.saintCode
+    ).toUpperCase();
+  const sku =
+    normalizeText(data.sku) ||
+    buildSmartSkuFromSaintCode(
+      saintCode
+    );
+
   const inventoryUnitId = data.inventoryUnitId || 'unit_und';
   const presentations = normalizePresentations(
     data.presentations,
@@ -127,7 +138,8 @@ export async function createProduct(data = {}) {
   const now = new Date().toISOString();
   const product = {
     id: data.id || createLocalId('prd'),
-    sku: normalizeText(data.sku),
+    saintCode,
+    sku,
     name,
     nameNormalized: normalizeSearchText(name),
     aliases: Array.isArray(data.aliases)
@@ -196,7 +208,24 @@ export async function updateProduct(productId, patch = {}) {
       : [];
   }
 
-  if (patch.sku !== undefined) next.sku = normalizeText(patch.sku);
+  if (patch.saintCode !== undefined) {
+    next.saintCode =
+      normalizeText(
+        patch.saintCode
+      ).toUpperCase();
+  }
+  if (patch.sku !== undefined) {
+    next.sku = normalizeText(patch.sku);
+  }
+  if (
+    !next.sku &&
+    next.saintCode
+  ) {
+    next.sku =
+      buildSmartSkuFromSaintCode(
+        next.saintCode
+      );
+  }
   if (patch.barcode !== undefined) next.barcode = normalizeText(patch.barcode);
 
   if (patch.minStock !== undefined) {
@@ -281,6 +310,7 @@ export async function searchProducts(query, { limit = 30 } = {}) {
   const matches = products.filter(product => {
     const haystack = [
       product.nameNormalized,
+      normalizeSearchText(product.saintCode),
       normalizeSearchText(product.sku),
       normalizeSearchText(product.barcode),
       ...(product.aliases || []).map(normalizeSearchText)
