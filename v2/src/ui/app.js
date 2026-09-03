@@ -52,6 +52,7 @@ import {
   initializeFirebaseClient,
   loginWithGoogle,
   logoutFirebase,
+  refreshFirebaseToken,
   firebaseUserSummary
 } from '../auth/firebaseClient.js';
 import {
@@ -98,16 +99,6 @@ import {
   ROLE_OPTIONS,
   PERMISSION_OPTIONS
 } from '../admin/adminClient.js';
-import {
-  readV1Snapshot,
-  readV1SnapshotWithIndexedDb,
-  buildV1MigrationPreview,
-  parseV1ArchiveText,
-  applyV1Migration,
-  getV1MigrationStatus,
-  serializeV1Archive
-} from '../migration/v1Migration.js';
-
 const appRoot = document.getElementById('app');
 const saveStatus = document.getElementById('saveStatus');
 
@@ -128,9 +119,7 @@ const state = {
   authUser: null,
   availableWorkspaces: [],
   workspaceReady: false,
-  authAccessOffline: false,
-  migrationPreview: null,
-  migrationStatus: null
+  authAccessOffline: false
 };
 
 const devOwnerId = getLocalOwnerId();
@@ -651,8 +640,6 @@ function resetWorkspaceUiState() {
   state.reportRows = [];
   state.members = [];
   state.auditEvents = [];
-  state.migrationPreview = null;
-  state.migrationStatus = null;
   state.view = 'home';
 }
 
@@ -834,11 +821,6 @@ function canOpenView(view) {
       return hasClientPermission('users.manage');
     case 'audit':
       return hasClientPermission('audit.view');
-    case 'migration':
-      return (
-        hasClientPermission('catalog.write') &&
-        hasClientPermission('adjustment.write')
-      );
     default:
       return false;
   }
@@ -948,8 +930,6 @@ async function render() {
       return renderUsers();
     case 'audit':
       return renderAudit();
-    case 'migration':
-      return renderMigration();
     default:
       return renderHome();
   }
@@ -1156,9 +1136,6 @@ async function renderHome() {
             : ''}
           ${canOpenView('audit')
             ? actionCard('audit', '◎ Auditoría', 'Quién hizo qué y cuándo.')
-            : ''}
-          ${canOpenView('migration')
-            ? actionCard('migration', '⇄ Migrar V1', 'Migración trazable y controlada.')
             : ''}
         </div>
       </article>
@@ -1476,144 +1453,6 @@ async function renderSettings() {
         <button class="secondary" type="button" disabled>
           Configurar en ETAPA 26
         </button>
-      </section>
-    </div>
-  `;
-}
-
-async function renderMigration() {
-  if (!can(state.session, 'catalog.write') ||
-      !can(state.session, 'adjustment.write')) {
-    appRoot.innerHTML = `
-      <section class="hero">
-        <h2>Migración Smart Inventory V1</h2>
-        <p>Se requieren permisos de catálogo y ajustes.</p>
-      </section>
-      <section class="card"><div class="empty">Sin permisos suficientes.</div></section>
-    `;
-    return;
-  }
-
-  state.migrationStatus = await getV1MigrationStatus();
-
-  if (!state.migrationPreview) {
-    state.migrationPreview = buildV1MigrationPreview(
-      await readV1SnapshotWithIndexedDb()
-    );
-  }
-
-  const preview = state.migrationPreview;
-  const counts = preview.sourceCounts || {};
-
-  appRoot.innerHTML = `
-    <section class="hero dashboard-hero">
-      <div>
-        <h2>Migración Smart Inventory V1</h2>
-        <p>Convierte existencia V1 en un ADJUSTMENT trazable. El histórico legado se conserva como archivo, no se inventan movimientos.</p>
-      </div>
-      ${state.migrationStatus
-        ? '<span class="badge status-good">Migración registrada</span>'
-        : '<span class="badge status-warning">Modo piloto</span>'}
-    </section>
-
-    ${state.migrationStatus ? `
-      <section class="card stack">
-        <strong>Migración ya aplicada en este dispositivo</strong>
-        <div class="product-meta">
-          ${formatDate(state.migrationStatus.migratedAt)} ·
-          ${state.migrationStatus.created || 0} creados ·
-          ${state.migrationStatus.updated || 0} actualizados ·
-          ${state.migrationStatus.stockAdjustments || 0} ajustes de stock.
-        </div>
-        <div class="status-warning">
-          No vuelvas a aplicar el snapshot. Conserva V1 y el archivo legado hasta terminar el piloto.
-        </div>
-      </section>
-    ` : ''}
-
-    <div class="operation-layout" style="margin-top:16px">
-      <section class="card stack">
-        <div>
-          <h3 style="margin:0">Fuente V1</h3>
-          <div class="product-meta">
-            Si V1 estaba en otro origen/navegador, carga un snapshot JSON.
-          </div>
-        </div>
-
-        <label>
-          Snapshot V1 (.json)
-          <input
-            id="v1MigrationFile"
-            type="file"
-            accept=".json,application/json"
-          >
-        </label>
-
-        <div class="migration-count-grid">
-          ${dashboardMetric(counts.products || 0, 'Productos V1', 'detectados')}
-          ${dashboardMetric(counts.history || 0, 'Historial', 'archivado')}
-          ${dashboardMetric(counts.daily || 0, 'Registros diarios', 'archivados')}
-          ${dashboardMetric(counts.audit || 0, 'Auditoría V1', 'archivada')}
-        </div>
-
-        ${preview.warnings?.length ? `
-          <div class="stack">
-            ${preview.warnings.slice(0, 10).map(item =>
-              `<div class="status-warning">⚠ ${escapeHtml(item)}</div>`
-            ).join('')}
-          </div>
-        ` : ''}
-
-        ${preview.errors?.length ? `
-          <div class="stack">
-            ${preview.errors.slice(0, 12).map(item =>
-              `<div class="status-danger">✕ ${escapeHtml(item)}</div>`
-            ).join('')}
-          </div>
-        ` : ''}
-
-        <div class="row">
-          <button
-            class="secondary"
-            data-action="download-v1-archive"
-            type="button"
-            ${(counts.products || counts.history || counts.daily || counts.audit) ? '' : 'disabled'}
-          >Guardar archivo legado</button>
-
-          <button
-            class="success"
-            data-action="apply-v1-migration"
-            type="button"
-            ${state.migrationStatus || !preview.rows?.length || preview.errors?.length ? 'disabled' : ''}
-          >Aplicar migración</button>
-        </div>
-      </section>
-
-      <section class="card stack">
-        <div>
-          <h3 style="margin:0">Vista previa</h3>
-          <div class="product-meta">
-            El stock objetivo se logra mediante movimiento compensatorio, nunca editando products.stock.
-          </div>
-        </div>
-
-        ${preview.rows?.length
-          ? preview.rows.slice(0, 30).map(row => `
-            <div class="dashboard-list-row">
-              <div>
-                <strong>${escapeHtml(row.name)}</strong>
-                <div class="product-meta">
-                  ${escapeHtml(row.unitCode)} · Min ${formatNumber(row.minStock)} · Max ${formatNumber(row.maxStock)}
-                  ${row.categoryName ? ' · ' + escapeHtml(row.categoryName) : ''}
-                </div>
-              </div>
-              <div class="dashboard-list-end">
-                <strong>${formatNumber(row.currentStock)}</strong>
-                <small>stock objetivo</small>
-              </div>
-            </div>
-          `).join('')
-          : '<div class="empty">No se detectaron productos V1. Carga un snapshot JSON si V1 estaba en otro origen.</div>'}
       </section>
     </div>
   `;
@@ -3308,10 +3147,6 @@ async function handleClick(event) {
           button.dataset.id,
           button.dataset.type
         );
-      case 'apply-v1-migration':
-        return applyLegacyMigration();
-      case 'download-v1-archive':
-        return downloadLegacyArchive();
     }
   } catch (error) {
     showToast(error.message || String(error));
@@ -3585,24 +3420,6 @@ async function handleSubmit(event) {
 }
 
 async function handleChange(event) {
-  if (event.target.id === 'v1MigrationFile') {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const snapshot = parseV1ArchiveText(
-        await file.text()
-      );
-      state.migrationPreview =
-        buildV1MigrationPreview(snapshot);
-      showToast('Snapshot V1 cargado');
-      return render();
-    } catch (error) {
-      showToast(error.message || String(error));
-      return;
-    }
-  }
-
   if (event.target.id === 'reportDays') {
     state.reportDays = Number(event.target.value || 30);
     return render();
@@ -3748,12 +3565,18 @@ async function saveMemberPermissions(userId) {
 }
 
 async function refreshSession({ silent = false } = {}) {
+  const previousSession = state.session;
+
   try {
     state.session = await getCurrentSession();
     return state.session;
   } catch (error) {
-    state.session = null;
-    if (!silent) throw error;
+    if (!silent) {
+      state.session = null;
+      throw error;
+    }
+
+    state.session = previousSession;
     return null;
   }
 }
@@ -3764,81 +3587,6 @@ function cssEscape(value) {
   }
 
   return String(value).replace(/["\\]/g, '\\$&');
-}
-
-async function applyLegacyMigration() {
-  if (state.migrationStatus) {
-    throw new Error('La migración V1 ya fue aplicada');
-  }
-
-  if (!navigator.onLine) {
-    throw new Error(
-      'La migración requiere conexión para reducir riesgo de duplicados'
-    );
-  }
-
-  const pending = await getPendingSyncCount();
-  if (pending > 0) {
-    throw new Error(
-      'Sincroniza los cambios pendientes antes de migrar V1'
-    );
-  }
-
-  if (!state.migrationPreview?.rows?.length) {
-    throw new Error('No hay productos V1 válidos para migrar');
-  }
-
-  if (state.migrationPreview.errors?.length) {
-    throw new Error(
-      'Resuelve los errores del preview antes de migrar'
-    );
-  }
-
-  if (!confirm(
-    '¿Aplicar la migración V1? Se crearán/actualizarán productos y ajustes trazables de stock.'
-  )) {
-    return;
-  }
-
-  const result = await applyV1Migration(
-    state.migrationPreview,
-    { ownerId: currentOwnerId() }
-  );
-
-  state.migrationStatus = result;
-  await refreshProducts();
-
-  showToast(
-    `Migración lista · ${result.created} creados · ${result.updated} actualizados`
-  );
-
-  scheduleSync(100);
-  await render();
-}
-
-function downloadLegacyArchive() {
-  const snapshot =
-    state.migrationPreview?.snapshot ||
-    readV1Snapshot();
-
-  const text = serializeV1Archive(snapshot);
-  const blob = new Blob([text], {
-    type: 'application/json;charset=utf-8'
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-
-  link.href = url;
-  link.download =
-    `smart_inventory_v1_archive_${new Date().toISOString().slice(0, 10)}.json`;
-
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-
-  showToast('Archivo legado V1 generado');
 }
 
 async function applyCatalogPreview() {
@@ -4705,21 +4453,46 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
   if (
     !result?.ok &&
     state.authMode === 'firebase' &&
-    [
-      'AUTH_TOKEN_INVALID',
-      'WORKSPACE_ACCESS_DENIED'
-    ].includes(result?.error?.code)
+    result?.error?.code === 'AUTH_TOKEN_INVALID'
   ) {
-    lockAuthenticatedUi();
+    const recovery =
+      await recoverFirebaseSessionAfterTokenError();
 
-    if (
-      result.error.code ===
-      'AUTH_TOKEN_INVALID'
-    ) {
+    if (recovery.recovered) {
+      state.authAccessOffline = false;
+      scheduleSync(500);
+      await refreshSaveStatus();
+      return {
+        ...result,
+        recoveredAuth: true
+      };
+    }
+
+    if (recovery.confirmedInvalid) {
+      lockAuthenticatedUi();
       await logoutFirebase().catch(() => {});
       state.authUser = null;
       updateAuthUi();
+
+      if (renderAfter) {
+        renderAuthGate();
+      }
+
+      await refreshSaveStatus();
+      return result;
     }
+
+    state.authAccessOffline = true;
+    await refreshSaveStatus();
+    return result;
+  }
+
+  if (
+    !result?.ok &&
+    state.authMode === 'firebase' &&
+    result?.error?.code === 'WORKSPACE_ACCESS_DENIED'
+  ) {
+    lockAuthenticatedUi();
 
     if (renderAfter) {
       renderAuthGate();
@@ -4754,6 +4527,47 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
   return result;
 }
 
+async function recoverFirebaseSessionAfterTokenError() {
+  if (!state.authUser) {
+    return {
+      recovered: false,
+      confirmedInvalid: true
+    };
+  }
+
+  try {
+    await refreshFirebaseToken();
+
+    const liveSession = await getCurrentSession();
+    state.session = liveSession;
+    state.workspaceReady = Boolean(
+      liveSession?.workspaceId
+    );
+
+    return {
+      recovered: Boolean(liveSession),
+      confirmedInvalid: false
+    };
+  } catch (error) {
+    const code = String(error?.code || '');
+
+    const confirmedInvalid = [
+      'AUTH_TOKEN_INVALID',
+      'AUTH_SESSION_MISSING',
+      'auth/user-disabled',
+      'auth/user-token-expired',
+      'auth/invalid-user-token',
+      'auth/user-not-found'
+    ].includes(code);
+
+    return {
+      recovered: false,
+      confirmedInvalid,
+      error
+    };
+  }
+}
+
 function canAutoRefresh() {
   const active = document.activeElement;
   if (!active) return true;
@@ -4781,7 +4595,6 @@ function readInitialView() {
       'settings',
       'users',
       'audit',
-      'migration',
       'conflicts'
     ]);
 
