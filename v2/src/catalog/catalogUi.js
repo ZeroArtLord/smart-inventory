@@ -10,7 +10,9 @@ import {
 const BASE_UNITS = Object.freeze([
   { id: 'unit_und', code: 'UND', label: 'Unidad (UND)' },
   { id: 'unit_kg', code: 'KG', label: 'Kilogramo (KG)' },
-  { id: 'unit_lt', code: 'LT', label: 'Litro (LT)' }
+  { id: 'unit_lt', code: 'LT', label: 'Litro (LT)' },
+  { id: 'unit_box', code: 'CAJA', label: 'Caja (CAJA)' },
+  { id: 'unit_bulto', code: 'BULTO', label: 'Bulto (BULTO)' }
 ]);
 
 const UNIT_CODE_BY_ID = Object.freeze(
