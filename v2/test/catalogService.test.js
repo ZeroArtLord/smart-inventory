@@ -76,7 +76,7 @@ test('genera SKU Smart interno cuando existe Código SAINT y SKU está vacío', 
 
   assert.equal(
     product.saintCode,
-    'SA 001/VE'
+    'sa 001/ve'
   );
   assert.equal(
     product.sku,
@@ -152,5 +152,46 @@ test('bloquea SKU Smart duplicado al crear manualmente', async () => {
     error =>
       error?.code ===
         'SMART_SKU_DUPLICATE'
+  );
+});
+
+
+test('acepta Código SAINT compuesto únicamente por letras', async () => {
+  const product = await createProduct({
+    name: 'PRODUCTO CÓDIGO LETRAS',
+    saintCode: 'REFRESCO',
+    sku: '',
+    inventoryUnitId: 'unit_und',
+    minStock: 0,
+    maxStock: 10
+  });
+
+  assert.equal(
+    product.saintCode,
+    'REFRESCO'
+  );
+  assert.equal(
+    product.sku,
+    'SM-REFRESCO'
+  );
+});
+
+test('preserva exactamente el texto del Código SAINT aunque el SKU se normalice', async () => {
+  const product = await createProduct({
+    name: 'PRODUCTO CÓDIGO MIXTO',
+    saintCode: 'AbcRef',
+    sku: '',
+    inventoryUnitId: 'unit_und',
+    minStock: 0,
+    maxStock: 10
+  });
+
+  assert.equal(
+    product.saintCode,
+    'AbcRef'
+  );
+  assert.equal(
+    product.sku,
+    'SM-ABCREF'
   );
 });
