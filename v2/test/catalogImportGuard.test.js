@@ -238,3 +238,42 @@ test('preflight bloquea cambiar unidad base de producto con movimientos', () => 
     /unidad base.*movimientos/i
   );
 });
+
+
+test('preflight no interpreta unidad inferida como cambio si la columna unidad no vino en el archivo', () => {
+  const products = [
+    {
+      id: 'prd_hist_sparse',
+      name: 'PRODUCTO KG',
+      sku: 'KG001',
+      inventoryUnitId: 'unit_kg'
+    }
+  ];
+
+  const rows = [
+    {
+      excelRow: 2,
+      name: 'PRODUCTO KG',
+      sku: 'KG001',
+      inventoryUnitId: 'unit_und',
+      hasExplicitUnit: false
+    }
+  ];
+
+  const movements = [
+    {
+      id: 'mov_sparse',
+      productId: 'prd_hist_sparse',
+      type: 'ADJUSTMENT'
+    }
+  ];
+
+  const result =
+    analyzeCatalogImportConflicts(
+      rows,
+      products,
+      movements
+    );
+
+  assert.equal(result.errors.length, 0);
+});
