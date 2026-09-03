@@ -111,6 +111,8 @@ export function buildSaintInitialLoadDraft(
     id: createLocalId('saintload'),
     source: 'SAINT',
     fileName: preview.fileName || null,
+    fileSize: Number(preview.fileSize || 0) || null,
+    fileSha256: preview.fileSha256 || null,
     sheetName: preview.sheetName || null,
     createdAt: now,
     rows: mappedRows
@@ -176,6 +178,9 @@ export async function getLocalSaintInitialLoadStatus() {
           ?.positiveStockCount ||
         0
       ),
+    fileSha256:
+      match.metadata?.fileSha256 ||
+      null,
     appliedAt:
       match.closedAt ||
       match.updatedAt ||
@@ -225,7 +230,10 @@ export function reconstructSaintInitialLoad(
       initialLoadId: payload.id,
       source: payload.source || 'SAINT',
       productCount: payload.rows.length,
-      positiveStockCount
+      positiveStockCount,
+      fileName: payload.fileName || null,
+      fileSize: Number(payload.fileSize || 0) || null,
+      fileSha256: payload.fileSha256 || null
     },
     version: 1,
     createdAt: appliedAt,
@@ -375,6 +383,17 @@ function validateClientDraft(draft) {
   if (!draft.id) {
     throw new Error(
       'La carga inicial no tiene ID'
+    );
+  }
+
+  if (
+    draft.fileSha256 &&
+    !/^[a-f0-9]{64}$/i.test(
+      String(draft.fileSha256)
+    )
+  ) {
+    throw new Error(
+      'Huella SHA-256 del archivo SAINT inválida'
     );
   }
 
