@@ -380,3 +380,67 @@ test('interpreta formatos numéricos comunes de exportaciones SAINT en español'
     }
   );
 });
+
+
+test('rechaza presentación principal y secundaria con el mismo código', () => {
+  const preview = parseCatalogMatrix([
+    [
+      'Producto',
+      'SKU',
+      'Unidad base',
+      'Presentación',
+      'Unidades por presentación',
+      'Presentación secundaria',
+      'UND presentación secundaria',
+      'Mínimo',
+      'Máximo'
+    ],
+    [
+      'REFRESCO',
+      'REF-DUP-PACK',
+      'UND',
+      'CAJA',
+      24,
+      'CAJA',
+      36,
+      '1 CAJA',
+      '5 CAJAS'
+    ]
+  ]);
+
+  assert.equal(preview.rows.length, 0);
+  assert.equal(preview.errors.length, 1);
+  assert.match(
+    preview.errors[0],
+    /presentación duplicada "CAJA"/i
+  );
+});
+
+test('acepta conversión de empaque con coma decimal cuando la unidad base lo permite', () => {
+  const preview = parseCatalogMatrix([
+    [
+      'Producto',
+      'SKU',
+      'Unidad base',
+      'Presentación',
+      'Unidades por presentación',
+      'Mínimo',
+      'Máximo'
+    ],
+    [
+      'LÍQUIDO',
+      'LIQ-001',
+      'LT',
+      'GARRAFA',
+      '1,5',
+      0,
+      10
+    ]
+  ]);
+
+  assert.equal(preview.errors.length, 0);
+  assert.equal(
+    preview.rows[0].presentations[0].conversion,
+    1.5
+  );
+});
