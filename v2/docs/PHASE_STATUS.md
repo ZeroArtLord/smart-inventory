@@ -130,17 +130,11 @@
 - Verificación por pg_restore.
 - Restore real automático a una base temporal y comparación de conteos críticos.
 
-### Fase 11 — Migración V1
-- Lectura de localStorage V1.
-- Fallback seguro a IndexedDB V1.
-- Snapshot portable JSON.
-- Preview con errores/advertencias.
-- Detección de productos duplicados por nombre normalizado.
-- Archivo legado preservado.
-- Stock V1 convertido en ADJUSTMENT trazable.
-- IDs deterministas de movimientos de migración.
-- Estado y archivo de migración aislados por workspace.
-- Bloqueo de segunda migración accidental.
+### Fase 11 — Baseline productivo
+- Smart Inventory V1 queda retirado como fuente de datos porque nunca se utilizó en producción.
+- El catálogo inicial vendrá desde SAINT y se depurará antes de activar productos en Smart Inventory.
+- La existencia inicial se registrará mediante movimientos trazables de carga inicial, nunca editando stock directamente.
+- Las importaciones posteriores de catálogo no podrán sobrescribir existencia.
 
 ## Pendiente inmediato
 
