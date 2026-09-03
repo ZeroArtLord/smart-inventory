@@ -154,9 +154,10 @@
 
 ## Pendiente inmediato
 
-1. Esperar CI verde del bloque de carga inicial SAINT y revisar cualquier regresión.
-2. En una sola ventana de mantenimiento, actualizar el servidor y aplicar migraciones 010_product_presentations.sql + 011_saint_initial_load.sql.
-3. Probar primero con un Excel SAINT controlado de pocos productos: catálogo → empaques → apertura única → stock derivado.
-4. Validar que una segunda apertura sea rechazada y que una importación posterior de catálogo no cambie stock.
-5. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC y después el piloto con catálogo SAINT depurado.
-6. Integración SAINT Enterprise como última etapa.
+1. Mantener CI verde del bloque de carga inicial SAINT y revisar cualquier regresión.
+2. Ejecutar el piloto siguiendo docs/SAINT_PILOT_CHECKLIST.md antes del catálogo completo.
+3. En una sola ventana de mantenimiento, actualizar el servidor y aplicar migraciones 010_product_presentations.sql + 011_saint_initial_load.sql.
+4. Probar primero con un Excel SAINT controlado de pocos productos: catálogo → empaques → apertura única → stock derivado.
+5. Validar que una segunda apertura sea rechazada y que una importación posterior de catálogo no cambie stock.
+6. Ejecutar la primera prueba real teléfono ↔ servidor ↔ PC y después el catálogo SAINT depurado.
+7. Integración SAINT Enterprise como última etapa.
