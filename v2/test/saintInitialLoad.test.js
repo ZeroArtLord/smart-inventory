@@ -10,6 +10,15 @@ const {
   initialLoadMovementId
 } = await import('../src/catalog/saintInitialLoad.js');
 
+const {
+  applyRemoteEvents
+} = await import('../src/sync/remoteApply.js');
+
+const {
+  STORES,
+  getAll
+} = await import('../src/storage/database.js');
+
 test('prepara carga inicial vinculando filas SAINT con productos importados', () => {
   const preview = {
     fileName: 'saint.xlsx',
@@ -133,4 +142,66 @@ test('rechaza carga si una fila no puede vincularse al catálogo', () => {
     ),
     /No se pudieron vincular/i
   );
+});
+
+
+test('aplicar evento remoto de carga inicial crea documento, líneas y movimientos locales', async () => {
+  const payload = {
+    id: 'saintload_remote_apply',
+    source: 'SAINT',
+    createdAt: '2026-09-03T15:00:00.000Z',
+    appliedAt: '2026-09-03T15:01:00.000Z',
+    appliedBy: 'usr_remote',
+    rows: [
+      {
+        productId: 'prd_remote_a',
+        quantity: 12,
+        sourceCode: 'A',
+        sourceRow: 2
+      },
+      {
+        productId: 'prd_remote_b',
+        quantity: 0,
+        sourceCode: 'B',
+        sourceRow: 3
+      }
+    ]
+  };
+
+  const applied = await applyRemoteEvents([
+    {
+      id: 'evt_initial_remote',
+      entityType: 'initialLoad',
+      entityId: payload.id,
+      operation: 'CREATE',
+      payload,
+      userId: 'usr_remote',
+      appliedAt: payload.appliedAt
+    }
+  ]);
+
+  assert.equal(applied, 1);
+
+  const documents = await getAll(STORES.DOCUMENTS);
+  const lines = await getAll(STORES.DOCUMENT_LINES);
+  const movements = await getAll(STORES.MOVEMENTS);
+
+  const document = documents.find(
+    item => item.id === initialLoadDocumentId(payload.id)
+  );
+
+  assert.ok(document);
+  assert.equal(document.metadata.kind, 'SAINT_INITIAL_LOAD');
+
+  assert.equal(
+    lines.filter(line => line.documentId === document.id).length,
+    2
+  );
+
+  const openingMovements = movements.filter(
+    movement => movement.metadata?.initialLoadId === payload.id
+  );
+
+  assert.equal(openingMovements.length, 1);
+  assert.equal(openingMovements[0].delta, 12);
 });
