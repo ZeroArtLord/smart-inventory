@@ -30,7 +30,8 @@ test('prepara carga inicial vinculando filas SAINT con productos importados', ()
       {
         excelRow: 2,
         name: 'REFRESCO COLA',
-        sku: 'REF001',
+        saintCode: 'SA-REF001',
+        sku: 'SM-SA-REF001',
         barcode: '',
         unitCode: 'UND',
         saintInitialStock: 485
@@ -38,7 +39,8 @@ test('prepara carga inicial vinculando filas SAINT con productos importados', ()
       {
         excelRow: 3,
         name: 'AGUA',
-        sku: 'AGU001',
+        saintCode: 'SA-AGU001',
+        sku: 'SM-SA-AGU001',
         barcode: '',
         unitCode: 'UND',
         saintInitialStock: 0
@@ -50,12 +52,14 @@ test('prepara carga inicial vinculando filas SAINT con productos importados', ()
     {
       id: 'prd_ref',
       name: 'REFRESCO COLA',
-      sku: 'REF001'
+      saintCode: 'SA-REF001',
+      sku: 'SM-SA-REF001'
     },
     {
       id: 'prd_agua',
       name: 'AGUA',
-      sku: 'AGU001'
+      saintCode: 'SA-AGU001',
+      sku: 'SM-SA-AGU001'
     }
   ];
 
@@ -73,6 +77,10 @@ test('prepara carga inicial vinculando filas SAINT con productos importados', ()
   assert.equal(draft.rows.length, 2);
   assert.equal(draft.rows[0].productId, 'prd_ref');
   assert.equal(draft.rows[0].quantity, 485);
+  assert.equal(
+    draft.rows[0].sourceCode,
+    'SA-REF001'
+  );
   assert.equal(draft.rows[1].quantity, 0);
 
   assert.deepEqual(
