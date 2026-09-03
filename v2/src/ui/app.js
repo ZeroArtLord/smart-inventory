@@ -3729,6 +3729,25 @@ async function applyCatalogPreview() {
   const result = await applyCatalogImport(preview);
   await refreshProducts();
 
+  if (result.errors?.length) {
+    state.saintInitialLoadDraft = null;
+    state.importPreview = {
+      ...preview,
+      errors: [
+        ...new Set([
+          ...(preview.errors || []),
+          ...result.errors
+        ])
+      ]
+    };
+
+    await render();
+
+    throw new Error(
+      `Importación incompleta: ${result.errors.length} fila(s) no pudieron aplicarse. La apertura SAINT quedó bloqueada hasta corregirlas.`
+    );
+  }
+
   const initialLoadStatus =
     await getLocalSaintInitialLoadStatus();
 
