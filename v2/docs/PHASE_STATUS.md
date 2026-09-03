@@ -25,7 +25,8 @@
 - Vista previa antes de aplicar.
 - Actualización por SKU, código de barras o nombre.
 - La columna Existencia nunca altera stock directamente en el importador de catálogo; queda reservada a movimientos trazables.
-- Modelo de empaques/presentaciones implementado: unidad base inmutable, múltiples presentaciones con factor de conversión y compatibilidad con purchaseUnit/purchaseConversion.
+- Modelo de empaques/presentaciones implementado: unidad base + múltiples presentaciones con factor de conversión y compatibilidad con purchaseUnit/purchaseConversion.
+- La unidad base puede corregirse mientras el producto no tenga movimientos; después del primer movimiento queda bloqueada tanto en UI como en cliente y servidor para no reinterpretar historia existente.
 - Editor visual de producto con unidad base, presentación principal/secundaria y mínimos/máximos expresables en unidad base o empaques.
 - El parser de carga SAINT reconoce USAR, presentación principal/secundaria y convierte mínimos/máximos expresados en empaques hacia unidad base.
 - El preflight bloquea SKU, códigos de barras, nombres duplicados y cruces ambiguos contra el catálogo existente antes de modificar datos.
