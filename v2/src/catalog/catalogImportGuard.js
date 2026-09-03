@@ -132,12 +132,18 @@ export function buildCatalogImportPlan(
 
 export function analyzeCatalogImportConflicts(
   rows = [],
-  products = []
+  products = [],
+  movements = []
 ) {
   const errors = [];
   const warnings = [];
   const indexes =
     buildCatalogIdentityIndexes(products);
+  const productsWithHistory = new Set(
+    movements
+      .map(movement => movement?.productId)
+      .filter(Boolean)
+  );
 
   detectDuplicatePreviewKeys(
     rows,
@@ -167,6 +173,18 @@ export function analyzeCatalogImportConflicts(
       resolution.product;
 
     if (!product) continue;
+
+    if (
+      productsWithHistory.has(product.id) &&
+      row.inventoryUnitId &&
+      product.inventoryUnitId &&
+      row.inventoryUnitId !== product.inventoryUnitId
+    ) {
+      errors.push(
+        `${rowPrefix(row)}no puede cambiar la unidad base de ${product.name} porque el producto ya tiene movimientos.`
+      );
+      continue;
+    }
 
     const previous =
       targetRowsByProductId.get(
