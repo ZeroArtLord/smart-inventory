@@ -21,6 +21,12 @@ import {
   renderCatalogProductEditor
 } from '../catalog/catalogUi.js';
 import {
+  buildSaintInitialLoadDraft,
+  enqueueSaintInitialLoad,
+  getLocalSaintInitialLoadStatus,
+  saintInitialLoadSummary
+} from '../catalog/saintInitialLoad.js';
+import {
   STORES,
   openDatabase,
   get,
@@ -119,6 +125,7 @@ const state = {
   selectedProductId: null,
   searchResults: [],
   importPreview: null,
+  saintInitialLoadDraft: null,
   editingProductId: null,
   reportDays: 30,
   reportRows: [],
@@ -650,6 +657,9 @@ function resetWorkspaceUiState() {
   state.reportRows = [];
   state.members = [];
   state.auditEvents = [];
+  state.importPreview = null;
+  state.saintInitialLoadDraft = null;
+  state.editingProductId = null;
   state.view = 'home';
 }
 
@@ -2089,6 +2099,14 @@ async function renderCatalog() {
   const rowByProductId = new Map(
     inventoryRows.map(row => [row.productId, row])
   );
+  const initialLoadStatus =
+    await getLocalSaintInitialLoadStatus();
+  const initialLoadSummary =
+    state.saintInitialLoadDraft
+      ? saintInitialLoadSummary(
+          state.saintInitialLoadDraft
+        )
+      : null;
   const editingProduct =
     state.editingProductId
       ? state.products.find(
@@ -2301,6 +2319,13 @@ async function renderCatalog() {
 
             ${state.importPreview ? renderCatalogImportPreview(state.importPreview) : ''}
           </section>
+
+          ${renderSaintInitialLoadCard({
+            draft: state.saintInitialLoadDraft,
+            summary: initialLoadSummary,
+            status: initialLoadStatus,
+            hasMovements: movements.length > 0
+          })}
         ` : `
           <section class="card">
             <strong>Modo consulta</strong>
@@ -3110,6 +3135,11 @@ async function handleClick(event) {
         downloadSaintInitialLoadTemplate();
         showToast('Plantilla SAINT generada');
         return;
+      case 'apply-saint-initial-load':
+        return applySaintInitialLoadDraft();
+      case 'discard-saint-initial-load':
+        state.saintInitialLoadDraft = null;
+        return render();
       case 'create-replenishment':
         return createReplenishmentFromSuggestion(button);
       case 'set-replenishment-status':
@@ -3611,19 +3641,133 @@ async function applyCatalogPreview() {
 
   const message =
     `¿Importar ${preview.rows.length} producto(s)? ` +
-    'Los existentes se actualizarán por SKU, código de barras o nombre.';
+    'Los existentes se actualizarán por SKU, código de barras o nombre. La existencia SAINT NO se aplicará todavía.';
 
   if (!confirm(message)) return;
 
   const result = await applyCatalogImport(preview);
   await refreshProducts();
+
+  const initialLoadStatus =
+    await getLocalSaintInitialLoadStatus();
+
+  state.saintInitialLoadDraft =
+    initialLoadStatus
+      ? null
+      : buildSaintInitialLoadDraft(
+          preview,
+          state.products
+        );
+
   state.importPreview = null;
 
   showToast(
-    `Importación lista · ${result.created} nuevos · ${result.updated} actualizados`
+    initialLoadStatus
+      ? `Catálogo actualizado · ${result.created} nuevos · ${result.updated} actualizados`
+      : `Catálogo listo · ${result.created} nuevos · ${result.updated} actualizados · existencia inicial preparada`
   );
 
   scheduleSync(100);
+  await render();
+}
+
+async function applySaintInitialLoadDraft() {
+  requireClientPermission('catalog.write');
+  requireClientPermission('adjustment.write');
+
+  const draft = state.saintInitialLoadDraft;
+  if (!draft?.rows?.length) {
+    throw new Error(
+      'No hay una carga inicial SAINT preparada'
+    );
+  }
+
+  if (!navigator.onLine) {
+    throw new Error(
+      'La carga inicial requiere conexión al servidor'
+    );
+  }
+
+  const alreadyApplied =
+    await getLocalSaintInitialLoadStatus();
+
+  if (alreadyApplied) {
+    state.saintInitialLoadDraft = null;
+    throw new Error(
+      'La existencia inicial SAINT ya fue aplicada'
+    );
+  }
+
+  const localMovements =
+    await getAll(STORES.MOVEMENTS);
+
+  if (localMovements.length > 0) {
+    throw new Error(
+      'La carga inicial solo puede aplicarse con el almacén sin movimientos previos'
+    );
+  }
+
+  if (!confirm(
+    '¿APLICAR EXISTENCIA INICIAL SAINT? Esta operación es única: creará un documento de ajuste de apertura y después no podrá repetirse en este almacén.'
+  )) {
+    return;
+  }
+
+  showToast(
+    'Sincronizando catálogo antes de la apertura…'
+  );
+
+  const catalogSync = await syncAndRefresh({
+    renderAfter: false
+  });
+
+  if (!catalogSync?.ok) {
+    throw catalogSync?.error ||
+      new Error(
+        'No se pudo sincronizar el catálogo antes de la carga inicial'
+      );
+  }
+
+  const pending = await getPendingSyncCount();
+  if (pending > 0) {
+    throw new Error(
+      'Todavía existen cambios pendientes de sincronización'
+    );
+  }
+
+  await enqueueSaintInitialLoad(draft);
+
+  showToast(
+    'Aplicando existencia inicial SAINT…'
+  );
+
+  const result = await syncAndRefresh({
+    renderAfter: false
+  });
+
+  if (!result?.ok) {
+    throw result?.error ||
+      new Error(
+        'No se pudo aplicar la existencia inicial'
+      );
+  }
+
+  const status =
+    await getLocalSaintInitialLoadStatus();
+
+  if (!status) {
+    throw new Error(
+      'El servidor confirmó la operación pero el documento de apertura no llegó al dispositivo'
+    );
+  }
+
+  state.saintInitialLoadDraft = null;
+  await refreshProducts();
+
+  showToast(
+    `Carga inicial aplicada · ${status.positiveStockCount} producto(s) con existencia`
+  );
+
   await render();
 }
 
@@ -4006,6 +4150,118 @@ function insertMathSymbol(targetId, symbol) {
   input.focus();
   const cursor = start + symbol.length;
   input.setSelectionRange(cursor, cursor);
+}
+
+function renderSaintInitialLoadCard({
+  draft,
+  summary,
+  status,
+  hasMovements
+}) {
+  if (status) {
+    return `
+      <section class="card stack saint-initial-load-card">
+        <div class="section-head">
+          <div>
+            <h3>✓ Existencia inicial aplicada</h3>
+            <p>Baseline productivo SAINT registrado de forma trazable.</p>
+          </div>
+          <span class="badge status-good">Cerrado</span>
+        </div>
+
+        <div class="catalog-initial-load-grid">
+          <div>
+            <small>Productos</small>
+            <strong>${formatNumber(status.productCount)}</strong>
+          </div>
+          <div>
+            <small>Con existencia</small>
+            <strong>${formatNumber(status.positiveStockCount)}</strong>
+          </div>
+        </div>
+
+        <div class="product-meta">
+          Documento ${escapeHtml(status.documentId || '—')} ·
+          ${status.appliedAt ? formatDate(status.appliedAt) : 'fecha no disponible'}
+        </div>
+
+        <div class="catalog-safety-note">
+          Las importaciones futuras de catálogo no pueden sobrescribir este stock.
+        </div>
+      </section>
+    `;
+  }
+
+  if (!draft) {
+    return `
+      <section class="card stack saint-initial-load-card">
+        <div class="section-head">
+          <div>
+            <h3>Existencia inicial SAINT</h3>
+            <p>Pendiente de preparar.</p>
+          </div>
+          <span class="badge status-warning">Pendiente</span>
+        </div>
+
+        <div class="product-meta">
+          Carga la plantilla/exportación SAINT. Primero se importa el catálogo; después se habilita la apertura de stock una sola vez.
+        </div>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="card stack saint-initial-load-card">
+      <div class="section-head">
+        <div>
+          <h3>Existencia inicial preparada</h3>
+          <p>Revisa antes de crear el movimiento de apertura.</p>
+        </div>
+        <span class="badge status-warning">Sin aplicar</span>
+      </div>
+
+      <div class="catalog-initial-load-grid">
+        <div>
+          <small>Productos</small>
+          <strong>${formatNumber(summary?.productCount || 0)}</strong>
+        </div>
+        <div>
+          <small>Con existencia</small>
+          <strong>${formatNumber(summary?.positiveStockCount || 0)}</strong>
+        </div>
+        <div>
+          <small>Existencia 0</small>
+          <strong>${formatNumber(summary?.zeroStockCount || 0)}</strong>
+        </div>
+      </div>
+
+      ${hasMovements
+        ? `
+          <div class="status-danger">
+            ✕ Este dispositivo ya tiene movimientos. La apertura está bloqueada para evitar mezclar historia previa con la existencia SAINT.
+          </div>
+        `
+        : `
+          <div class="status-warning">
+            ⚠ Al confirmar se creará un ADJUSTMENT de apertura trazable. Esta operación solo se permite una vez por almacén.
+          </div>
+        `}
+
+      <div class="row">
+        <button
+          class="secondary"
+          data-action="discard-saint-initial-load"
+          type="button"
+        >Descartar preparación</button>
+        <button
+          class="success"
+          data-action="apply-saint-initial-load"
+          type="button"
+          ${hasMovements ? 'disabled' : ''}
+        >Aplicar existencia inicial</button>
+      </div>
+    </section>
+  `;
 }
 
 function renderCatalogImportPreview(preview) {
