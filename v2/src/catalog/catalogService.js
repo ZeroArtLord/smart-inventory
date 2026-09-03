@@ -10,6 +10,7 @@ import {
   STORES,
   get,
   getAll,
+  getAllByIndex,
   requestToPromise,
   runTransaction
 } from '../storage/database.js';
@@ -155,6 +156,25 @@ export async function createProduct(data = {}) {
 export async function updateProduct(productId, patch = {}) {
   const current = await get(STORES.PRODUCTS, productId);
   if (!current) throw new Error('Producto no encontrado');
+
+  if (
+    patch.inventoryUnitId !== undefined &&
+    patch.inventoryUnitId !== current.inventoryUnitId
+  ) {
+    const movements = await getAllByIndex(
+      STORES.MOVEMENTS,
+      'productId',
+      productId
+    );
+
+    if (movements.length > 0) {
+      const error = new Error(
+        'La unidad base no puede cambiarse porque el producto ya tiene movimientos'
+      );
+      error.code = 'BASE_UNIT_LOCKED';
+      throw error;
+    }
+  }
 
   const next = {
     ...current,
