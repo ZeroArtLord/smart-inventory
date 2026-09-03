@@ -44,6 +44,27 @@ const HEADER_ALIASES = Object.freeze({
   ],
   replenishmentMethod: [
     'reposicion', 'metodo reposicion', 'tipo reposicion', 'replenishment'
+  ],
+  use: [
+    'usar', 'importar', 'incluir', 'usar producto', 'importar producto'
+  ],
+  presentation: [
+    'presentacion', 'presentacion principal', 'empaque', 'empaque principal',
+    'unidad de compra', 'unidad compra'
+  ],
+  presentationConversion: [
+    'unidades por presentacion', 'und por presentacion',
+    'unidades por empaque', 'und por empaque',
+    'contenido', 'conversion', 'factor'
+  ],
+  secondaryPresentation: [
+    'presentacion secundaria', 'empaque secundario',
+    'segunda presentacion', 'segundo empaque'
+  ],
+  secondaryPresentationConversion: [
+    'und presentacion secundaria', 'unidades presentacion secundaria',
+    'und empaque secundario', 'unidades empaque secundario',
+    'conversion secundaria'
   ]
 });
 
@@ -156,12 +177,22 @@ export function parseCatalogMatrix(matrix) {
   }
 
   let ignoredStockRows = 0;
+  let skippedRows = 0;
 
   for (let index = startRow; index < matrix.length; index++) {
     const raw = Array.isArray(matrix[index]) ? matrix[index] : [];
     if (!raw.some(cell => normalizeText(cell))) continue;
 
     const excelRow = index + 1;
+
+    if (
+      columns.use !== undefined &&
+      !parseUseFlag(raw[columns.use])
+    ) {
+      skippedRows++;
+      continue;
+    }
+
     const name = normalizeText(raw[columns.name]);
 
     if (!name) {
@@ -182,20 +213,26 @@ export function parseCatalogMatrix(matrix) {
       continue;
     }
 
-    const minStock = minParsed.value ?? 0;
-    const maxStock = maxParsed.value ?? 0;
+    const explicitUnit = normalizeUnit(raw[columns.unit]);
+    const presentationResult = parsePresentations(
+      raw,
+      columns,
+      excelRow
+    );
 
-    if (maxStock > 0 && minStock > maxStock) {
-      errors.push(
-        `Fila ${excelRow}: mínimo ${minStock} supera máximo ${maxStock}`
-      );
+    if (presentationResult.error) {
+      errors.push(presentationResult.error);
       continue;
     }
 
-    const explicitUnit = normalizeUnit(raw[columns.unit]);
+    const presentations = presentationResult.presentations;
+
     const inferredUnit = explicitUnit ||
-      normalizeUnit(minParsed.unit) ||
-      normalizeUnit(maxParsed.unit) ||
+      inferBaseUnitFromQuantities(
+        minParsed,
+        maxParsed,
+        presentations
+      ) ||
       detectUnitFromName(name) ||
       'UND';
 
@@ -206,11 +243,56 @@ export function parseCatalogMatrix(matrix) {
       );
     }
 
+    let minStock;
+    let maxStock;
+
+    try {
+      minStock = quantityToBaseStock(
+        minParsed,
+        inferredUnit,
+        presentations,
+        'mínimo'
+      );
+      maxStock = quantityToBaseStock(
+        maxParsed,
+        inferredUnit,
+        presentations,
+        'máximo'
+      );
+    } catch (error) {
+      errors.push(
+        `Fila ${excelRow}: ${error?.message || String(error)}`
+      );
+      continue;
+    }
+
+    if (maxStock > 0 && minStock > maxStock) {
+      errors.push(
+        `Fila ${excelRow}: mínimo ${minStock} supera máximo ${maxStock}`
+      );
+      continue;
+    }
+
     const rawStock = columns.currentStock !== undefined
       ? raw[columns.currentStock]
       : undefined;
     const stockParsed = parseQuantityCell(rawStock);
-    const ignoredStock = stockParsed.error ? null : stockParsed.value;
+
+    let ignoredStock = null;
+
+    if (!stockParsed.error) {
+      try {
+        ignoredStock = quantityToBaseStock(
+          stockParsed,
+          inferredUnit,
+          presentations,
+          'existencia'
+        );
+      } catch (_) {
+        ignoredStock = stockParsed.value;
+      }
+    }
+
     if (
       columns.currentStock !== undefined &&
       normalizeText(rawStock) !== '' &&
@@ -223,6 +305,7 @@ export function parseCatalogMatrix(matrix) {
     rows.push({
       excelRow,
       name,
+      use: true,
       sku: normalizeText(raw[columns.sku]),
       barcode: normalizeText(raw[columns.barcode]),
       categoryName: normalizeText(raw[columns.category]),
@@ -230,10 +313,12 @@ export function parseCatalogMatrix(matrix) {
       maxStock,
       inventoryUnitId,
       unitCode: UNIT_IDS[inferredUnit] ? inferredUnit : 'UND',
+      presentations,
       replenishmentMethod: parseReplenishmentMethod(
         raw[columns.replenishmentMethod]
       ),
-      ignoredStock
+      ignoredStock,
+      saintInitialStock: ignoredStock
     });
   }
 
@@ -250,6 +335,7 @@ export function parseCatalogMatrix(matrix) {
     detectedHeaders: columns,
     usedFallbackColumns: !hasRecognizedHeader,
     ignoredStockRows,
+    skippedRows,
     totalRows: rows.length
   };
 }
@@ -309,7 +395,7 @@ export async function applyCatalogImport(preview) {
       const baseData = {
         name: row.name,
         inventoryUnitId: row.inventoryUnitId,
-        purchaseUnitId: row.inventoryUnitId,
+        presentations: row.presentations || [],
         minStock: row.minStock,
         maxStock: row.maxStock
       };
@@ -428,11 +514,189 @@ function normalizeUnit(value) {
   const normalized = normalizeText(value).toUpperCase();
   if (!normalized) return '';
 
-  if (['UN', 'UD', 'UND'].includes(normalized)) return 'UND';
-  if (['KILOGRAMO', 'KILOGRAMOS'].includes(normalized)) return 'KG';
-  if (['L', 'LTS'].includes(normalized)) return 'LT';
+  if (['UN', 'UD', 'UND', 'UNIDAD', 'UNIDADES'].includes(normalized)) {
+    return 'UND';
+  }
+  if (['KILOGRAMO', 'KILOGRAMOS', 'KILO', 'KILOS'].includes(normalized)) {
+    return 'KG';
+  }
+  if (['L', 'LTS', 'LITRO', 'LITROS'].includes(normalized)) {
+    return 'LT';
+  }
+  if (['CAJA', 'CAJAS'].includes(normalized)) return 'CAJA';
+  if (['BULTO', 'BULTOS'].includes(normalized)) return 'BULTO';
 
   return normalized;
+}
+
+function parseUseFlag(value) {
+  const text = normalizeSearchText(value);
+
+  if (!text) return true;
+
+  return ![
+    'no',
+    'n',
+    '0',
+    'false',
+    'falso',
+    'omitir',
+    'excluir'
+  ].includes(text);
+}
+
+function parsePresentations(raw, columns, excelRow) {
+  const presentations = [];
+
+  const primary = parsePresentationColumns(
+    raw,
+    columns.presentation,
+    columns.presentationConversion,
+    {
+      id: 'presentation_primary',
+      primary: true,
+      excelRow,
+      label: 'presentación principal'
+    }
+  );
+
+  if (primary.error) return primary;
+  if (primary.presentation) {
+    presentations.push(primary.presentation);
+  }
+
+  const secondary = parsePresentationColumns(
+    raw,
+    columns.secondaryPresentation,
+    columns.secondaryPresentationConversion,
+    {
+      id: 'presentation_secondary',
+      primary: false,
+      excelRow,
+      label: 'presentación secundaria'
+    }
+  );
+
+  if (secondary.error) return secondary;
+  if (secondary.presentation) {
+    presentations.push(secondary.presentation);
+  }
+
+  return { presentations, error: null };
+}
+
+function parsePresentationColumns(
+  raw,
+  codeColumn,
+  conversionColumn,
+  {
+    id,
+    primary,
+    excelRow,
+    label
+  }
+) {
+  const code = codeColumn !== undefined
+    ? normalizeUnit(raw[codeColumn])
+    : '';
+
+  const rawConversion = conversionColumn !== undefined
+    ? raw[conversionColumn]
+    : '';
+
+  const hasConversion = normalizeText(rawConversion) !== '';
+  const conversion = hasConversion
+    ? Number(String(rawConversion).replace(',', '.'))
+    : null;
+
+  if (!code && !hasConversion) {
+    return { presentation: null, error: null };
+  }
+
+  if (!code) {
+    return {
+      presentation: null,
+      error: `Fila ${excelRow}: ${label} sin nombre/código`
+    };
+  }
+
+  if (!Number.isFinite(conversion) || conversion <= 0) {
+    return {
+      presentation: null,
+      error: `Fila ${excelRow}: conversión inválida para ${label}`
+    };
+  }
+
+  return {
+    presentation: {
+      id,
+      unitId: UNIT_IDS[code] || null,
+      code,
+      name: presentationName(code),
+      conversion,
+      primary,
+      active: true
+    },
+    error: null
+  };
+}
+
+function inferBaseUnitFromQuantities(
+  minParsed,
+  maxParsed,
+  presentations
+) {
+  const presentationCodes = new Set(
+    (presentations || [])
+      .map(item => normalizeUnit(item.code))
+      .filter(Boolean)
+  );
+
+  for (const parsed of [minParsed, maxParsed]) {
+    const unit = normalizeUnit(parsed?.unit);
+    if (unit && !presentationCodes.has(unit)) {
+      return unit;
+    }
+  }
+
+  return '';
+}
+
+function quantityToBaseStock(
+  parsed,
+  baseUnitCode,
+  presentations,
+  label
+) {
+  const value = Number(parsed?.value ?? 0);
+  const unit = normalizeUnit(parsed?.unit);
+
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} inválido`);
+  }
+
+  if (!unit || unit === baseUnitCode) {
+    return value;
+  }
+
+  const presentation = (presentations || []).find(
+    item => normalizeUnit(item.code) === unit
+  );
+
+  if (!presentation) {
+    throw new Error(
+      `${label} usa unidad "${unit}" sin conversión configurada`
+    );
+  }
+
+  return value * Number(presentation.conversion);
+}
+
+function presentationName(code) {
+  const text = normalizeText(code).toLowerCase();
+  return text
+    ? text.charAt(0).toUpperCase() + text.slice(1)
+    : '';
 }
 
 function detectUnitFromName(name) {
@@ -479,6 +743,7 @@ function emptyPreview(message) {
     detectedHeaders: {},
     usedFallbackColumns: false,
     ignoredStockRows: 0,
+    skippedRows: 0,
     totalRows: 0
   };
 }
