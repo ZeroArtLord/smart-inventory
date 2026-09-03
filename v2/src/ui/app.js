@@ -4305,6 +4305,9 @@ function renderSaintInitialLoadCard({
         <div class="product-meta">
           Documento ${escapeHtml(status.documentId || '—')} ·
           ${status.appliedAt ? formatDate(status.appliedAt) : 'fecha no disponible'}
+          ${status.fileSha256
+            ? ' · SHA-256 ' + escapeHtml(status.fileSha256.slice(0, 12)) + '…'
+            : ''}
         </div>
 
         <div class="catalog-safety-note">
@@ -4429,6 +4432,9 @@ function renderCatalogImportPreview(preview) {
           <strong>${escapeHtml(preview.fileName || 'Archivo')}</strong>
           <div class="product-meta">
             Hoja ${escapeHtml(preview.sheetName || '—')}
+            ${preview.fileSha256
+              ? ' · SHA-256 ' + escapeHtml(preview.fileSha256.slice(0, 12)) + '…'
+              : ''}
           </div>
         </div>
         <span class="badge">${rows.length} válidos</span>
