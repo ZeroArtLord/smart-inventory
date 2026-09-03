@@ -19,23 +19,26 @@
 - Unidades.
 - Proveedores.
 - Ubicaciones.
-- Búsqueda por nombre, alias, SKU y código de barras.
+- Búsqueda por nombre, alias, Código SAINT, SKU Smart y código de barras.
 - Cambios de catálogo guardados localmente y encolados para sincronización.
 - Importador Excel/CSV con detección flexible de columnas.
 - Vista previa antes de aplicar.
-- Actualización por SKU, código de barras o nombre.
+- Actualización por Código SAINT, SKU Smart, código de barras o nombre.
 - La columna Existencia nunca altera stock directamente en el importador de catálogo; queda reservada a movimientos trazables.
 - Modelo de empaques/presentaciones implementado: unidad base + múltiples presentaciones con factor de conversión y compatibilidad con purchaseUnit/purchaseConversion.
 - La unidad base puede corregirse mientras el producto no tenga movimientos; después del primer movimiento queda bloqueada tanto en UI como en cliente y servidor para no reinterpretar historia existente.
 - Editor visual de producto con unidad base, presentación principal/secundaria y mínimos/máximos expresables en unidad base o empaques.
 - El parser de carga SAINT reconoce USAR, presentación principal/secundaria y convierte mínimos/máximos expresados en empaques hacia unidad base.
-- El preflight bloquea SKU, códigos de barras, nombres duplicados y cruces ambiguos contra el catálogo existente antes de modificar datos.
+- El preflight bloquea Código SAINT, SKU Smart, códigos de barras, nombres duplicados y cruces ambiguos contra el catálogo existente antes de modificar datos.
+- Código SAINT y SKU Smart son campos separados: Código SAINT es la clave externa del futuro Bridge; SKU Smart es control interno humano.
+- Si SKU Smart queda vacío en una alta SAINT, se genera automáticamente de forma determinista desde Código SAINT (ej. REF001 → SM-REF001).
 - La vista previa muestra altas, actualizaciones y categorías nuevas previstas.
 - Ausencia de columna Existencia SAINT y celdas vacías ya no se convierten silenciosamente en cero.
 - Unidades base desconocidas se rechazan explícitamente en vez de convertirse a UND; actualmente la plantilla soporta UND, KG, LT, CAJA y BULTO.
 - Si una aplicación de catálogo termina parcialmente por un error inesperado, la apertura SAINT queda bloqueada hasta corregir y repetir la importación.
 - Importaciones parciales que omiten columnas de unidad, empaques, mínimos/máximos o reposición conservan esos valores existentes; solo se actualizan campos presentes explícitamente en el archivo.
-- Smart Inventory puede generar la plantilla Excel de carga inicial SAINT desde la propia interfaz y calcula SHA-256 del archivo fuente para auditoría cuando Web Crypto está disponible.
+- Smart Inventory puede generar la plantilla Excel de carga inicial SAINT desde la propia interfaz; la plantilla incluye Código SAINT obligatorio y SKU Smart opcional/autogenerable, y calcula SHA-256 del archivo fuente para auditoría cuando Web Crypto está disponible.
+- PostgreSQL separa saint_code de sku mediante la migración 012_product_saint_code.sql y aplica unicidad al Código SAINT por workspace.
 
 ### Fase 3 — Inventario transaccional
 - ENTRY.
