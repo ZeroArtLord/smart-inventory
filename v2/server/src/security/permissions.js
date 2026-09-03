@@ -29,6 +29,28 @@ export function hasPermission(auth, permission) {
 }
 
 export function assertEventPermission(auth, event) {
+  if (event?.entityType === 'initialLoad') {
+    const required = [
+      PERMISSIONS.CATALOG_WRITE,
+      PERMISSIONS.ADJUSTMENT_WRITE
+    ];
+
+    const missing = required.filter(
+      permission => !hasPermission(auth, permission)
+    );
+
+    if (missing.length) {
+      const error = new Error(
+        `Permisos requeridos: ${missing.join(', ')}`
+      );
+      error.code = 'PERMISSION_DENIED';
+      error.statusCode = 403;
+      throw error;
+    }
+
+    return required.join(' + ');
+  }
+
   const required = permissionForEvent(event);
 
   if (!hasPermission(auth, required)) {
@@ -79,6 +101,10 @@ export function permissionForEvent(event) {
 
   if (entityType === 'movement') {
     return permissionForMovementType(payload.type);
+  }
+
+  if (entityType === 'initialLoad') {
+    return PERMISSIONS.ADJUSTMENT_WRITE;
   }
 
   return PERMISSIONS.INVENTORY_WRITE;
