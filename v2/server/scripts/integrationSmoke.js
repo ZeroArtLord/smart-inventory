@@ -649,7 +649,8 @@ async function runSaintInitialLoadSmoke(db) {
     name
   ) => ({
     id,
-    sku,
+    saintCode: sku,
+    sku: `SM-${sku}`,
     name,
     nameNormalized:
       name.toLowerCase(),
@@ -715,6 +716,45 @@ async function runSaintInitialLoadSmoke(db) {
       })
     }
   );
+
+  const duplicateSaintCode =
+    await fetch(
+      `${baseUrl}/api/v1/sync/push`,
+      {
+        method: 'POST',
+        headers: saintHeaders,
+        body: JSON.stringify({
+          events: [
+            {
+              id:
+                `evt_saint_duplicate_code_${localStamp}`,
+              entityType: 'product',
+              entityId:
+                `prd_saint_dup_${localStamp}`,
+              operation: 'CREATE',
+              payload: productPayload(
+                `prd_saint_dup_${localStamp}`,
+                `SAINT-A-${localStamp}`,
+                'SAINT DUPLICATE CODE'
+              )
+            }
+          ]
+        })
+      }
+    );
+
+  const duplicateSaintCodeBody =
+    await duplicateSaintCode.json();
+
+  if (
+    duplicateSaintCode.status !== 409 ||
+    duplicateSaintCodeBody.code !==
+      'SAINT_CODE_DUPLICATE'
+  ) {
+    throw new Error(
+      `Se esperaba SAINT_CODE_DUPLICATE 409 y llegó ${duplicateSaintCode.status}: ${JSON.stringify(duplicateSaintCodeBody)}`
+    );
+  }
 
   const runId =
     `saintload_${localStamp}`;
