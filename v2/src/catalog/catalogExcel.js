@@ -370,12 +370,15 @@ export function parseCatalogMatrix(matrix) {
       detectUnitFromName(name) ||
       'UND';
 
-    const inventoryUnitId = UNIT_IDS[inferredUnit] || 'unit_und';
     if (!UNIT_IDS[inferredUnit]) {
-      warnings.push(
-        `Fila ${excelRow}: unidad "${inferredUnit}" no reconocida; se usará UND`
+      errors.push(
+        `Fila ${excelRow}: unidad base "${inferredUnit}" no soportada. No se convertirá automáticamente a UND.`
       );
+      continue;
     }
+
+    const inventoryUnitId =
+      UNIT_IDS[inferredUnit];
 
     let minStock;
     let maxStock;
@@ -460,7 +463,7 @@ export function parseCatalogMatrix(matrix) {
       minStock,
       maxStock,
       inventoryUnitId,
-      unitCode: UNIT_IDS[inferredUnit] ? inferredUnit : 'UND',
+      unitCode: inferredUnit,
       presentations,
       replenishmentMethod: parseReplenishmentMethod(
         raw[columns.replenishmentMethod]
