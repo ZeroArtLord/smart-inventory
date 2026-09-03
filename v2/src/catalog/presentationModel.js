@@ -49,7 +49,12 @@ export function normalizePresentations(
           presentation.unitId
         );
 
-      if (seen.has(key)) return;
+      if (seen.has(key)) {
+        throw new Error(
+          `Presentación duplicada: ${presentation.code || presentation.name}`
+        );
+      }
+
       seen.add(key);
       normalized.push(presentation);
     });
