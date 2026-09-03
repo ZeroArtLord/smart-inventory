@@ -311,6 +311,17 @@ function validateInitialLoad(payload) {
   requireText(payload.source || 'SAINT', 'Fuente de carga inicial');
   requireDate(payload.createdAt, 'createdAt');
 
+  if (
+    payload.fileSha256 &&
+    !/^[a-f0-9]{64}$/i.test(
+      String(payload.fileSha256)
+    )
+  ) {
+    throw new Error(
+      'Huella SHA-256 de carga inicial inválida'
+    );
+  }
+
   const rows = payload.rows;
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new Error('La carga inicial requiere productos');
