@@ -93,7 +93,7 @@ test('muestra stock base y equivalencia humana', () => {
   const display = catalogQuantityDisplay(product, 485);
 
   assert.equal(display.baseText, '485 UND');
-  assert.match(display.humanText, /20 CAJA \+ 5 UND/);
+  assert.match(display.humanText, /20 CAJAS \+ 5 UND/);
   assert.match(catalogPresentationSummary(product), /CAJA = 24 UND/);
 });
 
