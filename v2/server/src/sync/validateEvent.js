@@ -312,6 +312,16 @@ function validateInitialLoad(payload) {
   requireDate(payload.createdAt, 'createdAt');
 
   if (
+    String(payload.source || 'SAINT')
+      .trim()
+      .toUpperCase() !== 'SAINT'
+  ) {
+    throw new Error(
+      'La carga inicial solo admite fuente SAINT'
+    );
+  }
+
+  if (
     payload.fileSha256 &&
     !/^[a-f0-9]{64}$/i.test(
       String(payload.fileSha256)
