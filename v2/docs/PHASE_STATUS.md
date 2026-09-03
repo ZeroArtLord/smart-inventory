@@ -34,6 +34,7 @@
 - Ausencia de columna Existencia SAINT y celdas vacías ya no se convierten silenciosamente en cero.
 - Unidades base desconocidas se rechazan explícitamente en vez de convertirse a UND; actualmente la plantilla soporta UND, KG, LT, CAJA y BULTO.
 - Si una aplicación de catálogo termina parcialmente por un error inesperado, la apertura SAINT queda bloqueada hasta corregir y repetir la importación.
+- Importaciones parciales que omiten columnas de unidad, empaques, mínimos/máximos o reposición conservan esos valores existentes; solo se actualizan campos presentes explícitamente en el archivo.
 - Smart Inventory puede generar la plantilla Excel de carga inicial SAINT desde la propia interfaz y calcula SHA-256 del archivo fuente para auditoría cuando Web Crypto está disponible.
 
 ### Fase 3 — Inventario transaccional
