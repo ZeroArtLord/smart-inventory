@@ -652,3 +652,34 @@ test('si existe columna Código SAINT una fila usada no puede dejarla vacía', (
     /falta CÓDIGO SAINT/i
   );
 });
+
+
+test('Código SAINT de solo letras genera SKU Smart válido', () => {
+  const preview = parseCatalogMatrix([
+    [
+      'Producto',
+      'Código SAINT',
+      'SKU Smart',
+      'Mínimo',
+      'Máximo'
+    ],
+    [
+      'PRODUCTO SOLO LETRAS',
+      'REFRESCO',
+      '',
+      1,
+      5
+    ]
+  ]);
+
+  assert.equal(preview.errors.length, 0);
+  assert.equal(preview.rows.length, 1);
+  assert.equal(
+    preview.rows[0].saintCode,
+    'REFRESCO'
+  );
+  assert.equal(
+    preview.rows[0].sku,
+    'SM-REFRESCO'
+  );
+});
