@@ -23,7 +23,8 @@ try {
      WHERE filename = ANY($1::text[])`,
     [[
       '010_product_presentations.sql',
-      '011_saint_initial_load.sql'
+      '011_saint_initial_load.sql',
+      '012_product_saint_code.sql'
     ]]
   );
 
@@ -156,7 +157,8 @@ try {
       requiredMigrations: {
         applied: [
           '010_product_presentations.sql',
-          '011_saint_initial_load.sql'
+          '011_saint_initial_load.sql',
+      '012_product_saint_code.sql'
         ],
         missing: []
       },
