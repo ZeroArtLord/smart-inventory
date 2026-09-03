@@ -3735,6 +3735,26 @@ async function applySaintInitialLoadDraft() {
     );
   }
 
+  const syncedStatus =
+    await getLocalSaintInitialLoadStatus();
+
+  if (syncedStatus) {
+    state.saintInitialLoadDraft = null;
+    showToast(
+      'La existencia inicial ya estaba aplicada en el servidor'
+    );
+    return render();
+  }
+
+  const syncedMovements =
+    await getAll(STORES.MOVEMENTS);
+
+  if (syncedMovements.length > 0) {
+    throw new Error(
+      'Después de sincronizar aparecieron movimientos previos. La carga inicial quedó bloqueada.'
+    );
+  }
+
   await enqueueSaintInitialLoad(draft);
 
   showToast(
