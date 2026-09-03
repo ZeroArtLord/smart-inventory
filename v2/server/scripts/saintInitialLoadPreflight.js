@@ -34,7 +34,8 @@ try {
 
   const missingMigrations = [
     '010_product_presentations.sql',
-    '011_saint_initial_load.sql'
+    '011_saint_initial_load.sql',
+    '012_product_saint_code.sql'
   ].filter(
     filename =>
       !appliedMigrations.has(filename)
@@ -158,7 +159,7 @@ try {
         applied: [
           '010_product_presentations.sql',
           '011_saint_initial_load.sql',
-      '012_product_saint_code.sql'
+          '012_product_saint_code.sql'
         ],
         missing: []
       },
