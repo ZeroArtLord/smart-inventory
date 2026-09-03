@@ -164,3 +164,34 @@ test('editor visual bloquea selector de unidad base cuando existe historial', ()
     /Unidad base bloqueada/i
   );
 });
+
+
+test('editor conserva CAJA como unidad base cuando corresponde', () => {
+  const defaults = catalogEditorDefaults({
+    id: 'prd_box_base',
+    name: 'PRODUCTO POR CAJA',
+    inventoryUnitId: 'unit_box',
+    minStock: 1,
+    maxStock: 10,
+    replenishmentMethod: 'BOTH'
+  });
+
+  assert.equal(
+    defaults.inventoryUnitId,
+    'unit_box'
+  );
+
+  const html = renderCatalogProductEditor({
+    id: 'prd_box_base',
+    name: 'PRODUCTO POR CAJA',
+    inventoryUnitId: 'unit_box',
+    minStock: 1,
+    maxStock: 10,
+    replenishmentMethod: 'BOTH'
+  });
+
+  assert.match(
+    html,
+    /value="unit_box"[\s\S]*selected/
+  );
+});
