@@ -28,16 +28,33 @@ export function normalizePresentations(
     purchaseConversion = 1
   } = {}
 ) {
+  if (
+    presentations !== undefined &&
+    presentations !== null &&
+    !Array.isArray(presentations)
+  ) {
+    throw new Error(
+      'Las presentaciones deben ser una lista'
+    );
+  }
+
   const source = Array.isArray(presentations)
     ? presentations
     : [];
 
+  if (
+    source.length >
+    MAX_PRESENTATIONS_PER_PRODUCT
+  ) {
+    throw new Error(
+      `Un producto no puede tener más de ${MAX_PRESENTATIONS_PER_PRODUCT} presentaciones`
+    );
+  }
+
   const normalized = [];
   const seen = new Set();
 
-  source
-    .slice(0, MAX_PRESENTATIONS_PER_PRODUCT)
-    .forEach((item, index) => {
+  source.forEach((item, index) => {
       const presentation = normalizePresentation(item, index);
 
       if (!presentation || presentation.active === false) return;
