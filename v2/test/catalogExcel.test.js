@@ -6,7 +6,8 @@ const {
   parseCatalogMatrix,
   parseQuantityCell,
   applyCatalogImport,
-  buildSaintInitialLoadTemplateMatrix
+  buildSaintInitialLoadTemplateMatrix,
+  buildSaintInitialLoadInstructionsMatrix
 } = await import('../src/catalog/catalogExcel.js');
 
 const {
@@ -324,4 +325,19 @@ test('rechaza unidad base desconocida en vez de asumir UND', () => {
     preview.errors[0],
     /unidad base "GR" no soportada/i
   );
+});
+
+
+test('la plantilla SAINT incluye instrucciones de seguridad y unidades soportadas', () => {
+  const matrix =
+    buildSaintInitialLoadInstructionsMatrix();
+
+  const text = matrix
+    .flat()
+    .join(' ');
+
+  assert.match(text, /UND, KG, LT, CAJA, BULTO/);
+  assert.match(text, /escribe 0/i);
+  assert.match(text, /NO modifica stock/i);
+  assert.match(text, /apertura SAINT única/i);
 });
