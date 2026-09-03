@@ -18,6 +18,10 @@ import {
   initialEntityVersion,
   nextEntityVersion
 } from '../core/versioning.js';
+import {
+  deriveLegacyPurchaseFields,
+  normalizePresentations
+} from './presentationModel.js';
 
 export async function seedDefaultUnits() {
   const existing = await getAll(STORES.UNITS);
@@ -105,6 +109,20 @@ export async function createProduct(data = {}) {
     throw new Error('Método de reposición inválido');
   }
 
+  const inventoryUnitId = data.inventoryUnitId || 'unit_und';
+  const presentations = normalizePresentations(
+    data.presentations,
+    {
+      inventoryUnitId,
+      purchaseUnitId: data.purchaseUnitId,
+      purchaseConversion: data.purchaseConversion
+    }
+  );
+  const legacyPurchase = deriveLegacyPurchaseFields(
+    presentations,
+    inventoryUnitId
+  );
+
   const now = new Date().toISOString();
   const product = {
     id: data.id || createLocalId('prd'),
@@ -116,9 +134,10 @@ export async function createProduct(data = {}) {
       : [],
     barcode: normalizeText(data.barcode),
     categoryId: data.categoryId || null,
-    inventoryUnitId: data.inventoryUnitId || 'unit_und',
-    purchaseUnitId: data.purchaseUnitId || data.inventoryUnitId || 'unit_und',
-    purchaseConversion: assertPositiveNumber(data.purchaseConversion ?? 1, 'Conversión de compra'),
+    inventoryUnitId,
+    purchaseUnitId: legacyPurchase.purchaseUnitId,
+    purchaseConversion: legacyPurchase.purchaseConversion,
+    presentations,
     minStock,
     maxStock,
     replenishmentMethod: method,
@@ -177,6 +196,51 @@ export async function updateProduct(productId, patch = {}) {
     throw new Error('Método de reposición inválido');
   }
 
+  if (
+    patch.presentations !== undefined ||
+    patch.inventoryUnitId !== undefined ||
+    patch.purchaseUnitId !== undefined ||
+    patch.purchaseConversion !== undefined
+  ) {
+    const inventoryUnitId = next.inventoryUnitId || 'unit_und';
+    const legacyFieldsChanged =
+      patch.purchaseUnitId !== undefined ||
+      patch.purchaseConversion !== undefined;
+
+    const presentationSource =
+      patch.presentations !== undefined
+        ? patch.presentations
+        : legacyFieldsChanged
+          ? []
+          : current.presentations;
+
+    next.presentations = normalizePresentations(
+      presentationSource,
+      {
+        inventoryUnitId,
+        purchaseUnitId: next.purchaseUnitId,
+        purchaseConversion: next.purchaseConversion
+      }
+    );
+
+    const legacyPurchase = deriveLegacyPurchaseFields(
+      next.presentations,
+      inventoryUnitId
+    );
+
+    next.purchaseUnitId = legacyPurchase.purchaseUnitId;
+    next.purchaseConversion = legacyPurchase.purchaseConversion;
+  } else if (!Array.isArray(next.presentations)) {
+    next.presentations = normalizePresentations(
+      [],
+      {
+        inventoryUnitId: next.inventoryUnitId,
+        purchaseUnitId: next.purchaseUnitId,
+        purchaseConversion: next.purchaseConversion
+      }
+    );
+  }
+
   await writeEntityWithSync(STORES.PRODUCTS, 'product', next, 'UPDATE');
   return next;
 }
@@ -233,10 +297,3 @@ async function writeEntityWithSync(storeName, entityType, entity, operation) {
   );
 }
 
-function assertPositiveNumber(value, fieldName) {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number <= 0) {
-    throw new Error(`${fieldName} debe ser mayor que cero`);
-  }
-  return number;
-}
