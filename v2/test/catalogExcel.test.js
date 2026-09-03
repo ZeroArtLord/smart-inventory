@@ -105,3 +105,129 @@ test('actualizar desde Excel no borra SKU o barcode si esas columnas no existen'
   assert.equal(saved.minStock, 2);
   assert.equal(saved.maxStock, 8);
 });
+
+
+test('interpreta empaques SAINT y convierte mínimos/máximos a unidad base', () => {
+  const preview = parseCatalogMatrix([
+    [
+      'USAR',
+      'CÓDIGO SAINT',
+      'PRODUCTO',
+      'EXISTENCIA SAINT',
+      'UNIDAD BASE',
+      'PRESENTACIÓN',
+      'UNIDADES POR PRESENTACIÓN',
+      'PRESENTACIÓN SECUNDARIA',
+      'UND PRESENTACIÓN SECUNDARIA',
+      'MÍNIMO',
+      'MÁXIMO',
+      'CATEGORÍA',
+      'REPOSICIÓN'
+    ],
+    [
+      'SI',
+      'REF001',
+      'REFRESCO COLA 350 ML',
+      '485 UND',
+      'UND',
+      'CAJA',
+      24,
+      'BULTO',
+      96,
+      '5 CAJAS',
+      '10 BULTOS',
+      'BEBIDAS',
+      'COMPRA'
+    ],
+    [
+      'NO',
+      'OLD001',
+      'PRODUCTO HISTÓRICO',
+      99,
+      'UND',
+      'CAJA',
+      24,
+      '',
+      '',
+      1,
+      2,
+      'VIEJOS',
+      'COMPRA'
+    ]
+  ]);
+
+  assert.equal(preview.errors.length, 0);
+  assert.equal(preview.rows.length, 1);
+  assert.equal(preview.skippedRows, 1);
+
+  const row = preview.rows[0];
+
+  assert.equal(row.sku, 'REF001');
+  assert.equal(row.inventoryUnitId, 'unit_und');
+  assert.equal(row.unitCode, 'UND');
+  assert.equal(row.minStock, 120);
+  assert.equal(row.maxStock, 960);
+  assert.equal(row.saintInitialStock, 485);
+  assert.equal(row.presentations.length, 2);
+
+  assert.deepEqual(
+    row.presentations.map(item => ({
+      code: item.code,
+      conversion: item.conversion,
+      primary: item.primary
+    })),
+    [
+      {
+        code: 'CAJA',
+        conversion: 24,
+        primary: true
+      },
+      {
+        code: 'BULTO',
+        conversion: 96,
+        primary: false
+      }
+    ]
+  );
+});
+
+test('importar catálogo conserva presentaciones y compatibilidad de unidad de compra', async () => {
+  const preview = parseCatalogMatrix([
+    [
+      'Producto',
+      'SKU',
+      'Unidad base',
+      'Presentación',
+      'Unidades por presentación',
+      'Mínimo',
+      'Máximo'
+    ],
+    [
+      'PRODUCTO CON CAJA',
+      'PKG-001',
+      'UND',
+      'CAJA',
+      24,
+      '2 CAJAS',
+      '8 CAJAS'
+    ]
+  ]);
+
+  assert.equal(preview.errors.length, 0);
+
+  const result = await applyCatalogImport(preview);
+  assert.equal(result.created, 1);
+
+  const products = await listProducts();
+  const saved = products.find(
+    product => product.sku === 'PKG-001'
+  );
+
+  assert.ok(saved);
+  assert.equal(saved.minStock, 48);
+  assert.equal(saved.maxStock, 192);
+  assert.equal(saved.purchaseUnitId, 'unit_box');
+  assert.equal(saved.purchaseConversion, 24);
+  assert.equal(saved.presentations.length, 1);
+  assert.equal(saved.presentations[0].code, 'CAJA');
+});
