@@ -107,9 +107,74 @@ function validateProduct(product) {
     throw new Error('Conversión de compra inválida');
   }
 
+  validatePresentations(product.presentations);
+
   const method = product.replenishmentMethod || 'BOTH';
   if (!REPLENISHMENT_METHODS.has(method)) {
     throw new Error('Método de reposición inválido');
+  }
+}
+
+function validatePresentations(presentations) {
+  if (presentations === undefined || presentations === null) return;
+
+  if (!Array.isArray(presentations)) {
+    throw new Error('Presentaciones de producto inválidas');
+  }
+
+  if (presentations.length > 8) {
+    throw new Error('Un producto no puede tener más de 8 presentaciones');
+  }
+
+  let primaryCount = 0;
+  const seen = new Set();
+
+  for (const item of presentations) {
+    if (!item || typeof item !== 'object') {
+      throw new Error('Presentación de producto inválida');
+    }
+
+    const code = String(
+      item.code ||
+      item.name ||
+      ''
+    ).trim();
+
+    const unitId = String(item.unitId || '').trim();
+
+    if (!code && !unitId) {
+      throw new Error('Presentación sin código/unidad');
+    }
+
+    const factor = Number(
+      item.conversion ??
+      item.unitsPerPresentation ??
+      item.factor
+    );
+
+    if (!Number.isFinite(factor) || factor <= 0) {
+      throw new Error('Conversión de presentación inválida');
+    }
+
+    const key = [
+      code.toLowerCase(),
+      unitId,
+      factor
+    ].join('|');
+
+    if (seen.has(key)) {
+      throw new Error('Presentación duplicada');
+    }
+
+    seen.add(key);
+
+    if (item.primary === true && item.active !== false) {
+      primaryCount++;
+    }
+  }
+
+  if (primaryCount > 1) {
+    throw new Error('Solo una presentación puede ser principal');
   }
 }
 
