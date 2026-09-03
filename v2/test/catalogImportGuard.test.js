@@ -278,3 +278,70 @@ test('preflight no interpreta unidad inferida como cambio si la columna unidad n
 
   assert.equal(result.errors.length, 0);
 });
+
+
+test('Código SAINT tiene prioridad como identidad externa', () => {
+  const products = [
+    {
+      id: 'prd_saint',
+      name: 'PRODUCTO SAINT',
+      saintCode: 'SA-001',
+      sku: 'SM-SA-001',
+      barcode: ''
+    }
+  ];
+
+  const indexes =
+    buildCatalogIdentityIndexes(
+      products
+    );
+
+  const result =
+    resolveCatalogProductIdentity(
+      {
+        name: 'PRODUCTO SAINT',
+        saintCode: 'SA-001',
+        sku: 'OTRO-SKU',
+        barcode: ''
+      },
+      indexes
+    );
+
+  assert.equal(
+    result.product?.id,
+    'prd_saint'
+  );
+  assert.equal(result.error, null);
+});
+
+test('bloquea Código SAINT duplicado dentro del mismo Excel', () => {
+  const result =
+    analyzeCatalogImportConflicts(
+      [
+        {
+          excelRow: 2,
+          name: 'PRODUCTO A',
+          saintCode: 'SA-001',
+          sku: 'SM-SA-001',
+          barcode: ''
+        },
+        {
+          excelRow: 3,
+          name: 'PRODUCTO B',
+          saintCode: 'SA-001',
+          sku: 'SM-SA-002',
+          barcode: ''
+        }
+      ],
+      []
+    );
+
+  assert.equal(
+    result.errors.length,
+    1
+  );
+  assert.match(
+    result.errors[0],
+    /Código SAINT duplicado/i
+  );
+});
