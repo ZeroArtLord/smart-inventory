@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 const {
   parseCatalogMatrix,
   parseQuantityCell,
-  applyCatalogImport
+  applyCatalogImport,
+  buildSaintInitialLoadTemplateMatrix
 } = await import('../src/catalog/catalogExcel.js');
 
 const {
@@ -230,4 +231,35 @@ test('importar catálogo conserva presentaciones y compatibilidad de unidad de c
   assert.equal(saved.purchaseConversion, 24);
   assert.equal(saved.presentations.length, 1);
   assert.equal(saved.presentations[0].code, 'CAJA');
+});
+
+
+test('la plantilla SAINT contiene las columnas de depuración, empaques y existencia inicial', () => {
+  const matrix = buildSaintInitialLoadTemplateMatrix();
+
+  assert.ok(Array.isArray(matrix));
+  assert.ok(matrix.length >= 2);
+
+  const headers = matrix[0];
+
+  for (const expected of [
+    'USAR',
+    'CÓDIGO SAINT',
+    'PRODUCTO',
+    'EXISTENCIA SAINT',
+    'UNIDAD BASE',
+    'PRESENTACIÓN',
+    'UNIDADES POR PRESENTACIÓN',
+    'PRESENTACIÓN SECUNDARIA',
+    'UND PRESENTACIÓN SECUNDARIA',
+    'MÍNIMO',
+    'MÁXIMO',
+    'CATEGORÍA',
+    'REPOSICIÓN'
+  ]) {
+    assert.ok(
+      headers.includes(expected),
+      `Falta columna ${expected}`
+    );
+  }
 });
