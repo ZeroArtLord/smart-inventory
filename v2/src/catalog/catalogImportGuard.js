@@ -71,6 +71,65 @@ export function replaceCatalogProductInIdentityIndexes(
   );
 }
 
+export function buildCatalogImportPlan(
+  rows = [],
+  products = [],
+  categories = []
+) {
+  const indexes =
+    buildCatalogIdentityIndexes(products);
+  const categoryNames = new Set(
+    categories
+      .filter(category => category?.active !== false)
+      .map(category =>
+        normalized(category.name)
+      )
+      .filter(Boolean)
+  );
+
+  const newCategoryNames = new Set();
+  let creates = 0;
+  let updates = 0;
+  let unresolved = 0;
+
+  for (const row of rows) {
+    const resolution =
+      resolveCatalogProductIdentity(
+        row,
+        indexes
+      );
+
+    if (resolution.error) {
+      unresolved++;
+      continue;
+    }
+
+    if (resolution.product) {
+      updates++;
+    } else {
+      creates++;
+    }
+
+    const categoryKey =
+      normalized(row?.categoryName);
+
+    if (
+      categoryKey &&
+      !categoryNames.has(categoryKey)
+    ) {
+      newCategoryNames.add(categoryKey);
+    }
+  }
+
+  return {
+    creates,
+    updates,
+    unresolved,
+    categoriesToCreate:
+      newCategoryNames.size
+  };
+}
+
 export function analyzeCatalogImportConflicts(
   rows = [],
   products = []
