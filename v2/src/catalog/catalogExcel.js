@@ -770,13 +770,31 @@ function detectHeaders(row) {
       if (detected[field] !== undefined) continue;
 
       for (const alias of aliases) {
-        const exact = normalized === alias;
-        const contains = normalized.includes(alias);
-        if (!exact && !contains) continue;
+        const exact =
+          normalized === alias;
+        const contains =
+          !exact &&
+          headerContainsAlias(
+            normalized,
+            alias
+          );
 
-        const score = (exact ? 1000 : 0) + alias.length;
-        if (!bestMatch || score > bestMatch.score) {
-          bestMatch = { field, score };
+        if (!exact && !contains) {
+          continue;
+        }
+
+        const score =
+          (exact ? 1000 : 0) +
+          alias.length;
+
+        if (
+          !bestMatch ||
+          score > bestMatch.score
+        ) {
+          bestMatch = {
+            field,
+            score
+          };
         }
       }
     }
@@ -785,6 +803,33 @@ function detectHeaders(row) {
   });
 
   return detected;
+}
+
+function headerContainsAlias(
+  header,
+  alias
+) {
+  const cleanHeader =
+    normalizeSearchText(header);
+  const cleanAlias =
+    normalizeSearchText(alias);
+
+  if (
+    !cleanHeader ||
+    !cleanAlias ||
+    cleanAlias.length < 4
+  ) {
+    return false;
+  }
+
+  const paddedHeader =
+    ` ${cleanHeader} `;
+  const paddedAlias =
+    ` ${cleanAlias} `;
+
+  return paddedHeader.includes(
+    paddedAlias
+  );
 }
 
 export function parseQuantityCell(rawValue) {
