@@ -1,5 +1,8 @@
 import { createLocalId } from '../core/ids.js';
-import { normalizeSearchText } from '../core/catalog.js';
+import {
+  buildCatalogIdentityIndexes,
+  resolveCatalogProductIdentity
+} from './catalogImportGuard.js';
 import {
   STORES,
   getAll
@@ -22,15 +25,28 @@ export function buildSaintInitialLoadDraft(
     );
   }
 
-  const indexes = buildProductIndexes(products);
+  const indexes =
+    buildCatalogIdentityIndexes(products);
   const missing = [];
+  const conflicts = [];
   const mappedRows = [];
 
   for (const row of rows) {
-    const product = findMatchingProduct(
-      row,
-      indexes
-    );
+    const resolution =
+      resolveCatalogProductIdentity(
+        row,
+        indexes
+      );
+
+    if (resolution.error) {
+      conflicts.push(
+        `Fila ${row.excelRow || '?'}: ${resolution.error}`
+      );
+      continue;
+    }
+
+    const product =
+      resolution.product;
 
     if (!product) {
       missing.push(
@@ -62,6 +78,12 @@ export function buildSaintInitialLoadDraft(
       name: product.name,
       unitCode: row.unitCode || 'UND'
     });
+  }
+
+  if (conflicts.length) {
+    throw new Error(
+      `La carga inicial tiene conflictos de identidad: ${conflicts.slice(0, 5).join(' | ')}`
+    );
   }
 
   if (missing.length) {
@@ -389,73 +411,3 @@ function validateClientDraft(draft) {
   }
 }
 
-function buildProductIndexes(
-  products = []
-) {
-  const bySku = new Map();
-  const byBarcode = new Map();
-  const byName = new Map();
-
-  for (const product of products) {
-    if (product.sku) {
-      bySku.set(
-        normalizeSearchText(
-          product.sku
-        ),
-        product
-      );
-    }
-
-    if (product.barcode) {
-      byBarcode.set(
-        normalizeSearchText(
-          product.barcode
-        ),
-        product
-      );
-    }
-
-    byName.set(
-      normalizeSearchText(
-        product.name
-      ),
-      product
-    );
-  }
-
-  return {
-    bySku,
-    byBarcode,
-    byName
-  };
-}
-
-function findMatchingProduct(
-  row,
-  indexes
-) {
-  return (
-    (
-      row.sku &&
-      indexes.bySku.get(
-        normalizeSearchText(
-          row.sku
-        )
-      )
-    ) ||
-    (
-      row.barcode &&
-      indexes.byBarcode.get(
-        normalizeSearchText(
-          row.barcode
-        )
-      )
-    ) ||
-    indexes.byName.get(
-      normalizeSearchText(
-        row.name
-      )
-    ) ||
-    null
-  );
-}
