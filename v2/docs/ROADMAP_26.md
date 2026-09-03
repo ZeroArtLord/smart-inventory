@@ -26,7 +26,7 @@ Este documento traduce el Plan Maestro a 26 checkpoints ejecutables. Cada etapa 
 22. **PDF/Excel/CSV + impresión de documentos/reportes** — LISTO
 23. **Auditoría, reapertura autorizada y compensaciones** — LISTO
 24. **Hardening: seguridad, caída, concurrencia, carga y backups** — LISTO
-25. **Migración V1 + piloto + despliegue/producción** — EN CURSO
+25. **Carga inicial desde SAINT + piloto + despliegue/producción** — EN CURSO
 26. **SAINT Enterprise Bridge** — PENDIENTE
 
 ## Regla de comunicación
@@ -36,3 +36,9 @@ En cada actualización del proyecto indicar el checkpoint con formato:
 **ETAPA X/26 — LISTO / EN CURSO / PENDIENTE**
 
 Cuando una etapa se complete, actualizar este archivo.
+
+## Decisión de baseline productivo
+
+- Smart Inventory V1 queda retirado como fuente de migración: nunca entró en uso productivo y no se importará información desde V1.
+- El arranque productivo será desde base operativa cero, usando el catálogo/exportación de SAINT como fuente inicial controlada.
+- La existencia inicial de SAINT se aplicará únicamente mediante un proceso explícito y trazable de carga inicial; importaciones posteriores de catálogo no podrán sobrescribir stock.
