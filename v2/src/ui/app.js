@@ -3505,11 +3505,14 @@ async function handleChange(event) {
 
     const categories =
       await getAll(STORES.CATEGORIES);
+    const movements =
+      await getAll(STORES.MOVEMENTS);
 
     const guard =
       analyzeCatalogImportConflicts(
         preview.rows || [],
-        state.products || []
+        state.products || [],
+        movements
       );
 
     const importPlan =
