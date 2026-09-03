@@ -18,7 +18,8 @@
     "smoke:firebase-identity": "node scripts/firebaseIdentitySmoke.js",
     "auth:firebase-check": "node scripts/firebaseAdminCheck.js",
     "auth:firebase-e2e": "node scripts/firebaseE2ESmoke.js",
-    "god:promote": "node scripts/promoteGod.js"
+    "god:promote": "node scripts/promoteGod.js",
+    "saint:preflight": "node scripts/saintInitialLoadPreflight.js"
   },
   "dependencies": {
     "express": "^5.0.0",
