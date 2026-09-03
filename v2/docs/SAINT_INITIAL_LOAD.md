@@ -9,11 +9,28 @@ Crear el baseline productivo de Smart Inventory V2 usando el catálogo y la exis
 1. La unidad base es la magnitud real de inventario.
 2. Empaques/presentaciones solo convierten y muestran cantidades humanas.
 3. Importar catálogo nunca modifica stock.
-4. La importación se bloquea si hay SKU, código de barras o nombres duplicados/ambiguos.
+4. La importación se bloquea si hay Código SAINT, SKU Smart, código de barras o nombres duplicados/ambiguos.
 5. Ausencia de columna Existencia SAINT no equivale a cero; para abrir stock cada producto debe tener un valor explícito, incluido 0.
 6. La existencia inicial SAINT se aplica mediante movimientos trazables.
 7. La apertura se permite una sola vez por workspace.
 8. Si la apertura fue incorrecta, se corrige mediante movimientos/reversos autorizados; no se vuelve a ejecutar la carga inicial.
+
+## Identidad SAINT vs identidad Smart
+
+Cada producto maneja tres identificadores distintos:
+
+- `product.id`: identidad técnica interna de Smart Inventory. No la escribe el usuario.
+- `saintCode`: Código SAINT. Es la clave externa estable que utilizará el futuro SAINT Enterprise Bridge para relacionar el producto de Smart con el producto de SAINT.
+- `sku`: SKU Smart. Es un código interno humano para control dentro de Smart Inventory y no sustituye al Código SAINT.
+
+En la plantilla de carga inicial, `CÓDIGO SAINT` es obligatorio para las filas usadas. `SKU SMART` es opcional. Si queda vacío, Smart genera uno de forma determinista desde el Código SAINT, por ejemplo:
+
+```text
+CÓDIGO SAINT = REF001
+SKU SMART    = SM-REF001
+```
+
+El SKU Smart puede personalizarse posteriormente sin romper la relación con SAINT, porque la integración siempre usa `saintCode`.
 
 ## Flujo
 
@@ -66,6 +83,7 @@ La operación exige simultáneamente:
 
 - `010_product_presentations.sql`
 - `011_saint_initial_load.sql`
+- `012_product_saint_code.sql`
 
 Antes del piloto real, el servidor puede inspeccionarse sin aplicar stock con:
 
@@ -86,6 +104,8 @@ El preflight reporta catálogo, movimientos existentes, apertura previa y si el 
 El CI cubre:
 
 - parser/plantilla SAINT;
+- separación Código SAINT ↔ SKU Smart;
+- generación automática de SKU Smart cuando queda vacío;
 - detección de identificadores duplicados o cruzados;
 - diferenciación entre “sin columna de existencia”, celda vacía y cero explícito;
 - plan de productos nuevos/actualizados antes de importar;
