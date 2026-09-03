@@ -558,6 +558,9 @@ export function parseCatalogMatrix(matrix) {
       maxStock,
       inventoryUnitId,
       unitCode: inferredUnit,
+      hasExplicitUnit:
+        columns.unit !== undefined &&
+        normalizeText(raw[columns.unit]) !== '',
       presentations,
       replenishmentMethod: parseReplenishmentMethod(
         raw[columns.replenishmentMethod]
@@ -667,37 +670,67 @@ export async function applyCatalogImport(preview) {
       const existing =
         resolution.product;
 
-      const baseData = {
-        name: row.name,
-        inventoryUnitId: row.inventoryUnitId,
-        presentations: row.presentations || [],
-        minStock: row.minStock,
-        maxStock: row.maxStock
-      };
-
       const hasColumn = field =>
         preview.detectedHeaders?.[field] !== undefined;
 
       let saved;
       if (existing) {
-        const patch = { ...baseData };
+        const patch = {
+          name: row.name
+        };
 
-        if (hasColumn('sku')) patch.sku = row.sku;
-        if (hasColumn('barcode')) patch.barcode = row.barcode;
-        if (hasColumn('category')) patch.categoryId = categoryId;
+        if (hasColumn('sku')) {
+          patch.sku = row.sku;
+        }
+        if (hasColumn('barcode')) {
+          patch.barcode = row.barcode;
+        }
+        if (hasColumn('category')) {
+          patch.categoryId = categoryId;
+        }
+        if (hasColumn('unit') && row.hasExplicitUnit) {
+          patch.inventoryUnitId =
+            row.inventoryUnitId;
+        }
+        if (
+          hasColumn('presentation') ||
+          hasColumn('presentationConversion') ||
+          hasColumn('secondaryPresentation') ||
+          hasColumn('secondaryPresentationConversion')
+        ) {
+          patch.presentations =
+            row.presentations || [];
+        }
+        if (hasColumn('minStock')) {
+          patch.minStock = row.minStock;
+        }
+        if (hasColumn('maxStock')) {
+          patch.maxStock = row.maxStock;
+        }
         if (hasColumn('replenishmentMethod')) {
-          patch.replenishmentMethod = row.replenishmentMethod;
+          patch.replenishmentMethod =
+            row.replenishmentMethod;
         }
 
-        saved = await updateProduct(existing.id, patch);
+        saved = await updateProduct(
+          existing.id,
+          patch
+        );
         result.updated++;
       } else {
         saved = await createProduct({
-          ...baseData,
+          name: row.name,
           sku: row.sku,
           barcode: row.barcode,
           categoryId,
-          replenishmentMethod: row.replenishmentMethod
+          inventoryUnitId:
+            row.inventoryUnitId,
+          presentations:
+            row.presentations || [],
+          minStock: row.minStock,
+          maxStock: row.maxStock,
+          replenishmentMethod:
+            row.replenishmentMethod
         });
         result.created++;
       }
