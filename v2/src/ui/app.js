@@ -290,7 +290,18 @@ async function renderGlobalSearchResults(rawQuery) {
         <span class="global-result-icon">▣</span>
         <span>
           <strong>${escapeHtml(product.name)}</strong>
-          <small>${escapeHtml(product.sku || product.barcode || 'Producto')}</small>
+          <small>${escapeHtml(
+            [
+              product.saintCode
+                ? 'SAINT ' + product.saintCode
+                : '',
+              product.sku
+                ? 'SKU ' + product.sku
+                : '',
+              product.barcode || ''
+            ].filter(Boolean).join(' · ') ||
+            'Producto'
+          )}</small>
         </span>
         <span class="global-result-action">Catálogo →</span>
       </button>
@@ -2161,7 +2172,7 @@ async function renderCatalog() {
             <span>⌕</span>
             <input
               id="catalogLocalSearch"
-              placeholder="Buscar nombre, SKU o código..."
+              placeholder="Buscar nombre, Código SAINT, SKU o código..."
               autocomplete="off"
             >
           </label>
@@ -2173,7 +2184,7 @@ async function renderCatalog() {
             <thead>
               <tr>
                 <th>Producto</th>
-                <th>SKU</th>
+                <th>SAINT / SKU</th>
                 <th>Stock</th>
                 <th>Mín.</th>
                 <th>Máx.</th>
@@ -2201,7 +2212,7 @@ async function renderCatalog() {
                     return `
                       <tr
                         data-catalog-filter="${escapeHtml(
-                          [product.name, product.sku, product.barcode]
+                          [product.name, product.saintCode, product.sku, product.barcode]
                             .filter(Boolean)
                             .join(' ')
                             .toLowerCase()
@@ -2230,7 +2241,16 @@ async function renderCatalog() {
                             </div>
                           </div>
                         </td>
-                        <td>${escapeHtml(product.sku || '—')}</td>
+                        <td>
+                          <strong>${product.saintCode
+                            ? 'SAINT ' + escapeHtml(product.saintCode)
+                            : '—'}</strong>
+                          <div class="product-meta">
+                            ${product.sku
+                              ? 'SKU ' + escapeHtml(product.sku)
+                              : 'SKU —'}
+                          </div>
+                        </td>
                         <td class="catalog-stock-value">${renderCatalogQuantity(product, stock)}</td>
                         <td>${renderCatalogQuantity(product, min)}</td>
                         <td>${max > 0 ? renderCatalogQuantity(product, max) : '—'}</td>
@@ -2268,7 +2288,7 @@ async function renderCatalog() {
                   <article
                     class="catalog-mobile-card"
                     data-catalog-filter="${escapeHtml(
-                      [product.name, product.sku, product.barcode]
+                      [product.name, product.saintCode, product.sku, product.barcode]
                         .filter(Boolean)
                         .join(' ')
                         .toLowerCase()
@@ -2278,7 +2298,12 @@ async function renderCatalog() {
                       <div class="catalog-product-icon">▣</div>
                       <div>
                         <strong>${escapeHtml(product.name)}</strong>
-                        <small>${escapeHtml(product.sku || product.barcode || 'Sin código')}</small>
+                        <small>${product.saintCode
+                          ? 'SAINT ' + escapeHtml(product.saintCode)
+                          : 'Sin Código SAINT'}</small>
+                        <small>${product.sku
+                          ? 'SKU ' + escapeHtml(product.sku)
+                          : 'SKU —'}</small>
                         <small>${escapeHtml(
                           product.categoryId
                             ? categoryById.get(product.categoryId)?.name || 'Categoría desconocida'
@@ -2858,6 +2883,7 @@ function renderCountProduct(product) {
           <div class="product-meta">Producto actual</div>
           <h2>${escapeHtml(product.name)}</h2>
           <div class="product-meta">
+            ${product.saintCode ? 'SAINT ' + escapeHtml(product.saintCode) + ' · ' : ''}
             ${product.sku ? 'SKU ' + escapeHtml(product.sku) + ' · ' : ''}
             ${product.barcode ? 'Código ' + escapeHtml(product.barcode) : ''}
           </div>
@@ -3577,7 +3603,17 @@ async function handleInput(event) {
       type="button"
     >
       <strong>${escapeHtml(product.name)}</strong>
-      <div class="product-meta">${escapeHtml(product.sku || product.barcode || '')}</div>
+      <div class="product-meta">${escapeHtml(
+        [
+          product.saintCode
+            ? 'SAINT ' + product.saintCode
+            : '',
+          product.sku
+            ? 'SKU ' + product.sku
+            : '',
+          product.barcode || ''
+        ].filter(Boolean).join(' · ')
+      )}</div>
     </button>
   `).join('');
 }
@@ -4527,7 +4563,8 @@ function renderCatalogImportPreview(preview) {
                 <div>
                   <strong>${escapeHtml(row.name)}</strong>
                   <div class="product-meta">
-                    ${row.sku ? 'SKU ' + escapeHtml(row.sku) + ' · ' : ''}
+                    ${row.saintCode ? 'SAINT ' + escapeHtml(row.saintCode) + ' · ' : ''}
+                    ${row.sku ? 'SKU ' + escapeHtml(row.sku) + (row.skuAutoGenerated ? ' (auto)' : '') + ' · ' : ''}
                     Min ${formatNumber(row.minStock)} ${escapeHtml(row.unitCode)} ·
                     Max ${row.maxStock ? formatNumber(row.maxStock) + ' ' + escapeHtml(row.unitCode) : '—'} ·
                     ${escapeHtml(catalogPresentationSummary(row))}
