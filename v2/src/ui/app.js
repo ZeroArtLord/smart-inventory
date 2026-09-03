@@ -3789,6 +3789,20 @@ async function applySaintInitialLoadDraft() {
     return;
   }
 
+  const typedConfirmation = prompt(
+    'Confirmación final. Escribe exactamente APLICAR SAINT para continuar.'
+  );
+
+  if (
+    String(typedConfirmation || '')
+      .trim()
+      .toUpperCase() !==
+    'APLICAR SAINT'
+  ) {
+    showToast('Carga inicial cancelada');
+    return;
+  }
+
   showToast(
     'Sincronizando catálogo antes de la apertura…'
   );
@@ -4331,6 +4345,29 @@ function renderSaintInitialLoadCard({
         </div>
       </div>
 
+      <div class="saint-opening-preview">
+        <strong>Muestra de existencia a aplicar</strong>
+        <div class="stack">
+          ${draft.rows.slice(0, 8).map(row => `
+            <div class="cart-line">
+              <div>
+                <strong>${escapeHtml(row.name || row.sourceCode || row.productId)}</strong>
+                <div class="product-meta">
+                  ${row.sourceCode ? 'SAINT ' + escapeHtml(row.sourceCode) + ' · ' : ''}
+                  ${row.sourceRow ? 'fila ' + escapeHtml(row.sourceRow) : ''}
+                </div>
+              </div>
+              <span class="badge">
+                ${formatNumber(row.quantity)} ${escapeHtml(row.unitCode || 'UND')}
+              </span>
+            </div>
+          `).join('')}
+          ${draft.rows.length > 8
+            ? `<div class="product-meta">…y ${draft.rows.length - 8} producto(s) más.</div>`
+            : ''}
+        </div>
+      </div>
+
       ${hasMovements
         ? `
           <div class="status-danger">
@@ -4339,7 +4376,7 @@ function renderSaintInitialLoadCard({
         `
         : `
           <div class="status-warning">
-            ⚠ Al confirmar se creará un ADJUSTMENT de apertura trazable. Esta operación solo se permite una vez por almacén.
+            ⚠ Al confirmar se creará un ADJUSTMENT de apertura trazable. Esta operación solo se permite una vez por almacén y requiere escribir “APLICAR SAINT”.
           </div>
         `}
 
