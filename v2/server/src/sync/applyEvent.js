@@ -102,6 +102,41 @@ async function upsertProduct(
   p,
   operation
 ) {
+  const saintCode =
+    String(
+      p.saintCode || ''
+    ).trim();
+
+  if (saintCode) {
+    const duplicateSaintCode =
+      await client.query(
+        `SELECT id
+         FROM products
+         WHERE workspace_id = $1
+           AND lower(saint_code) =
+             lower($2)
+           AND id <> $3
+         LIMIT 1`,
+        [
+          workspaceId,
+          saintCode,
+          p.id
+        ]
+      );
+
+    if (
+      duplicateSaintCode.rowCount > 0
+    ) {
+      const error = new Error(
+        `El Código SAINT "${saintCode}" ya pertenece a otro producto`
+      );
+      error.code =
+        'SAINT_CODE_DUPLICATE';
+      error.statusCode = 409;
+      throw error;
+    }
+  }
+
   if (operation === 'UPDATE') {
     const current = await client.query(
       `SELECT inventory_unit_id
@@ -151,13 +186,14 @@ async function upsertProduct(
 
   await client.query(
     `INSERT INTO products (
-      workspace_id,id,sku,name,name_normalized,aliases,barcode,category_id,
+      workspace_id,id,saint_code,sku,name,name_normalized,aliases,barcode,category_id,
       inventory_unit_id,purchase_unit_id,purchase_conversion,presentations,
       min_stock,max_stock,replenishment_method,supplier_id,active,created_at,updated_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18,$19
+      $1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,$17,$18,$19,$20
     )
     ON CONFLICT (workspace_id,id) DO UPDATE SET
+      saint_code=EXCLUDED.saint_code,
       sku=EXCLUDED.sku,
       name=EXCLUDED.name,
       name_normalized=EXCLUDED.name_normalized,
@@ -175,12 +211,26 @@ async function upsertProduct(
       active=EXCLUDED.active,
       updated_at=EXCLUDED.updated_at`,
     [
-      workspaceId,p.id,p.sku || null,p.name,p.nameNormalized || null,
-      JSON.stringify(p.aliases || []),p.barcode || null,p.categoryId || null,
-      p.inventoryUnitId || null,p.purchaseUnitId || null,p.purchaseConversion || 1,
+      workspaceId,
+      p.id,
+      saintCode || null,
+      p.sku || null,
+      p.name,
+      p.nameNormalized || null,
+      JSON.stringify(p.aliases || []),
+      p.barcode || null,
+      p.categoryId || null,
+      p.inventoryUnitId || null,
+      p.purchaseUnitId || null,
+      p.purchaseConversion || 1,
       JSON.stringify(p.presentations || []),
-      p.minStock || 0,p.maxStock || 0,p.replenishmentMethod || 'BOTH',
-      p.supplierId || null,p.active !== false,p.createdAt,p.updatedAt
+      p.minStock || 0,
+      p.maxStock || 0,
+      p.replenishmentMethod || 'BOTH',
+      p.supplierId || null,
+      p.active !== false,
+      p.createdAt,
+      p.updatedAt
     ]
   );
 }
