@@ -490,3 +490,68 @@ test('una actualización SAINT parcial conserva unidad, empaques, mínimos y rep
   assert.equal(saved.presentations[0].code, 'CAJA');
   assert.equal(saved.presentations[0].conversion, 12);
 });
+
+
+test('detección de encabezados no confunde palabras parciales con MIN, REF o ACTUAL', () => {
+  const preview = parseCatalogMatrix([
+    [
+      'Producto',
+      'Administración',
+      'Referencial',
+      'Actualizado'
+    ],
+    [
+      'PRODUCTO SEGURO',
+      'texto',
+      'texto',
+      'texto'
+    ]
+  ]);
+
+  assert.equal(
+    preview.detectedHeaders.minStock,
+    undefined
+  );
+  assert.equal(
+    preview.detectedHeaders.sku,
+    undefined
+  );
+  assert.equal(
+    preview.detectedHeaders.currentStock,
+    undefined
+  );
+});
+
+test('detección conservadora sigue reconociendo aliases dentro de encabezados descriptivos', () => {
+  const preview = parseCatalogMatrix([
+    [
+      'Nombre del producto',
+      'Código interno del producto',
+      'Stock mínimo semanal',
+      'Existencia actual almacén'
+    ],
+    [
+      'PRODUCTO',
+      'INT-001',
+      5,
+      12
+    ]
+  ]);
+
+  assert.equal(
+    preview.detectedHeaders.name,
+    0
+  );
+  assert.equal(
+    preview.detectedHeaders.sku,
+    1
+  );
+  assert.equal(
+    preview.detectedHeaders.minStock,
+    2
+  );
+  assert.equal(
+    preview.detectedHeaders.currentStock,
+    3
+  );
+});
