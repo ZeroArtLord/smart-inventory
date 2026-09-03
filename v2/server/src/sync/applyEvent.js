@@ -371,7 +371,10 @@ async function applyInitialLoad(
         initialLoadId: payload.id,
         source: payload.source || 'SAINT',
         productCount: payload.rows.length,
-        positiveStockCount: positiveRows.length
+        positiveStockCount: positiveRows.length,
+        fileName: payload.fileName || null,
+        fileSize: Number(payload.fileSize || 0) || null,
+        fileSha256: payload.fileSha256 || null
       }),
       now
     ]
@@ -458,6 +461,8 @@ async function applyInitialLoad(
       now,
       JSON.stringify({
         fileName: payload.fileName || null,
+        fileSize: Number(payload.fileSize || 0) || null,
+        fileSha256: payload.fileSha256 || null,
         sheetName: payload.sheetName || null
       })
     ]
@@ -473,6 +478,7 @@ async function applyInitialLoad(
     documentId,
     productCount: payload.rows.length,
     positiveStockCount: positiveRows.length,
+    fileSha256: payload.fileSha256 || null,
     appliedAt: now
   };
 }
