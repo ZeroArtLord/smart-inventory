@@ -24,6 +24,7 @@ import {
 
 const listeners = new Set();
 let syncing = false;
+let syncIdleWaiters = [];
 
 export function onSyncStatus(listener) {
   listeners.add(listener);
@@ -36,7 +37,13 @@ export async function syncNow({
   force = false
 } = {}) {
   if (syncing && !force) {
-    return { ok: false, skipped: 'already-syncing' };
+    await waitForSyncIdle();
+
+    return syncNow({
+      localUserId,
+      displayName,
+      force: false
+    });
   }
 
   if (!navigator.onLine) {
@@ -128,7 +135,26 @@ export async function syncNow({
     };
   } finally {
     syncing = false;
+
+    const waiters = syncIdleWaiters;
+    syncIdleWaiters = [];
+
+    for (const resolve of waiters) {
+      try {
+        resolve();
+      } catch (_) {}
+    }
   }
+}
+
+function waitForSyncIdle() {
+  if (!syncing) {
+    return Promise.resolve();
+  }
+
+  return new Promise(resolve => {
+    syncIdleWaiters.push(resolve);
+  });
 }
 
 async function ensureServerIdentity(config, { localUserId, displayName }) {
