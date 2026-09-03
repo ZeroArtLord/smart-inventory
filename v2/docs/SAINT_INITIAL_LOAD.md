@@ -35,21 +35,22 @@ El SKU Smart puede personalizarse posteriormente sin romper la relación con SAI
 ## Flujo
 
 1. Descargar la plantilla de carga inicial desde Catálogo.
-2. Completar/pegar la exportación SAINT.
-3. Marcar USAR=SI/NO.
-4. Configurar unidad base, presentación principal/secundaria, conversiones, mínimo, máximo, categoría y reposición.
-5. Cargar el Excel y revisar el preview, el plan de altas/actualizaciones y los conflictos de identidad. El parser acepta formatos numéricos habituales de SAINT/Excel en español (por ejemplo 1.080,50 KG) sin convertir unidades desconocidas por su cuenta.
-6. Importar el catálogo.
-7. Sincronizar completamente catálogo y categorías con el servidor.
-8. Verificar que el workspace no tenga movimientos previos.
-9. Revisar una muestra de las existencias preparadas.
-10. Confirmar “Aplicar existencia inicial” y escribir exactamente `APLICAR SAINT`.
-11. El servidor crea de forma atómica:
+2. Mientras no exista el Bridge, exportar SAINT manualmente y copiar a la plantilla los datos que vienen de SAINT: Código SAINT, producto, existencia y código de barras si está disponible.
+3. Dejar SKU Smart vacío si no se desea inventarlo manualmente; Smart lo generará desde Código SAINT.
+4. Marcar USAR=SI/NO.
+5. Completar solamente los datos propios de Smart que SAINT no aporta o que queremos controlar aquí: unidad base confirmada, presentaciones/empaques, conversiones, mínimo, máximo, categoría y reposición.
+6. Cargar el Excel y revisar el preview, el plan de altas/actualizaciones y los conflictos de identidad. El parser acepta formatos numéricos habituales de SAINT/Excel en español (por ejemplo 1.080,50 KG) sin convertir unidades desconocidas por su cuenta.
+7. Importar el catálogo.
+8. Sincronizar completamente catálogo y categorías con el servidor.
+9. Verificar que el workspace no tenga movimientos previos.
+10. Revisar una muestra de las existencias preparadas.
+11. Confirmar “Aplicar existencia inicial” y escribir exactamente `APLICAR SAINT`.
+12. El servidor crea de forma atómica:
    - un registro en `workspace_initial_loads`;
    - un documento `ADJUSTMENT` cerrado;
    - líneas por todos los productos incluidos;
    - movimientos `ADJUSTMENT` para productos con existencia mayor que cero.
-12. El evento `initialLoad` vuelve por sincronización y reconstruye el mismo documento/líneas/movimientos en IndexedDB de los dispositivos.
+13. El evento `initialLoad` vuelve por sincronización y reconstruye el mismo documento/líneas/movimientos en IndexedDB de los dispositivos.
 
 ## Protección contra duplicados
 
