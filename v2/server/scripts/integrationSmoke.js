@@ -581,6 +581,8 @@ try {
     );
   }
 
+  await runSaintInitialLoadSmoke(db);
+
   const stateFile = String(
     process.env.SMOKE_STATE_FILE || ''
   ).trim();
@@ -605,6 +607,327 @@ try {
   );
 } finally {
   await db.end();
+}
+
+async function runSaintInitialLoadSmoke(db) {
+  const localStamp = `${stamp}-saint`;
+
+  const bootstrapResult = await jsonFetch(
+    '/api/v1/dev/bootstrap',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        workspaceKey:
+          `ci-saint-${localStamp}`,
+        externalUserId:
+          `ci-saint-user-${localStamp}`,
+        displayName:
+          'CI SAINT Initial Load'
+      })
+    }
+  );
+
+  const saintHeaders = {
+    'content-type': 'application/json',
+    'x-workspace-id':
+      bootstrapResult.workspace.id,
+    'x-user-id':
+      bootstrapResult.user.id
+  };
+
+  const productA =
+    `prd_saint_a_${localStamp}`;
+  const productB =
+    `prd_saint_b_${localStamp}`;
+
+  const productPayload = (
+    id,
+    sku,
+    name
+  ) => ({
+    id,
+    sku,
+    name,
+    nameNormalized:
+      name.toLowerCase(),
+    aliases: [],
+    barcode: '',
+    categoryId: null,
+    inventoryUnitId: 'unit_und',
+    purchaseUnitId: 'unit_box',
+    purchaseConversion: 24,
+    presentations: [
+      {
+        id: 'presentation_primary',
+        unitId: 'unit_box',
+        code: 'CAJA',
+        name: 'Caja',
+        conversion: 24,
+        primary: true,
+        active: true
+      }
+    ],
+    minStock: 24,
+    maxStock: 240,
+    replenishmentMethod: 'BOTH',
+    supplierId: null,
+    active: true,
+    version: 1,
+    createdAt: now,
+    updatedAt: now
+  });
+
+  await jsonFetch(
+    '/api/v1/sync/push',
+    {
+      method: 'POST',
+      headers: saintHeaders,
+      body: JSON.stringify({
+        events: [
+          {
+            id:
+              `evt_saint_product_a_${localStamp}`,
+            entityType: 'product',
+            entityId: productA,
+            operation: 'CREATE',
+            payload: productPayload(
+              productA,
+              `SAINT-A-${localStamp}`,
+              'SAINT PRODUCT A'
+            )
+          },
+          {
+            id:
+              `evt_saint_product_b_${localStamp}`,
+            entityType: 'product',
+            entityId: productB,
+            operation: 'CREATE',
+            payload: productPayload(
+              productB,
+              `SAINT-B-${localStamp}`,
+              'SAINT PRODUCT B'
+            )
+          }
+        ]
+      })
+    }
+  );
+
+  const runId =
+    `saintload_${localStamp}`;
+
+  const loadResult = await jsonFetch(
+    '/api/v1/sync/push',
+    {
+      method: 'POST',
+      headers: saintHeaders,
+      body: JSON.stringify({
+        events: [
+          {
+            id:
+              `evt_saint_initial_${localStamp}`,
+            entityType: 'initialLoad',
+            entityId: runId,
+            operation: 'CREATE',
+            payload: {
+              id: runId,
+              source: 'SAINT',
+              fileName: 'ci-saint.xlsx',
+              sheetName: 'Carga',
+              createdAt: now,
+              rows: [
+                {
+                  productId: productA,
+                  quantity: 485,
+                  sourceCode:
+                    `SAINT-A-${localStamp}`,
+                  sourceRow: 2
+                },
+                {
+                  productId: productB,
+                  quantity: 0,
+                  sourceCode:
+                    `SAINT-B-${localStamp}`,
+                  sourceRow: 3
+                }
+              ]
+            }
+          }
+        ]
+      })
+    }
+  );
+
+  if (
+    !loadResult.applied?.length ||
+    loadResult.applied[0].duplicate
+  ) {
+    throw new Error(
+      'La carga inicial SAINT no fue aplicada.'
+    );
+  }
+
+  await assertStock(
+    db,
+    bootstrapResult.workspace.id,
+    productA,
+    485
+  );
+
+  await assertStock(
+    db,
+    bootstrapResult.workspace.id,
+    productB,
+    0
+  );
+
+  const registry = await db.query(
+    `SELECT
+       run_id,
+       product_count,
+       positive_stock_count,
+       document_id
+     FROM workspace_initial_loads
+     WHERE workspace_id = $1`,
+    [bootstrapResult.workspace.id]
+  );
+
+  if (
+    registry.rowCount !== 1 ||
+    registry.rows[0].run_id !== runId ||
+    Number(
+      registry.rows[0].product_count
+    ) !== 2 ||
+    Number(
+      registry.rows[0]
+        .positive_stock_count
+    ) !== 1
+  ) {
+    throw new Error(
+      'El registro único de carga inicial SAINT es incorrecto.'
+    );
+  }
+
+  const openingMovements = await db.query(
+    `SELECT
+       product_id,
+       delta,
+       metadata,
+       user_id
+     FROM movements
+     WHERE workspace_id = $1
+       AND metadata->>'kind' =
+         'SAINT_INITIAL_LOAD'`,
+    [bootstrapResult.workspace.id]
+  );
+
+  if (
+    openingMovements.rowCount !== 1 ||
+    openingMovements.rows[0]
+      .product_id !== productA ||
+    Number(
+      openingMovements.rows[0].delta
+    ) !== 485 ||
+    openingMovements.rows[0]
+      .user_id !==
+      bootstrapResult.user.id
+  ) {
+    throw new Error(
+      'El movimiento de apertura SAINT no quedó trazable.'
+    );
+  }
+
+  const duplicateAttempt =
+    await fetch(
+      `${baseUrl}/api/v1/sync/push`,
+      {
+        method: 'POST',
+        headers: saintHeaders,
+        body: JSON.stringify({
+          events: [
+            {
+              id:
+                `evt_saint_initial_second_${localStamp}`,
+              entityType:
+                'initialLoad',
+              entityId:
+                `saintload_second_${localStamp}`,
+              operation: 'CREATE',
+              payload: {
+                id:
+                  `saintload_second_${localStamp}`,
+                source: 'SAINT',
+                createdAt: now,
+                rows: [
+                  {
+                    productId: productA,
+                    quantity: 999
+                  }
+                ]
+              }
+            }
+          ]
+        })
+      }
+    );
+
+  const duplicateBody =
+    await duplicateAttempt.json();
+
+  if (
+    duplicateAttempt.status !== 409 ||
+    duplicateBody.code !==
+      'INITIAL_LOAD_ALREADY_APPLIED'
+  ) {
+    throw new Error(
+      `Se esperaba INITIAL_LOAD_ALREADY_APPLIED 409 y llegó ${duplicateAttempt.status}: ${JSON.stringify(duplicateBody)}`
+    );
+  }
+
+  const updatedProduct = {
+    ...productPayload(
+      productA,
+      `SAINT-A-${localStamp}`,
+      'SAINT PRODUCT A'
+    ),
+    minStock: 48,
+    maxStock: 480,
+    version: 2,
+    updatedAt:
+      new Date(
+        Date.now() + 1000
+      ).toISOString()
+  };
+
+  await jsonFetch(
+    '/api/v1/sync/push',
+    {
+      method: 'POST',
+      headers: saintHeaders,
+      body: JSON.stringify({
+        events: [
+          {
+            id:
+              `evt_saint_catalog_update_${localStamp}`,
+            entityType: 'product',
+            entityId: productA,
+            operation: 'UPDATE',
+            payload: updatedProduct
+          }
+        ]
+      })
+    }
+  );
+
+  await assertStock(
+    db,
+    bootstrapResult.workspace.id,
+    productA,
+    485
+  );
 }
 
 function baseDocument(id, type) {
