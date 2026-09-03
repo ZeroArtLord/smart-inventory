@@ -506,10 +506,12 @@ export async function applyCatalogImport(preview) {
 
   const products = await listProducts({ includeInactive: true });
   const categories = await getAll(STORES.CATEGORIES);
+  const movements = await getAll(STORES.MOVEMENTS);
 
   const guard = analyzeCatalogImportConflicts(
     preview.rows,
-    products
+    products,
+    movements
   );
 
   if (guard.errors.length) {
