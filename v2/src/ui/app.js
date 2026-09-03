@@ -27,6 +27,9 @@ import {
   saintInitialLoadSummary
 } from '../catalog/saintInitialLoad.js';
 import {
+  analyzeCatalogImportConflicts
+} from '../catalog/catalogImportGuard.js';
+import {
   STORES,
   openDatabase,
   get,
@@ -3475,7 +3478,32 @@ async function handleChange(event) {
 
   try {
     showToast('Leyendo archivo…');
-    state.importPreview = await readCatalogFile(file);
+
+    const preview =
+      await readCatalogFile(file);
+
+    const guard =
+      analyzeCatalogImportConflicts(
+        preview.rows || [],
+        state.products || []
+      );
+
+    state.importPreview = {
+      ...preview,
+      errors: [
+        ...new Set([
+          ...(preview.errors || []),
+          ...guard.errors
+        ])
+      ],
+      warnings: [
+        ...new Set([
+          ...(preview.warnings || []),
+          ...guard.warnings
+        ])
+      ]
+    };
+
     await render();
   } catch (error) {
     showToast(error.message || String(error));
@@ -3637,6 +3665,12 @@ async function applyCatalogPreview() {
   const preview = state.importPreview;
   if (!preview?.rows?.length) {
     throw new Error('No hay filas válidas para importar');
+  }
+
+  if (preview.errors?.length) {
+    throw new Error(
+      `Corrige los ${preview.errors.length} error(es) antes de importar`
+    );
   }
 
   const message =
@@ -4352,9 +4386,17 @@ function renderCatalogImportPreview(preview) {
           </div>
         </div>
 
-        <button class="success" data-action="apply-catalog-import" type="button">
-          Importar ${rows.length} producto(s)
-        </button>
+        ${errors.length
+          ? `
+            <div class="status-danger">
+              ✕ Importación bloqueada. Corrige todos los errores del archivo antes de modificar el catálogo.
+            </div>
+          `
+          : `
+            <button class="success" data-action="apply-catalog-import" type="button">
+              Importar ${rows.length} producto(s)
+            </button>
+          `}
       ` : '<div class="empty">No hay filas válidas para importar.</div>'}
     </div>
   `;
