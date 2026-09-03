@@ -21,7 +21,7 @@ Crear el baseline productivo de Smart Inventory V2 usando el catálogo y la exis
 2. Completar/pegar la exportación SAINT.
 3. Marcar USAR=SI/NO.
 4. Configurar unidad base, presentación principal/secundaria, conversiones, mínimo, máximo, categoría y reposición.
-5. Cargar el Excel y revisar el preview, el plan de altas/actualizaciones y los conflictos de identidad.
+5. Cargar el Excel y revisar el preview, el plan de altas/actualizaciones y los conflictos de identidad. El parser acepta formatos numéricos habituales de SAINT/Excel en español (por ejemplo 1.080,50 KG) sin convertir unidades desconocidas por su cuenta.
 6. Importar el catálogo.
 7. Sincronizar completamente catálogo y categorías con el servidor.
 8. Verificar que el workspace no tenga movimientos previos.
