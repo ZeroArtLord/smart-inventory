@@ -6,6 +6,7 @@ export function buildCatalogIdentityIndexes(
   products = []
 ) {
   const indexes = {
+    bySaintCode: new Map(),
     bySku: new Map(),
     byBarcode: new Map(),
     byName: new Map()
@@ -25,6 +26,11 @@ export function indexCatalogProduct(
   indexes,
   product
 ) {
+  addIndexValue(
+    indexes.bySaintCode,
+    product?.saintCode,
+    product
+  );
   addIndexValue(
     indexes.bySku,
     product?.sku,
@@ -49,6 +55,11 @@ export function replaceCatalogProductInIdentityIndexes(
   previousProduct,
   nextProduct
 ) {
+  removeIndexValue(
+    indexes.bySaintCode,
+    previousProduct?.saintCode,
+    previousProduct?.id
+  );
   removeIndexValue(
     indexes.bySku,
     previousProduct?.sku,
@@ -219,7 +230,14 @@ export function resolveCatalogProductIdentity(
 
   collectMatches(
     matches,
-    'SKU',
+    'Código SAINT',
+    row?.saintCode,
+    indexes?.bySaintCode
+  );
+
+  collectMatches(
+    matches,
+    'SKU Smart',
     row?.sku,
     indexes?.bySku
   );
@@ -297,16 +315,25 @@ function detectDuplicatePreviewKeys(
   errors,
   warnings
 ) {
+  const saintCodeRows = new Map();
   const skuRows = new Map();
   const barcodeRows = new Map();
   const nameOnlyRows = new Map();
 
   for (const row of rows) {
     addPreviewKey(
+      saintCodeRows,
+      row?.saintCode,
+      row,
+      'Código SAINT',
+      errors
+    );
+
+    addPreviewKey(
       skuRows,
       row?.sku,
       row,
-      'SKU',
+      'SKU Smart',
       errors
     );
 
@@ -319,6 +346,7 @@ function detectDuplicatePreviewKeys(
     );
 
     if (
+      !clean(row?.saintCode) &&
       !clean(row?.sku) &&
       !clean(row?.barcode)
     ) {
@@ -326,7 +354,7 @@ function detectDuplicatePreviewKeys(
         nameOnlyRows,
         row?.name,
         row,
-        'nombre sin SKU/código de barras',
+        'nombre sin Código SAINT/SKU/código de barras',
         errors
       );
     }
