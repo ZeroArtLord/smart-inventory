@@ -42,4 +42,4 @@ Cuando una etapa se complete, actualizar este archivo.
 - Smart Inventory V1 queda retirado como fuente de migración: nunca entró en uso productivo y no se importará información desde V1.
 - El arranque productivo será desde base operativa cero, usando el catálogo/exportación de SAINT como fuente inicial controlada.
 - La existencia inicial de SAINT se aplicará únicamente mediante un proceso explícito y trazable de carga inicial; importaciones posteriores de catálogo no podrán sobrescribir stock.
-- El bloque de catálogo enriquecido + empaques + plantilla SAINT + apertura única ya está implementado en la rama V2 y cubierto por CI; falta desplegar las migraciones 010/011 en el servidor real y ejecutar el piloto con datos controlados.
+- El bloque de catálogo enriquecido + empaques + plantilla SAINT + separación Código SAINT/SKU Smart + apertura única ya está implementado en la rama V2 y cubierto por CI; falta desplegar las migraciones 010/011/012 en el servidor real y ejecutar el piloto con datos controlados.
