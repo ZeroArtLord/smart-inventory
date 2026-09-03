@@ -90,6 +90,26 @@ Estados previstos para surtidos:
 - unitCost
 - supplierId
 
+## SAINT Initial Load
+
+La carga inicial desde SAINT es una operación excepcional y única por workspace.
+
+### workspace_initial_loads
+
+- workspaceId (único / PK)
+- runId
+- source
+- documentId
+- productCount
+- positiveStockCount
+- appliedBy
+- appliedAt
+- metadata
+
+La existencia inicial nunca actualiza una columna global de stock. El servidor crea un documento `ADJUSTMENT` cerrado y movimientos `ADJUSTMENT` con metadata `kind=SAINT_INITIAL_LOAD`. La fila única de `workspace_initial_loads` impide ejecutar una segunda apertura accidental.
+
+El evento de sincronización `initialLoad` contiene las cantidades por producto y permite reconstruir de forma determinista el documento, sus líneas y movimientos en IndexedDB de otros dispositivos.
+
 ## SyncQueue
 
 Registro durable de operaciones aún no confirmadas por el servidor.
