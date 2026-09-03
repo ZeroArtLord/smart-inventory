@@ -103,3 +103,54 @@ test('SKU Smart personalizado no es reemplazado por Código SAINT', async () => 
     'INTERNO-77'
   );
 });
+
+
+test('bloquea Código SAINT duplicado al crear manualmente', async () => {
+  await createProduct({
+    name: 'PRODUCTO SAINT ÚNICO A',
+    saintCode: 'SA-UNICO-1',
+    sku: 'SKU-UNICO-A',
+    inventoryUnitId: 'unit_und',
+    minStock: 0,
+    maxStock: 1
+  });
+
+  await assert.rejects(
+    () => createProduct({
+      name: 'PRODUCTO SAINT ÚNICO B',
+      saintCode: 'sa-unico-1',
+      sku: 'SKU-UNICO-B',
+      inventoryUnitId: 'unit_und',
+      minStock: 0,
+      maxStock: 1
+    }),
+    error =>
+      error?.code ===
+        'SAINT_CODE_DUPLICATE'
+  );
+});
+
+test('bloquea SKU Smart duplicado al crear manualmente', async () => {
+  await createProduct({
+    name: 'PRODUCTO SKU ÚNICO A',
+    saintCode: 'SA-SKU-A',
+    sku: 'SMART-UNICO',
+    inventoryUnitId: 'unit_und',
+    minStock: 0,
+    maxStock: 1
+  });
+
+  await assert.rejects(
+    () => createProduct({
+      name: 'PRODUCTO SKU ÚNICO B',
+      saintCode: 'SA-SKU-B',
+      sku: 'smart-unico',
+      inventoryUnitId: 'unit_und',
+      minStock: 0,
+      maxStock: 1
+    }),
+    error =>
+      error?.code ===
+        'SMART_SKU_DUPLICATE'
+  );
+});
