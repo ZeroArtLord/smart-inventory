@@ -113,7 +113,7 @@ test('formatea stock humano manteniendo el total base', () => {
   assert.equal(display.whole, 20);
   assert.equal(display.remainder, 5);
   assert.match(display.text, /485 UND/);
-  assert.match(display.text, /20 CAJA \+ 5 UND/);
+  assert.match(display.text, /20 CAJAS \+ 5 UND/);
 });
 
 test('rechaza conversiones inválidas', () => {
