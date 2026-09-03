@@ -22,6 +22,8 @@ const {
 test('prepara carga inicial vinculando filas SAINT con productos importados', () => {
   const preview = {
     fileName: 'saint.xlsx',
+    fileSize: 2048,
+    fileSha256: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     sheetName: 'Existencia',
     hasInitialStockColumn: true,
     rows: [
@@ -63,6 +65,11 @@ test('prepara carga inicial vinculando filas SAINT con productos importados', ()
   );
 
   assert.equal(draft.source, 'SAINT');
+  assert.equal(draft.fileSize, 2048);
+  assert.equal(
+    draft.fileSha256,
+    'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+  );
   assert.equal(draft.rows.length, 2);
   assert.equal(draft.rows[0].productId, 'prd_ref');
   assert.equal(draft.rows[0].quantity, 485);
@@ -258,5 +265,33 @@ test('requiere cero explícito cuando una existencia SAINT está vacía', () => 
       ]
     ),
     /Escribe 0/i
+  );
+});
+
+
+test('rechaza una huella SHA-256 inválida en la carga inicial', () => {
+  assert.throws(
+    () => buildSaintInitialLoadDraft(
+      {
+        hasInitialStockColumn: true,
+        fileSha256: 'no-es-un-sha256',
+        rows: [
+          {
+            excelRow: 2,
+            name: 'PRODUCTO',
+            sku: 'P001',
+            saintInitialStock: 0
+          }
+        ]
+      },
+      [
+        {
+          id: 'prd_p001',
+          name: 'PRODUCTO',
+          sku: 'P001'
+        }
+      ]
+    ),
+    /SHA-256/i
   );
 });
