@@ -295,3 +295,5 @@ test('rechaza una huella SHA-256 inválida en la carga inicial', () => {
     /SHA-256/i
   );
 });
+
+
