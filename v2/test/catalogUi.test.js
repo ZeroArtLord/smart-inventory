@@ -13,6 +13,7 @@ import {
 test('convierte mínimos y máximos desde empaques del editor', () => {
   const payload = buildProductPayloadFromEditor({
     name: 'REFRESCO COLA',
+    saintCode: 'SAINT-REF001',
     sku: 'REF001',
     barcode: '',
     categoryId: 'cat_bebidas',
@@ -28,6 +29,10 @@ test('convierte mínimos y máximos desde empaques del editor', () => {
     replenishmentMethod: 'PURCHASE'
   });
 
+  assert.equal(
+    payload.saintCode,
+    'SAINT-REF001'
+  );
   assert.equal(payload.categoryId, 'cat_bebidas');
   assert.equal(payload.minStock, 120);
   assert.equal(payload.maxStock, 960);
@@ -128,6 +133,7 @@ test('defaults del editor conservan la categoría del producto', () => {
   const defaults = catalogEditorDefaults({
     id: 'prd_cat',
     name: 'PRODUCTO',
+    saintCode: 'SA-EDITOR',
     categoryId: 'cat_1',
     inventoryUnitId: 'unit_und',
     minStock: 0,
@@ -135,6 +141,10 @@ test('defaults del editor conservan la categoría del producto', () => {
     replenishmentMethod: 'BOTH'
   });
 
+  assert.equal(
+    defaults.saintCode,
+    'SA-EDITOR'
+  );
   assert.equal(defaults.categoryId, 'cat_1');
 });
 
@@ -193,5 +203,36 @@ test('editor conserva CAJA como unidad base cuando corresponde', () => {
   assert.match(
     html,
     /value="unit_box"[\s\S]*selected/
+  );
+});
+
+
+test('editor muestra Código SAINT y SKU Smart como campos separados', () => {
+  const html = renderCatalogProductEditor({
+    id: 'prd_identity',
+    name: 'PRODUCTO IDENTIDAD',
+    saintCode: 'SA-100',
+    sku: 'SM-SA-100',
+    inventoryUnitId: 'unit_und',
+    minStock: 0,
+    maxStock: 0,
+    replenishmentMethod: 'BOTH'
+  });
+
+  assert.match(
+    html,
+    /name="saintCode"/
+  );
+  assert.match(
+    html,
+    /Código SAINT/
+  );
+  assert.match(
+    html,
+    /name="sku"/
+  );
+  assert.match(
+    html,
+    /SKU Smart/
   );
 });
