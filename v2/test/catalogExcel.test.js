@@ -341,3 +341,42 @@ test('la plantilla SAINT incluye instrucciones de seguridad y unidades soportada
   assert.match(text, /NO modifica stock/i);
   assert.match(text, /apertura SAINT única/i);
 });
+
+
+test('interpreta formatos numéricos comunes de exportaciones SAINT en español', () => {
+  assert.deepEqual(
+    parseQuantityCell('1.080,50 KG'),
+    {
+      value: 1080.5,
+      unit: 'KG',
+      error: null
+    }
+  );
+
+  assert.deepEqual(
+    parseQuantityCell('1,080.50 KG'),
+    {
+      value: 1080.5,
+      unit: 'KG',
+      error: null
+    }
+  );
+
+  assert.deepEqual(
+    parseQuantityCell('1.080 UND'),
+    {
+      value: 1080,
+      unit: 'UND',
+      error: null
+    }
+  );
+
+  assert.deepEqual(
+    parseQuantityCell('12.5 KG'),
+    {
+      value: 12.5,
+      unit: 'KG',
+      error: null
+    }
+  );
+});
