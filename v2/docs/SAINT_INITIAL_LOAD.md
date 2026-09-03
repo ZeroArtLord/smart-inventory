@@ -99,3 +99,12 @@ El CI cubre:
 - verificación de que actualizar catálogo después no cambia stock;
 - integridad del registro de apertura;
 - persistencia del registro durante backup/restore.
+
+
+## Piloto antes del catálogo completo
+
+La prueba controlada y sus criterios de aceptación están en:
+
+- `docs/SAINT_PILOT_CHECKLIST.md`
+
+No cargar el catálogo completo del negocio hasta aprobar ese checklist con un workspace limpio.
