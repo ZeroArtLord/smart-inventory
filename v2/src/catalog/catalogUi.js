@@ -105,6 +105,8 @@ export function buildProductPayloadFromEditor(
 
   return {
     name: field(source, 'name'),
+    saintCode:
+      field(source, 'saintCode'),
     sku: field(source, 'sku'),
     barcode: field(source, 'barcode'),
     categoryId:
@@ -179,6 +181,7 @@ export function catalogEditorDefaults(product = null) {
     return {
       productId: '',
       name: '',
+      saintCode: '',
       sku: '',
       barcode: '',
       categoryId: '',
@@ -218,6 +221,8 @@ export function catalogEditorDefaults(product = null) {
   return {
     productId: product.id || '',
     name: product.name || '',
+    saintCode:
+      product.saintCode || '',
     sku: product.sku || '',
     barcode: product.barcode || '',
     categoryId: product.categoryId || '',
@@ -287,19 +292,40 @@ export function renderCatalogProductEditor(
 
       <div class="form-pair-v2">
         <label>
-          Código SAINT / SKU
-          <input name="sku" autocomplete="off" value="${escapeHtml(value.sku)}">
+          Código SAINT
+          <input
+            name="saintCode"
+            autocomplete="off"
+            value="${escapeHtml(value.saintCode)}"
+            placeholder="Ej. REF001"
+          >
+          <small class="product-meta">
+            Clave externa para enlazar este producto con SAINT y con el futuro Bridge.
+          </small>
         </label>
         <label>
-          Código de barras
+          SKU Smart
           <input
-            name="barcode"
-            inputmode="numeric"
+            name="sku"
             autocomplete="off"
-            value="${escapeHtml(value.barcode)}"
+            value="${escapeHtml(value.sku)}"
+            placeholder="Se genera si queda vacío"
           >
+          <small class="product-meta">
+            Código interno de Smart Inventory. No reemplaza el Código SAINT.
+          </small>
         </label>
       </div>
+
+      <label>
+        Código de barras
+        <input
+          name="barcode"
+          inputmode="numeric"
+          autocomplete="off"
+          value="${escapeHtml(value.barcode)}"
+        >
+      </label>
 
       <label>
         Categoría
