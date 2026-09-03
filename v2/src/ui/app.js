@@ -2124,6 +2124,14 @@ async function renderCatalog() {
           product => product.id === state.editingProductId
         ) || null
       : null;
+  const editingProductHasMovements =
+    editingProduct
+      ? movements.some(
+          movement =>
+            movement.productId ===
+            editingProduct.id
+        )
+      : false;
 
   if (state.editingProductId && !editingProduct) {
     state.editingProductId = null;
@@ -2308,7 +2316,11 @@ async function renderCatalog() {
         ${canWriteCatalog ? `
           ${renderCatalogProductEditor(
             editingProduct,
-            categories
+            categories,
+            {
+              baseUnitLocked:
+                editingProductHasMovements
+            }
           )}
 
           <section class="card stack catalog-import-card">
