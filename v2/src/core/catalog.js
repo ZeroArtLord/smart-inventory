@@ -32,3 +32,23 @@ export function assertNonNegativeNumber(value, fieldName) {
   }
   return number;
 }
+
+
+export function buildSmartSkuFromSaintCode(
+  saintCode
+) {
+  const source = normalizeText(
+    saintCode
+  ).toUpperCase();
+
+  if (!source) return '';
+
+  const safe = source
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-');
+
+  return safe
+    ? `SM-${safe}`
+    : '';
+}
