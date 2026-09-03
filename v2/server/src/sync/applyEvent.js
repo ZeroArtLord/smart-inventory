@@ -84,10 +84,10 @@ async function upsertProduct(client, workspaceId, p) {
   await client.query(
     `INSERT INTO products (
       workspace_id,id,sku,name,name_normalized,aliases,barcode,category_id,
-      inventory_unit_id,purchase_unit_id,purchase_conversion,min_stock,max_stock,
-      replenishment_method,supplier_id,active,created_at,updated_at
+      inventory_unit_id,purchase_unit_id,purchase_conversion,presentations,
+      min_stock,max_stock,replenishment_method,supplier_id,active,created_at,updated_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18
+      $1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18,$19
     )
     ON CONFLICT (workspace_id,id) DO UPDATE SET
       sku=EXCLUDED.sku,
@@ -99,6 +99,7 @@ async function upsertProduct(client, workspaceId, p) {
       inventory_unit_id=EXCLUDED.inventory_unit_id,
       purchase_unit_id=EXCLUDED.purchase_unit_id,
       purchase_conversion=EXCLUDED.purchase_conversion,
+      presentations=EXCLUDED.presentations,
       min_stock=EXCLUDED.min_stock,
       max_stock=EXCLUDED.max_stock,
       replenishment_method=EXCLUDED.replenishment_method,
@@ -109,6 +110,7 @@ async function upsertProduct(client, workspaceId, p) {
       workspaceId,p.id,p.sku || null,p.name,p.nameNormalized || null,
       JSON.stringify(p.aliases || []),p.barcode || null,p.categoryId || null,
       p.inventoryUnitId || null,p.purchaseUnitId || null,p.purchaseConversion || 1,
+      JSON.stringify(p.presentations || []),
       p.minStock || 0,p.maxStock || 0,p.replenishmentMethod || 'BOTH',
       p.supplierId || null,p.active !== false,p.createdAt,p.updatedAt
     ]
