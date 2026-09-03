@@ -10,14 +10,14 @@ Usar un workspace limpio y un archivo controlado de aproximadamente 5 productos.
 
 ## Archivo piloto recomendado
 
-| USAR | CÓDIGO SAINT | PRODUCTO | EXISTENCIA SAINT | UNIDAD BASE | PRESENTACIÓN | UND POR PRESENTACIÓN | PRESENTACIÓN SECUNDARIA | UND SECUNDARIA | MÍNIMO | MÁXIMO | CATEGORÍA | REPOSICIÓN |
+| USAR | CÓDIGO SAINT | SKU SMART | PRODUCTO | EXISTENCIA SAINT | UNIDAD BASE | PRESENTACIÓN | UND POR PRESENTACIÓN | PRESENTACIÓN SECUNDARIA | UND SECUNDARIA | MÍNIMO | MÁXIMO | CATEGORÍA | REPOSICIÓN |
 | --- | --- | --- | ---: | --- | --- | ---: | --- | ---: | --- | --- | --- | --- |
-| SI | PIL001 | REFRESCO PILOTO | 485 UND | UND | CAJA | 24 | BULTO | 96 | 5 CAJAS | 10 BULTOS | BEBIDAS | COMPRA |
-| SI | PIL002 | AGUA PILOTO | 0 UND | UND | CAJA | 12 |  |  | 2 CAJAS | 10 CAJAS | BEBIDAS | COMPRA |
-| SI | PIL003 | ACEITE PILOTO | 18 UND | UND | CAJA | 6 |  |  | 2 CAJAS | 6 CAJAS | ALIMENTOS | AMBOS |
-| SI | PIL004 | LIMPIADOR PILOTO | 7,5 LT | LT | GARRAFA | 1,5 |  |  | 3 LT | 15 LT | LIMPIEZA | PEDIDO |
-| SI | PIL005 | PRODUCTO POR CAJA | 8 CAJA | CAJA |  |  |  |  | 2 CAJA | 12 CAJA | VARIOS | NINGUNA |
-| NO | PIL999 | PRODUCTO QUE NO SE USA | 999 UND | UND | CAJA | 24 |  |  | 1 CAJA | 5 CAJAS | HISTÓRICO | NINGUNA |
+| SI | PIL001 |  | REFRESCO PILOTO | 485 UND | UND | CAJA | 24 | BULTO | 96 | 5 CAJAS | 10 BULTOS | BEBIDAS | COMPRA |
+| SI | PIL002 |  | AGUA PILOTO | 0 UND | UND | CAJA | 12 |  |  | 2 CAJAS | 10 CAJAS | BEBIDAS | COMPRA |
+| SI | PIL003 |  | ACEITE PILOTO | 18 UND | UND | CAJA | 6 |  |  | 2 CAJAS | 6 CAJAS | ALIMENTOS | AMBOS |
+| SI | PIL004 |  | LIMPIADOR PILOTO | 7,5 LT | LT | GARRAFA | 1,5 |  |  | 3 LT | 15 LT | LIMPIEZA | PEDIDO |
+| SI | PIL005 |  | PRODUCTO POR CAJA | 8 CAJA | CAJA |  |  |  |  | 2 CAJA | 12 CAJA | VARIOS | NINGUNA |
+| NO | PIL999 |  | PRODUCTO QUE NO SE USA | 999 UND | UND | CAJA | 24 |  |  | 1 CAJA | 5 CAJAS | HISTÓRICO | NINGUNA |
 
 ## A. Preflight antes de importar
 
@@ -34,6 +34,8 @@ Al seleccionar el archivo:
 
 - [ ] PIL999 aparece como omitido y no como producto válido.
 - [ ] El plan muestra 5 productos a crear si el workspace está vacío.
+- [ ] Los SKU Smart vacíos aparecen generados como SM-PIL001, SM-PIL002, etc.
+- [ ] El Código SAINT y el SKU Smart se muestran como campos distintos.
 - [ ] La existencia SAINT figura como completa.
 - [ ] Se muestra la huella SHA-256 cuando el navegador está en contexto seguro.
 - [ ] No hay errores de identidad.
@@ -51,7 +53,8 @@ Equivalencias que deben ser visibles/verificables:
 
 Hacer copias del archivo piloto, una prueba por vez. No usar estas copias para la apertura real.
 
-- [ ] Duplicar el SKU PIL001 en otra fila → importación bloqueada.
+- [ ] Duplicar el Código SAINT PIL001 en otra fila → importación bloqueada.
+- [ ] Duplicar un SKU Smart en otra fila → importación bloqueada.
 - [ ] Duplicar un código de barras → importación bloqueada.
 - [ ] Duplicar el nombre exacto de un producto → importación bloqueada.
 - [ ] Usar SKU de un producto y código de barras de otro → importación bloqueada.
@@ -93,7 +96,7 @@ Después de la apertura:
 - [ ] PIL003 tiene stock real 18 UND.
 - [ ] PIL004 tiene stock real 7,5 LT.
 - [ ] PIL005 tiene stock real 8 CAJA.
-- [ ] La auditoría conserva usuario, fecha, archivo fuente y SHA-256 cuando esté disponible.
+- [ ] La auditoría conserva usuario, fecha, archivo fuente, Código SAINT y SHA-256 cuando esté disponible.
 
 ## G. Pruebas posteriores que NO deben cambiar stock
 
