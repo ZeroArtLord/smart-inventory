@@ -162,11 +162,9 @@ function validatePresentations(presentations) {
       throw new Error('Conversión de presentación inválida');
     }
 
-    const key = [
-      code.toLowerCase(),
-      unitId,
-      factor
-    ].join('|');
+    const key =
+      code.toLowerCase() ||
+      unitId;
 
     if (seen.has(key)) {
       throw new Error('Presentación duplicada');
