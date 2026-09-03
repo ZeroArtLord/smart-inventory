@@ -62,3 +62,44 @@ test('bloquea cambiar unidad base después de existir movimientos', async () => 
       /unidad base/i.test(error.message)
   );
 });
+
+
+test('genera SKU Smart interno cuando existe Código SAINT y SKU está vacío', async () => {
+  const product = await createProduct({
+    name: 'PRODUCTO SAINT AUTO SKU',
+    saintCode: 'sa 001/ve',
+    sku: '',
+    inventoryUnitId: 'unit_und',
+    minStock: 0,
+    maxStock: 10
+  });
+
+  assert.equal(
+    product.saintCode,
+    'SA 001/VE'
+  );
+  assert.equal(
+    product.sku,
+    'SM-SA-001-VE'
+  );
+});
+
+test('SKU Smart personalizado no es reemplazado por Código SAINT', async () => {
+  const product = await createProduct({
+    name: 'PRODUCTO SKU CUSTOM',
+    saintCode: 'SA-002',
+    sku: 'INTERNO-77',
+    inventoryUnitId: 'unit_und',
+    minStock: 0,
+    maxStock: 10
+  });
+
+  assert.equal(
+    product.saintCode,
+    'SA-002'
+  );
+  assert.equal(
+    product.sku,
+    'INTERNO-77'
+  );
+});
