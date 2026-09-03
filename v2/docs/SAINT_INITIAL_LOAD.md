@@ -67,6 +67,20 @@ La operación exige simultáneamente:
 - `010_product_presentations.sql`
 - `011_saint_initial_load.sql`
 
+Antes del piloto real, el servidor puede inspeccionarse sin aplicar stock con:
+
+```bash
+npm run saint:preflight
+```
+
+Opcionalmente puede limitarse a un workspace:
+
+```bash
+npm run saint:preflight -- --workspace-key <workspace_key>
+```
+
+El preflight reporta catálogo, movimientos existentes, apertura previa y si el workspace está listo para la carga inicial.
+
 ## Validación automática
 
 El CI cubre:
