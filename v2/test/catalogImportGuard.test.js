@@ -194,3 +194,47 @@ test('resume cuántos productos se crearán, actualizarán y cuántas categoría
     categoriesToCreate: 1
   });
 });
+
+
+test('preflight bloquea cambiar unidad base de producto con movimientos', () => {
+  const products = [
+    {
+      id: 'prd_hist',
+      name: 'PRODUCTO HISTÓRICO',
+      sku: 'H001',
+      barcode: '',
+      inventoryUnitId: 'unit_und'
+    }
+  ];
+
+  const rows = [
+    {
+      excelRow: 2,
+      name: 'PRODUCTO HISTÓRICO',
+      sku: 'H001',
+      barcode: '',
+      inventoryUnitId: 'unit_kg'
+    }
+  ];
+
+  const movements = [
+    {
+      id: 'mov_1',
+      productId: 'prd_hist',
+      type: 'ADJUSTMENT'
+    }
+  ];
+
+  const result =
+    analyzeCatalogImportConflicts(
+      rows,
+      products,
+      movements
+    );
+
+  assert.equal(result.errors.length, 1);
+  assert.match(
+    result.errors[0],
+    /unidad base.*movimientos/i
+  );
+});
