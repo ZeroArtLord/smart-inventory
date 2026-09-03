@@ -13,6 +13,7 @@ Campos previstos:
 - inventoryUnit
 - purchaseUnit
 - purchaseConversion
+- presentations[] (empaques/presentaciones humanas; conversión siempre hacia la unidad base)
 - minStock
 - maxStock
 - replenishmentMethod
@@ -20,6 +21,22 @@ Campos previstos:
 - active
 - createdAt
 - updatedAt
+
+### Presentaciones / empaques
+
+La existencia real, mínimos, máximos y movimientos se expresan siempre en la unidad base del producto.
+
+`presentations[]` permite representar una o varias presentaciones humanas sin cambiar la magnitud real del stock. Cada elemento contiene, como mínimo:
+
+- id
+- unitId opcional
+- code
+- name
+- conversion (cantidad de unidad base contenida)
+- primary
+- active
+
+Ejemplo: unidad base UND, CAJA = 24 UND y BULTO = 96 UND. Un stock de 485 UND sigue siendo 485 internamente y puede mostrarse como 20 CAJAS + 5 UND. Los campos legacy `purchaseUnit` / `purchaseConversion` reflejan la presentación principal para conservar compatibilidad.
 
 ## Movement
 
