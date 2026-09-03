@@ -791,7 +791,8 @@ async function runSaintInitialLoadSmoke(db) {
        run_id,
        product_count,
        positive_stock_count,
-       document_id
+       document_id,
+       metadata
      FROM workspace_initial_loads
      WHERE workspace_id = $1`,
     [bootstrapResult.workspace.id]
