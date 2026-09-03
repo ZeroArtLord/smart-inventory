@@ -127,3 +127,22 @@ test('rechaza conversiones inválidas', () => {
     /mayor que cero/
   );
 });
+
+
+test('rechaza dos presentaciones con el mismo código aunque tengan distinta conversión', () => {
+  assert.throws(
+    () => normalizePresentations([
+      {
+        code: 'CAJA',
+        conversion: 24,
+        primary: true
+      },
+      {
+        code: 'CAJA',
+        conversion: 36,
+        primary: false
+      }
+    ]),
+    /Presentación duplicada/i
+  );
+});
