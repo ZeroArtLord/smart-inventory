@@ -85,6 +85,12 @@ export function validateSyncEvent(event) {
       }
       validateMovement(payload);
       break;
+    case 'initialLoad':
+      if (operation !== 'CREATE') {
+        throw new Error('La carga inicial solo admite CREATE');
+      }
+      validateInitialLoad(payload);
+      break;
     default:
       throw new Error(`Entidad no soportada: ${entityType}`);
   }
@@ -299,6 +305,40 @@ function validateReplenishment(item) {
 
   requireDate(item.createdAt, 'createdAt');
   requireDate(item.updatedAt, 'updatedAt');
+}
+
+function validateInitialLoad(payload) {
+  requireText(payload.source || 'SAINT', 'Fuente de carga inicial');
+  requireDate(payload.createdAt, 'createdAt');
+
+  const rows = payload.rows;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error('La carga inicial requiere productos');
+  }
+
+  if (rows.length > 5000) {
+    throw new Error('La carga inicial supera el máximo de 5000 productos');
+  }
+
+  const seen = new Set();
+
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') {
+      throw new Error('Fila de carga inicial inválida');
+    }
+
+    requireText(row.productId, 'productId de carga inicial');
+
+    if (seen.has(row.productId)) {
+      throw new Error('La carga inicial contiene productos duplicados');
+    }
+    seen.add(row.productId);
+
+    finiteNonNegative(
+      row.quantity ?? 0,
+      'Existencia inicial'
+    );
+  }
 }
 
 function validateMovement(movement) {
