@@ -105,3 +105,46 @@ test('permiso denegado se expone como 403 y no como error interno', () => {
       error.statusCode === 403
   );
 });
+
+
+test('carga inicial SAINT exige catálogo y ajustes', () => {
+  const event = {
+    entityType: 'initialLoad',
+    operation: 'CREATE',
+    payload: {}
+  };
+
+  assert.throws(
+    () => assertEventPermission(
+      {
+        permissions: [
+          PERMISSIONS.CATALOG_WRITE
+        ]
+      },
+      event
+    ),
+    /adjustment\.write/i
+  );
+
+  assert.throws(
+    () => assertEventPermission(
+      {
+        permissions: [
+          PERMISSIONS.ADJUSTMENT_WRITE
+        ]
+      },
+      event
+    ),
+    /catalog\.write/i
+  );
+
+  assert.doesNotThrow(() => assertEventPermission(
+    {
+      permissions: [
+        PERMISSIONS.CATALOG_WRITE,
+        PERMISSIONS.ADJUSTMENT_WRITE
+      ]
+    },
+    event
+  ));
+});
