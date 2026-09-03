@@ -32,6 +32,8 @@
 - El preflight bloquea SKU, códigos de barras, nombres duplicados y cruces ambiguos contra el catálogo existente antes de modificar datos.
 - La vista previa muestra altas, actualizaciones y categorías nuevas previstas.
 - Ausencia de columna Existencia SAINT y celdas vacías ya no se convierten silenciosamente en cero.
+- Unidades base desconocidas se rechazan explícitamente en vez de convertirse a UND; actualmente la plantilla soporta UND, KG, LT, CAJA y BULTO.
+- Si una aplicación de catálogo termina parcialmente por un error inesperado, la apertura SAINT queda bloqueada hasta corregir y repetir la importación.
 - Smart Inventory puede generar la plantilla Excel de carga inicial SAINT desde la propia interfaz y calcula SHA-256 del archivo fuente para auditoría cuando Web Crypto está disponible.
 
 ### Fase 3 — Inventario transaccional
