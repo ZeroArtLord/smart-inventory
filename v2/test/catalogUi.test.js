@@ -6,7 +6,8 @@ import {
   catalogEditorDefaults,
   catalogPresentationSummary,
   catalogQuantityDisplay,
-  editorStockToBase
+  editorStockToBase,
+  renderCatalogProductEditor
 } from '../src/catalog/catalogUi.js';
 
 test('convierte mínimos y máximos desde empaques del editor', () => {
@@ -135,4 +136,31 @@ test('defaults del editor conservan la categoría del producto', () => {
   });
 
   assert.equal(defaults.categoryId, 'cat_1');
+});
+
+
+test('editor visual bloquea selector de unidad base cuando existe historial', () => {
+  const html = renderCatalogProductEditor(
+    {
+      id: 'prd_locked',
+      name: 'PRODUCTO CON HISTORIAL',
+      inventoryUnitId: 'unit_und',
+      minStock: 0,
+      maxStock: 0,
+      replenishmentMethod: 'BOTH'
+    },
+    [],
+    {
+      baseUnitLocked: true
+    }
+  );
+
+  assert.match(
+    html,
+    /name="inventoryUnitId"[\s\S]*disabled/
+  );
+  assert.match(
+    html,
+    /Unidad base bloqueada/i
+  );
 });
