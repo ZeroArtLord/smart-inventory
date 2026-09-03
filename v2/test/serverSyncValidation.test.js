@@ -188,3 +188,26 @@ test('rechaza existencia negativa en carga inicial', () => {
     payload
   }), /Existencia inicial/i);
 });
+
+
+test('rechaza huella SHA-256 inválida en carga inicial', () => {
+  const payload = {
+    id: 'saintload_bad_hash',
+    source: 'SAINT',
+    fileSha256: '1234',
+    createdAt: '2026-09-03T14:00:00.000Z',
+    rows: [
+      {
+        productId: 'prd_test',
+        quantity: 0
+      }
+    ]
+  };
+
+  assert.throws(() => validateSyncEvent({
+    entityType: 'initialLoad',
+    entityId: payload.id,
+    operation: 'CREATE',
+    payload
+  }), /SHA-256/i);
+});
