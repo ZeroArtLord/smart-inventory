@@ -107,6 +107,108 @@ export function validateCatalogFile(file) {
   return { valid: true, message: 'Archivo válido' };
 }
 
+export function buildSaintInitialLoadTemplateMatrix() {
+  return [
+    [
+      'USAR',
+      'CÓDIGO SAINT',
+      'PRODUCTO',
+      'EXISTENCIA SAINT',
+      'UNIDAD BASE',
+      'PRESENTACIÓN',
+      'UNIDADES POR PRESENTACIÓN',
+      'PRESENTACIÓN SECUNDARIA',
+      'UND PRESENTACIÓN SECUNDARIA',
+      'MÍNIMO',
+      'MÁXIMO',
+      'CATEGORÍA',
+      'REPOSICIÓN',
+      'CÓDIGO DE BARRAS'
+    ],
+    [
+      'SI',
+      'REF001',
+      'REFRESCO COLA 350 ML',
+      '485 UND',
+      'UND',
+      'CAJA',
+      24,
+      'BULTO',
+      96,
+      '5 CAJAS',
+      '10 BULTOS',
+      'BEBIDAS',
+      'COMPRA',
+      ''
+    ],
+    [
+      'NO',
+      'OLD001',
+      'PRODUCTO HISTÓRICO NO USADO',
+      0,
+      'UND',
+      '',
+      '',
+      '',
+      '',
+      0,
+      0,
+      '',
+      'NINGUNA',
+      ''
+    ]
+  ];
+}
+
+export function downloadSaintInitialLoadTemplate(
+  xlsx = globalThis.XLSX
+) {
+  if (
+    !xlsx?.utils?.aoa_to_sheet ||
+    !xlsx?.utils?.book_new ||
+    !xlsx?.utils?.book_append_sheet ||
+    !xlsx?.writeFile
+  ) {
+    throw new Error('El generador Excel no está disponible');
+  }
+
+  const worksheet = xlsx.utils.aoa_to_sheet(
+    buildSaintInitialLoadTemplateMatrix()
+  );
+
+  worksheet['!cols'] = [
+    { wch: 10 },
+    { wch: 18 },
+    { wch: 34 },
+    { wch: 20 },
+    { wch: 14 },
+    { wch: 18 },
+    { wch: 26 },
+    { wch: 26 },
+    { wch: 28 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 20 },
+    { wch: 18 },
+    { wch: 22 }
+  ];
+
+  const workbook = xlsx.utils.book_new();
+
+  xlsx.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    'Carga inicial SAINT'
+  );
+
+  const date = new Date().toISOString().slice(0, 10);
+
+  xlsx.writeFile(
+    workbook,
+    `smart_inventory_carga_inicial_saint_${date}.xlsx`
+  );
+}
+
 export async function readCatalogFile(file, xlsx = globalThis.XLSX) {
   const validation = validateCatalogFile(file);
   if (!validation.valid) throw new Error(validation.message);
