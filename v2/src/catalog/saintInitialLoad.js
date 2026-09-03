@@ -25,6 +25,12 @@ export function buildSaintInitialLoadDraft(
     );
   }
 
+  if (!preview?.hasInitialStockColumn) {
+    throw new Error(
+      'El archivo no contiene una columna de Existencia SAINT; el catálogo puede importarse, pero la apertura de stock no se puede preparar.'
+    );
+  }
+
   const indexes =
     buildCatalogIdentityIndexes(products);
   const missing = [];
@@ -58,10 +64,17 @@ export function buildSaintInitialLoadDraft(
       continue;
     }
 
+    if (
+      row.saintInitialStock === null ||
+      row.saintInitialStock === undefined
+    ) {
+      throw new Error(
+        `Falta existencia SAINT explícita para ${row.name || product.name}. Escribe 0 si realmente no hay stock.`
+      );
+    }
+
     const quantity = Number(
-      row.saintInitialStock ??
-      row.ignoredStock ??
-      0
+      row.saintInitialStock
     );
 
     if (!Number.isFinite(quantity) || quantity < 0) {
