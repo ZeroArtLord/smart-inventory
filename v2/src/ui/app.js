@@ -5007,12 +5007,18 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
 
     if (recovery.recovered) {
       state.authAccessOffline = false;
-      scheduleSync(500);
-      await refreshSaveStatus();
-      return {
-        ...result,
-        recoveredAuth: true
-      };
+
+      result = await syncNow({
+        localUserId: currentOwnerId(),
+        displayName:
+          state.authUser?.displayName ||
+          state.authUser?.email ||
+          'Usuario local'
+      });
+
+      if (result?.ok) {
+        await refreshSaveStatus();
+      }
     }
 
     if (recovery.confirmedInvalid) {
