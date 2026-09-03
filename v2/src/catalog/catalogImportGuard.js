@@ -266,22 +266,14 @@ function detectDuplicatePreviewKeys(
     names.set(key, current);
   }
 
-  for (const [key, sameNameRows] of names) {
+  for (const sameNameRows of names.values()) {
     if (sameNameRows.length <= 1) {
       continue;
     }
 
-    const allStrong =
-      sameNameRows.every(row =>
-        clean(row.sku) ||
-        clean(row.barcode)
-      );
-
-    if (allStrong) {
-      warnings.push(
-        `Nombre repetido "${sameNameRows[0].name}" en filas ${sameNameRows.map(row => row.excelRow || '?').join(', ')}; se distinguirán por SKU/código de barras.`
-      );
-    }
+    errors.push(
+      `Nombre duplicado "${sameNameRows[0].name}" en filas ${sameNameRows.map(row => row.excelRow || '?').join(', ')}. Cada fila de carga debe identificar un solo producto.`
+    );
   }
 }
 
