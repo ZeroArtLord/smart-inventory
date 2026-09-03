@@ -1,5 +1,5 @@
 const DB_NAME = 'smart_inventory_v2';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 export const STORES = Object.freeze({
   PRODUCTS: 'products',
@@ -37,6 +37,7 @@ function createDatabase() {
       ensureIndex(products, 'categoryId', 'categoryId');
       ensureIndex(products, 'barcode', 'barcode');
       ensureIndex(products, 'sku', 'sku');
+      ensureIndex(products, 'saintCode', 'saintCode');
 
       const categories = ensureStore(db, tx, STORES.CATEGORIES, 'id');
       ensureIndex(categories, 'nameNormalized', 'nameNormalized');
