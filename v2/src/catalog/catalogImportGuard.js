@@ -12,22 +12,34 @@ export function buildCatalogIdentityIndexes(
   };
 
   for (const product of products) {
-    addIndexValue(
-      indexes.bySku,
-      product.sku,
-      product
-    );
-    addIndexValue(
-      indexes.byBarcode,
-      product.barcode,
-      product
-    );
-    addIndexValue(
-      indexes.byName,
-      product.name,
+    indexCatalogProduct(
+      indexes,
       product
     );
   }
+
+  return indexes;
+}
+
+export function indexCatalogProduct(
+  indexes,
+  product
+) {
+  addIndexValue(
+    indexes.bySku,
+    product?.sku,
+    product
+  );
+  addIndexValue(
+    indexes.byBarcode,
+    product?.barcode,
+    product
+  );
+  addIndexValue(
+    indexes.byName,
+    product?.name,
+    product
+  );
 
   return indexes;
 }
