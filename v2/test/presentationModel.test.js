@@ -146,3 +146,30 @@ test('rechaza dos presentaciones con el mismo código aunque tengan distinta con
     /Presentación duplicada/i
   );
 });
+
+
+test('rechaza más de ocho presentaciones en vez de truncarlas silenciosamente', () => {
+  const presentations = Array.from(
+    { length: 9 },
+    (_, index) => ({
+      code: `PACK${index + 1}`,
+      conversion: index + 1,
+      primary: index === 0
+    })
+  );
+
+  assert.throws(
+    () => normalizePresentations(presentations),
+    /no puede tener más de 8 presentaciones/i
+  );
+});
+
+test('rechaza estructura de presentaciones que no sea una lista', () => {
+  assert.throws(
+    () => normalizePresentations({
+      code: 'CAJA',
+      conversion: 24
+    }),
+    /deben ser una lista/i
+  );
+});
