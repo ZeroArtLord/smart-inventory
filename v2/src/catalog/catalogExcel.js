@@ -224,6 +224,7 @@ export async function readCatalogFile(file, xlsx = globalThis.XLSX) {
   }
 
   const buffer = await file.arrayBuffer();
+  const fileSha256 = await sha256Hex(buffer);
   const workbook = xlsx.read(new Uint8Array(buffer), { type: 'array' });
 
   if (!workbook.SheetNames?.length) {
@@ -241,8 +242,32 @@ export async function readCatalogFile(file, xlsx = globalThis.XLSX) {
   return {
     sheetName: firstSheetName,
     fileName: file.name,
+    fileSize: Number(file.size || buffer.byteLength || 0),
+    fileSha256,
     ...parseCatalogMatrix(matrix)
   };
+}
+
+async function sha256Hex(buffer) {
+  const subtle =
+    globalThis.crypto?.subtle;
+
+  if (!subtle?.digest) return null;
+
+  try {
+    const digest = await subtle.digest(
+      'SHA-256',
+      buffer
+    );
+
+    return [...new Uint8Array(digest)]
+      .map(byte =>
+        byte.toString(16).padStart(2, '0')
+      )
+      .join('');
+  } catch (_) {
+    return null;
+  }
 }
 
 export function parseCatalogMatrix(matrix) {
