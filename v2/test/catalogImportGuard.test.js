@@ -26,7 +26,10 @@ test('bloquea SKU duplicado dentro del mismo Excel', () => {
   ], []);
 
   assert.equal(result.errors.length, 1);
-  assert.match(result.errors[0], /SKU duplicado/i);
+  assert.match(
+    result.errors[0],
+    /SKU Smart duplicado/i
+  );
 });
 
 test('bloquea código de barras duplicado dentro del mismo Excel', () => {
