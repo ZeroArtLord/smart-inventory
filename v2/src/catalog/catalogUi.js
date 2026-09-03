@@ -236,7 +236,10 @@ export function catalogEditorDefaults(product = null) {
 
 export function renderCatalogProductEditor(
   product = null,
-  categories = []
+  categories = [],
+  {
+    baseUnitLocked = false
+  } = {}
 ) {
   const value = catalogEditorDefaults(product);
   const editing = Boolean(value.productId);
@@ -314,7 +317,10 @@ export function renderCatalogProductEditor(
 
       <label>
         Unidad base
-        <select name="inventoryUnitId">
+        <select
+          name="inventoryUnitId"
+          ${baseUnitLocked ? 'disabled' : ''}
+        >
           ${BASE_UNITS.map(unit => `
             <option
               value="${unit.id}"
@@ -323,7 +329,9 @@ export function renderCatalogProductEditor(
           `).join('')}
         </select>
         <small class="product-meta">
-          Stock, movimientos y cálculos internos siempre usan esta unidad.
+          ${baseUnitLocked
+            ? 'Unidad base bloqueada: este producto ya tiene movimientos.'
+            : 'Stock, movimientos y cálculos internos siempre usan esta unidad.'}
         </small>
       </label>
 
