@@ -176,6 +176,7 @@ export function analyzeCatalogImportConflicts(
 
     if (
       productsWithHistory.has(product.id) &&
+      row.hasExplicitUnit === true &&
       row.inventoryUnitId &&
       product.inventoryUnitId &&
       row.inventoryUnitId !== product.inventoryUnitId
