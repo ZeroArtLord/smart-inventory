@@ -27,7 +27,8 @@ import {
   saintInitialLoadSummary
 } from '../catalog/saintInitialLoad.js';
 import {
-  analyzeCatalogImportConflicts
+  analyzeCatalogImportConflicts,
+  buildCatalogImportPlan
 } from '../catalog/catalogImportGuard.js';
 import {
   STORES,
@@ -3502,14 +3503,25 @@ async function handleChange(event) {
     const preview =
       await readCatalogFile(file);
 
+    const categories =
+      await getAll(STORES.CATEGORIES);
+
     const guard =
       analyzeCatalogImportConflicts(
         preview.rows || [],
         state.products || []
       );
 
+    const importPlan =
+      buildCatalogImportPlan(
+        preview.rows || [],
+        state.products || [],
+        categories
+      );
+
     state.importPreview = {
       ...preview,
+      importPlan,
       errors: [
         ...new Set([
           ...(preview.errors || []),
@@ -4420,6 +4432,13 @@ function renderCatalogImportPreview(preview) {
           </div>
         </div>
         <span class="badge">${rows.length} válidos</span>
+        ${preview.importPlan ? `
+          <span class="badge status-good">${preview.importPlan.creates} nuevos</span>
+          <span class="badge">${preview.importPlan.updates} actualizaciones</span>
+          ${preview.importPlan.categoriesToCreate
+            ? `<span class="badge">${preview.importPlan.categoriesToCreate} categoría(s) nueva(s)</span>`
+            : ''}
+        ` : ''}
         ${preview.skippedRows
           ? `<span class="badge">${preview.skippedRows} omitidos</span>`
           : ''}
