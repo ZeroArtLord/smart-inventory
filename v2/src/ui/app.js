@@ -2094,6 +2094,13 @@ async function renderCatalog() {
   const canWriteCatalog =
     hasClientPermission('catalog.write');
   const movements = await getAll(STORES.MOVEMENTS);
+  const categories = await getAll(STORES.CATEGORIES);
+  const categoryById = new Map(
+    categories.map(category => [
+      category.id,
+      category
+    ])
+  );
   const inventoryRows = buildInventoryReport(
     state.products,
     movements,
@@ -2197,6 +2204,11 @@ async function renderCatalog() {
                             <div>
                               <strong>${escapeHtml(product.name)}</strong>
                               <small>${escapeHtml(product.barcode || 'Sin código de barras')}</small>
+                              <small>${escapeHtml(
+                                product.categoryId
+                                  ? categoryById.get(product.categoryId)?.name || 'Categoría desconocida'
+                                  : 'Sin categoría'
+                              )}</small>
                               <small>${escapeHtml(catalogPresentationSummary(product))}</small>
                               ${canWriteCatalog ? `
                                 <button
@@ -2258,6 +2270,11 @@ async function renderCatalog() {
                       <div>
                         <strong>${escapeHtml(product.name)}</strong>
                         <small>${escapeHtml(product.sku || product.barcode || 'Sin código')}</small>
+                        <small>${escapeHtml(
+                          product.categoryId
+                            ? categoryById.get(product.categoryId)?.name || 'Categoría desconocida'
+                            : 'Sin categoría'
+                        )}</small>
                         <small>${escapeHtml(catalogPresentationSummary(product))}</small>
                         ${canWriteCatalog ? `
                           <button
@@ -2288,7 +2305,10 @@ async function renderCatalog() {
 
       <aside class="catalog-side-v2">
         ${canWriteCatalog ? `
-          ${renderCatalogProductEditor(editingProduct)}
+          ${renderCatalogProductEditor(
+            editingProduct,
+            categories
+          )}
 
           <section class="card stack catalog-import-card">
             <div class="section-head">
