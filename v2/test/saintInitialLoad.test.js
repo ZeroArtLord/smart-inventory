@@ -23,6 +23,7 @@ test('prepara carga inicial vinculando filas SAINT con productos importados', ()
   const preview = {
     fileName: 'saint.xlsx',
     sheetName: 'Existencia',
+    hasInitialStockColumn: true,
     rows: [
       {
         excelRow: 2,
@@ -129,6 +130,7 @@ test('rechaza carga si una fila no puede vincularse al catálogo', () => {
   assert.throws(
     () => buildSaintInitialLoadDraft(
       {
+        hasInitialStockColumn: true,
         rows: [
           {
             excelRow: 5,
@@ -204,4 +206,57 @@ test('aplicar evento remoto de carga inicial crea documento, líneas y movimient
 
   assert.equal(openingMovements.length, 1);
   assert.equal(openingMovements[0].delta, 12);
+});
+
+
+test('rechaza preparar apertura si el archivo no trae columna de existencia', () => {
+  assert.throws(
+    () => buildSaintInitialLoadDraft(
+      {
+        hasInitialStockColumn: false,
+        rows: [
+          {
+            excelRow: 2,
+            name: 'PRODUCTO',
+            sku: 'P001',
+            saintInitialStock: null
+          }
+        ]
+      },
+      [
+        {
+          id: 'prd_p001',
+          name: 'PRODUCTO',
+          sku: 'P001'
+        }
+      ]
+    ),
+    /no contiene una columna de Existencia SAINT/i
+  );
+});
+
+test('requiere cero explícito cuando una existencia SAINT está vacía', () => {
+  assert.throws(
+    () => buildSaintInitialLoadDraft(
+      {
+        hasInitialStockColumn: true,
+        rows: [
+          {
+            excelRow: 2,
+            name: 'PRODUCTO',
+            sku: 'P001',
+            saintInitialStock: null
+          }
+        ]
+      },
+      [
+        {
+          id: 'prd_p001',
+          name: 'PRODUCTO',
+          sku: 'P001'
+        }
+      ]
+    ),
+    /Escribe 0/i
+  );
 });
