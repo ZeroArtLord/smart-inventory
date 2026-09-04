@@ -1,4 +1,9 @@
 import { MOVEMENT_TYPES } from '../core/movementTypes.js';
+import {
+  INTELLIGENCE_MODES,
+  DEFAULT_INTELLIGENCE_POLICY,
+  normalizeIntelligenceMode
+} from '../core/catalog.js';
 import { calculateCoverageDays } from '../inventory/stockEngine.js';
 
 const DAY_MS = 86400000;
@@ -199,6 +204,135 @@ export function buildAdaptiveDemandForecast(
     reasonCodes,
     profile,
     trend
+  };
+}
+
+export function getAdaptiveReplenishmentSuggestion(
+  product,
+  context = {}
+) {
+  const mode = normalizeIntelligenceMode(
+    product?.intelligenceMode ?? DEFAULT_INTELLIGENCE_POLICY.mode
+  );
+  const forecast = context.forecast || null;
+  const forecastDaily = nonNegative(
+    forecast?.forecastDaily ??
+    context.forecastDaily ??
+    context.dailyConsumption
+  );
+  const confidence =
+    forecast?.confidence ||
+    context.confidence ||
+    'INSUFFICIENT';
+
+  const targetDays = positiveOr(
+    product?.targetDays ?? context.targetDays,
+    DEFAULT_INTELLIGENCE_POLICY.targetDays
+  );
+  const safetyDays = nonNegative(
+    product?.safetyDays ??
+    context.safetyDays ??
+    DEFAULT_INTELLIGENCE_POLICY.safetyDays
+  );
+
+  const stock = nonNegative(context.stock);
+  const pendingInbound = nonNegative(context.pendingInbound);
+  const projectedAvailable = stock + pendingInbound;
+  const manualMin = nonNegative(product?.minStock);
+  const manualMax = nonNegative(product?.maxStock);
+  const dynamicReady =
+    forecastDaily > 0 &&
+    confidence !== 'INSUFFICIENT';
+
+  const recommendedMin = dynamicReady
+    ? forecastDaily * targetDays
+    : manualMin;
+  const rawDynamicTarget = dynamicReady
+    ? forecastDaily * (targetDays + safetyDays)
+    : manualMin;
+  const recommendedMax = dynamicReady
+    ? rawDynamicTarget
+    : manualMax > 0
+      ? manualMax
+      : manualMin;
+
+  const reasonCodes = [
+    ...(forecast?.reasonCodes || [])
+  ];
+  const warningCodes = [];
+
+  let targetStock;
+
+  if (!dynamicReady) {
+    targetStock = manualMin;
+    reasonCodes.push('MANUAL_SEED_FALLBACK');
+  } else if (mode === INTELLIGENCE_MODES.SEED) {
+    if (confidence === 'LOW') {
+      targetStock = Math.max(manualMin, rawDynamicTarget);
+      reasonCodes.push('SEED_LOW_CONFIDENCE_FLOOR');
+    } else {
+      targetStock = rawDynamicTarget;
+      reasonCodes.push('SEED_DYNAMIC_TARGET');
+    }
+  } else if (mode === INTELLIGENCE_MODES.ADAPTIVE) {
+    targetStock = rawDynamicTarget;
+    reasonCodes.push('ADAPTIVE_DYNAMIC_TARGET');
+  } else {
+    targetStock = rawDynamicTarget;
+
+    if (targetStock < manualMin) {
+      targetStock = manualMin;
+      warningCodes.push('DEMAND_BELOW_HARD_MIN');
+    }
+
+    if (manualMax > 0 && targetStock > manualMax) {
+      targetStock = manualMax;
+      warningCodes.push('DEMAND_ABOVE_HARD_MAX');
+    }
+
+    reasonCodes.push('HARD_LIMIT_APPLIED');
+  }
+
+  if (pendingInbound > 0) {
+    reasonCodes.push('PENDING_INBOUND_INCLUDED');
+  }
+
+  const suggestedQuantity = Math.max(
+    0,
+    Math.ceil(targetStock - projectedAvailable)
+  );
+
+  const coverageDays = calculateCoverageDays(
+    stock,
+    forecastDaily
+  );
+  const projectedCoverageDays = calculateCoverageDays(
+    projectedAvailable,
+    forecastDaily
+  );
+
+  return {
+    mode,
+    confidence,
+    forecastDaily: round(forecastDaily),
+    forecastWeekly: round(forecastDaily * 7),
+    targetDays: round(targetDays),
+    safetyDays: round(safetyDays),
+    manualMin: round(manualMin),
+    manualMax: round(manualMax),
+    vigiaRecommendedMin: round(recommendedMin),
+    vigiaRecommendedMax: round(recommendedMax),
+    rawDynamicTarget: round(rawDynamicTarget),
+    vigiaTargetStock: round(targetStock),
+    stock: round(stock),
+    pendingInbound: round(pendingInbound),
+    projectedAvailable: round(projectedAvailable),
+    suggestedQuantity,
+    coverageDays: finiteOrNull(coverageDays),
+    projectedCoverageDays: finiteOrNull(projectedCoverageDays),
+    reasonCodes: uniqueCodes(reasonCodes),
+    warningCodes: uniqueCodes(warningCodes),
+    dynamicReady
   };
 }
 
@@ -497,6 +631,10 @@ function determineReason({
   if (minimumDeficit > 0 && targetStock <= minStock) return 'BELOW_MINIMUM';
   if (minimumDeficit > 0) return 'BELOW_MINIMUM_AND_PREDICTED_DEMAND';
   return 'PREDICTED_DEMAND';
+}
+
+function uniqueCodes(values) {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function nonNegative(value) {
