@@ -122,6 +122,86 @@ export function buildDemandTrend(
   };
 }
 
+export function buildAdaptiveDemandForecast(
+  movements,
+  productId,
+  now = new Date(),
+  { trendWindowDays = 14 } = {}
+) {
+  const profile = buildConsumptionProfile(
+    movements,
+    productId,
+    now
+  );
+  const trend = buildDemandTrend(
+    movements,
+    productId,
+    now,
+    { windowDays: trendWindowDays }
+  );
+
+  const baseDaily = nonNegative(
+    profile.estimatedDailyConsumption
+  );
+  const adjustedDaily = adjustDailyConsumptionForTrend(
+    baseDaily,
+    trend
+  );
+  const adjustmentFactor = baseDaily > 0
+    ? adjustedDaily / baseDaily
+    : 1;
+
+  const reasonCodes = [];
+  const confidenceReasons = [];
+
+  if (profile.historyDays === 0) {
+    reasonCodes.push('NO_HISTORY');
+    confidenceReasons.push('No hay surtidos históricos para estimar demanda.');
+  } else if (profile.confidence === 'INSUFFICIENT') {
+    reasonCodes.push('HISTORY_INSUFFICIENT');
+    confidenceReasons.push(
+      `Solo hay ${profile.historyDays} día(s) de historial útil; VIGÍA no proyecta demanda todavía.`
+    );
+  } else {
+    reasonCodes.push('RECENT_CONSUMPTION');
+    confidenceReasons.push(
+      `La demanda base usa ${profile.historyDays} día(s) de historial y ${profile.movementCount} surtido(s).`
+    );
+  }
+
+  if (trend.confidence === 'INSUFFICIENT') {
+    reasonCodes.push('TREND_INSUFFICIENT');
+    confidenceReasons.push(
+      'La tendencia reciente no tiene suficientes movimientos para modificar la demanda base.'
+    );
+  } else {
+    reasonCodes.push(`TREND_${trend.direction}`);
+    confidenceReasons.push(
+      `Tendencia ${trend.direction} en ventana de ${trend.windowDays} días con cambio ${trend.percentChange ?? 0}%.`
+    );
+  }
+
+  return {
+    historyDays: profile.historyDays,
+    movementCount: profile.movementCount,
+    baseDailyConsumption: round(baseDaily),
+    baseWeeklyConsumption: round(baseDaily * 7),
+    trendAdjustedDailyConsumption: round(adjustedDaily),
+    forecastDaily: round(adjustedDaily),
+    forecastWeekly: round(adjustedDaily * 7),
+    trendAdjustmentFactor: round(adjustmentFactor),
+    trendWindowDays: trend.windowDays,
+    trendDirection: trend.direction,
+    trendPercentChange: trend.percentChange,
+    trendConfidence: trend.confidence,
+    confidence: profile.confidence,
+    confidenceReasons,
+    reasonCodes,
+    profile,
+    trend
+  };
+}
+
 export function buildWeeklySeasonality(
   movements,
   productId,
@@ -220,24 +300,10 @@ export function getTrendAwareReplenishmentSuggestion(
   const baseDaily = nonNegative(context.dailyConsumption);
   const trend = context.trend || null;
   const safetyDays = nonNegative(context.safetyDays ?? 0);
-
-  let adjustedDailyConsumption = baseDaily;
-
-  if (
-    trend &&
-    trend.confidence !== 'INSUFFICIENT' &&
-    Number.isFinite(Number(trend.percentChange))
-  ) {
-    const change = Number(trend.percentChange) / 100;
-
-    if (trend.direction === 'UP') {
-      adjustedDailyConsumption =
-        baseDaily * Math.min(1.5, 1 + (change * 0.5));
-    } else if (trend.direction === 'DOWN') {
-      adjustedDailyConsumption =
-        baseDaily * Math.max(0.85, 1 + (change * 0.25));
-    }
-  }
+  const adjustedDailyConsumption = adjustDailyConsumptionForTrend(
+    baseDaily,
+    trend
+  );
 
   const targetDays = positiveOr(context.targetDays, 7);
   const demandDays = targetDays + safetyDays;
@@ -334,6 +400,28 @@ export function classifyStockRisk(product, context = {}) {
   }
 
   return { level: 'GOOD', suggestion };
+}
+
+function adjustDailyConsumptionForTrend(baseDaily, trend) {
+  let adjustedDailyConsumption = nonNegative(baseDaily);
+
+  if (
+    trend &&
+    trend.confidence !== 'INSUFFICIENT' &&
+    Number.isFinite(Number(trend.percentChange))
+  ) {
+    const change = Number(trend.percentChange) / 100;
+
+    if (trend.direction === 'UP') {
+      adjustedDailyConsumption =
+        adjustedDailyConsumption * Math.min(1.5, 1 + (change * 0.5));
+    } else if (trend.direction === 'DOWN') {
+      adjustedDailyConsumption =
+        adjustedDailyConsumption * Math.max(0.85, 1 + (change * 0.25));
+    }
+  }
+
+  return adjustedDailyConsumption;
 }
 
 function emptySeasonality(lookbackDays) {
