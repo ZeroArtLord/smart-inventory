@@ -1,11 +1,14 @@
 import { createLocalId } from '../core/ids.js';
 import {
   REPLENISHMENT_METHODS,
+  DEFAULT_INTELLIGENCE_POLICY,
   DEFAULT_UNITS,
   buildSmartSkuFromSaintCode,
   normalizeText,
   normalizeSearchText,
-  assertNonNegativeNumber
+  assertNonNegativeNumber,
+  assertPositiveNumber,
+  normalizeIntelligenceMode
 } from '../core/catalog.js';
 import {
   STORES,
@@ -111,6 +114,18 @@ export async function createProduct(data = {}) {
     throw new Error('Método de reposición inválido');
   }
 
+  const intelligenceMode = normalizeIntelligenceMode(
+    data.intelligenceMode ?? DEFAULT_INTELLIGENCE_POLICY.mode
+  );
+  const targetDays = assertPositiveNumber(
+    data.targetDays ?? DEFAULT_INTELLIGENCE_POLICY.targetDays,
+    'Días objetivo'
+  );
+  const safetyDays = assertNonNegativeNumber(
+    data.safetyDays ?? DEFAULT_INTELLIGENCE_POLICY.safetyDays,
+    'Días de seguridad'
+  );
+
   const saintCode =
     normalizeText(
       data.saintCode
@@ -159,6 +174,9 @@ export async function createProduct(data = {}) {
     minStock,
     maxStock,
     replenishmentMethod: method,
+    intelligenceMode,
+    targetDays,
+    safetyDays,
     supplierId: data.supplierId || null,
     active: data.active !== false,
     version: initialEntityVersion(),
@@ -249,6 +267,18 @@ export async function updateProduct(productId, patch = {}) {
   ) {
     throw new Error('Método de reposición inválido');
   }
+
+  next.intelligenceMode = normalizeIntelligenceMode(
+    next.intelligenceMode ?? DEFAULT_INTELLIGENCE_POLICY.mode
+  );
+  next.targetDays = assertPositiveNumber(
+    next.targetDays ?? DEFAULT_INTELLIGENCE_POLICY.targetDays,
+    'Días objetivo'
+  );
+  next.safetyDays = assertNonNegativeNumber(
+    next.safetyDays ?? DEFAULT_INTELLIGENCE_POLICY.safetyDays,
+    'Días de seguridad'
+  );
 
   if (
     patch.presentations !== undefined ||
@@ -415,4 +445,3 @@ async function writeEntityWithSync(storeName, entityType, entity, operation) {
     }
   );
 }
-

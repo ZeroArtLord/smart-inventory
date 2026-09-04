@@ -188,9 +188,12 @@ async function upsertProduct(
     `INSERT INTO products (
       workspace_id,id,saint_code,sku,name,name_normalized,aliases,barcode,category_id,
       inventory_unit_id,purchase_unit_id,purchase_conversion,presentations,
-      min_stock,max_stock,replenishment_method,supplier_id,active,created_at,updated_at
+      min_stock,max_stock,replenishment_method,
+      intelligence_mode,target_days,safety_days,
+      supplier_id,active,created_at,updated_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,$17,$18,$19,$20
+      $1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,
+      COALESCE($17,'SEED'),COALESCE($18,7),COALESCE($19,0),$20,$21,$22,$23
     )
     ON CONFLICT (workspace_id,id) DO UPDATE SET
       saint_code=EXCLUDED.saint_code,
@@ -207,6 +210,9 @@ async function upsertProduct(
       min_stock=EXCLUDED.min_stock,
       max_stock=EXCLUDED.max_stock,
       replenishment_method=EXCLUDED.replenishment_method,
+      intelligence_mode=COALESCE($17,products.intelligence_mode),
+      target_days=COALESCE($18,products.target_days),
+      safety_days=COALESCE($19,products.safety_days),
       supplier_id=EXCLUDED.supplier_id,
       active=EXCLUDED.active,
       updated_at=EXCLUDED.updated_at`,
@@ -227,6 +233,9 @@ async function upsertProduct(
       p.minStock || 0,
       p.maxStock || 0,
       p.replenishmentMethod || 'BOTH',
+      p.intelligenceMode ?? null,
+      p.targetDays ?? null,
+      p.safetyDays ?? null,
       p.supplierId || null,
       p.active !== false,
       p.createdAt,
