@@ -1,11 +1,14 @@
 import { MOVEMENT_TYPES, stockDeltaForMovement } from '../core/movementTypes.js';
 import { calculateStocksByProduct } from '../inventory/stockEngine.js';
 import {
-  buildConsumptionProfile,
-  buildDemandTrend,
-  getTrendAwareReplenishmentSuggestion,
-  classifyStockRisk
+  getAdaptiveReplenishmentSuggestion
 } from '../intelligence/replenishmentEngine.js';
+import {
+  buildVigiaDemandForecast
+} from '../intelligence/demandLearning.js';
+import {
+  buildVigiaExplanation
+} from '../intelligence/intelligenceExplanation.js';
 
 const DAY_MS = 86400000;
 
@@ -16,7 +19,7 @@ export function buildInventoryReport(
     pendingInboundByProduct = new Map(),
     now = new Date(),
     targetDays = 7,
-    safetyDays = 1
+    safetyDays = 0
   } = {}
 ) {
   const productList = Array.isArray(products) ? products : [];
@@ -27,39 +30,32 @@ export function buildInventoryReport(
     .filter(product => product.active !== false)
     .map(product => {
       const stock = Number(stocks.get(product.id) || 0);
-      const profile = buildConsumptionProfile(
-        movementList,
-        product.id,
-        now
-      );
       const pendingInbound = lookupNumber(
         pendingInboundByProduct,
         product.id
       );
 
-      const trend = buildDemandTrend(
+      const forecast = buildVigiaDemandForecast(
         movementList,
         product.id,
         now
       );
 
-      const trendSuggestion = getTrendAwareReplenishmentSuggestion(
+      const suggestion = getAdaptiveReplenishmentSuggestion(
         product,
         {
           stock,
           pendingInbound,
-          dailyConsumption: profile.estimatedDailyConsumption,
+          forecast,
           targetDays,
-          safetyDays,
-          trend
+          safetyDays
         }
       );
 
-      const risk = classifyStockRisk(product, {
-        stock,
-        pendingInbound,
-        dailyConsumption: profile.estimatedDailyConsumption,
-        targetDays
+      const riskLevel = classifyAdaptiveRisk(suggestion);
+      const intelligenceExplanation = buildVigiaExplanation({
+        forecast,
+        suggestion
       });
 
       return {
@@ -73,18 +69,54 @@ export function buildInventoryReport(
         minStock: Number(product.minStock || 0),
         maxStock: Number(product.maxStock || 0),
         pendingInbound,
-        riskLevel: risk.level,
-        suggestedQuantity: trendSuggestion.suggestedQuantity,
-        targetStock: trendSuggestion.targetStock,
-        coverageDays: risk.suggestion.coverageDays,
-        consumptionConfidence: profile.confidence,
-        estimatedDailyConsumption: profile.estimatedDailyConsumption,
-        adjustedDailyConsumption: trendSuggestion.adjustedDailyConsumption,
-        estimatedWeeklyConsumption: profile.estimatedWeeklyConsumption,
-        trendDirection: trend.direction,
-        trendPercentChange: trend.percentChange,
-        trendConfidence: trend.confidence,
-        safetyDays: trendSuggestion.safetyDays
+        riskLevel,
+        suggestedQuantity: suggestion.suggestedQuantity,
+        targetStock: suggestion.vigiaTargetStock,
+        vigiaTargetStock: suggestion.vigiaTargetStock,
+        vigiaRecommendedMin: suggestion.vigiaRecommendedMin,
+        vigiaRecommendedMax: suggestion.vigiaRecommendedMax,
+        rawDynamicTarget: suggestion.rawDynamicTarget,
+        coverageDays: suggestion.coverageDays,
+        projectedCoverageDays: suggestion.projectedCoverageDays,
+        consumptionConfidence: forecast.confidence,
+        intelligenceConfidence: suggestion.confidence,
+        intelligenceMode: suggestion.mode,
+        estimatedDailyConsumption: forecast.baseDailyConsumption,
+        adjustedDailyConsumption: forecast.forecastDaily,
+        estimatedWeeklyConsumption: forecast.baseWeeklyConsumption,
+        forecastDaily: forecast.forecastDaily,
+        forecastWeekly: forecast.forecastWeekly,
+        preSeasonalityForecastDaily:
+          forecast.preSeasonalityForecastDaily,
+        preSeasonalityForecastWeekly:
+          forecast.preSeasonalityForecastWeekly,
+        seasonalAdjustmentFactor:
+          forecast.seasonalAdjustmentFactor,
+        seasonalityConfidence:
+          forecast.seasonality?.confidence || 'INSUFFICIENT',
+        seasonalityFactor:
+          forecast.seasonality?.seasonalFactor ?? 1,
+        seasonalityAppliedFactor:
+          forecast.seasonality?.appliedFactor ?? 1,
+        seasonalityReasonCodes:
+          forecast.seasonality?.reasonCodes || [],
+        comparisonYears:
+          forecast.seasonality?.comparisonYears || [],
+        anomalyCount:
+          forecast.anomalyProtection?.anomalyCount || 0,
+        anomalyAdjustedMovementIds:
+          forecast.anomalyProtection?.adjustedMovementIds || [],
+        trendDirection: forecast.trendDirection,
+        trendPercentChange: forecast.trendPercentChange,
+        trendConfidence: forecast.trendConfidence,
+        safetyDays: suggestion.safetyDays,
+        targetDays: suggestion.targetDays,
+        dynamicReady: suggestion.dynamicReady,
+        reasonCodes: suggestion.reasonCodes,
+        warningCodes: suggestion.warningCodes,
+        confidenceReasons: forecast.confidenceReasons || [],
+        modelVersion: forecast.modelVersion || 'V4',
+        intelligenceExplanation
       };
     })
     .sort(compareInventoryRows);
@@ -234,6 +266,29 @@ export function buildProductMovementTotals(
   return [...totals.values()]
     .map(row => roundObject(row))
     .sort((a, b) => b.supply - a.supply || b.movementCount - a.movementCount);
+}
+
+function classifyAdaptiveRisk(suggestion) {
+  if (
+    suggestion.stock <= suggestion.manualMin &&
+    suggestion.manualMin > 0
+  ) {
+    return 'CRITICAL';
+  }
+
+  if (
+    suggestion.coverageDays !== null &&
+    suggestion.coverageDays <=
+      Math.min(3, Number(suggestion.targetDays || 7))
+  ) {
+    return 'CRITICAL';
+  }
+
+  if (Number(suggestion.suggestedQuantity || 0) > 0) {
+    return 'LOW';
+  }
+
+  return 'GOOD';
 }
 
 function filterMovementsByRange(movements, { from, to }) {

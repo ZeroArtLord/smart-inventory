@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-36';
+const CACHE_NAME = 'smart-inventory-v2-shell-37';
 
 const APP_SHELL = [
   './',
@@ -7,6 +7,7 @@ const APP_SHELL = [
   './manifest.webmanifest',
   './vendor/xlsx.full.min.js',
   './src/ui/app.js',
+  './src/ui/vigiaIntelligenceUi.js',
   './src/auth/authProvider.js',
   './src/auth/firebaseClient.js',
   './src/auth/authBootstrap.js',
@@ -33,6 +34,8 @@ const APP_SHELL = [
   './src/inventory/movementService.js',
   './src/inventory/lotEngine.js',
   './src/intelligence/replenishmentEngine.js',
+  './src/intelligence/demandLearning.js',
+  './src/intelligence/intelligenceExplanation.js',
   './src/replenishment/replenishmentService.js',
   './src/scanner/barcodeScanner.js',
   './src/export/exportService.js',
