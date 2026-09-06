@@ -31,6 +31,12 @@ const REPLENISHMENT_METHODS = new Set([
   'NONE'
 ]);
 
+const INTELLIGENCE_MODES = new Set([
+  'SEED',
+  'ADAPTIVE',
+  'HARD_LIMIT'
+]);
+
 const UPSERT_OPERATIONS = new Set(['CREATE', 'UPDATE']);
 
 export function validateSyncEvent(event) {
@@ -127,6 +133,22 @@ function validateProduct(product) {
   if (!REPLENISHMENT_METHODS.has(method)) {
     throw new Error('Método de reposición inválido');
   }
+
+  const intelligenceMode = String(
+    product.intelligenceMode ?? 'SEED'
+  ).trim().toUpperCase();
+  if (!INTELLIGENCE_MODES.has(intelligenceMode)) {
+    throw new Error('Modo de inteligencia inválido');
+  }
+
+  finitePositive(
+    product.targetDays ?? 7,
+    'Días objetivo'
+  );
+  finiteNonNegative(
+    product.safetyDays ?? 0,
+    'Días de seguridad'
+  );
 }
 
 function validatePresentations(presentations) {
@@ -410,6 +432,14 @@ function requireUpsert(operation) {
 function finiteNonNegative(value, fieldName) {
   const number = Number(value);
   if (!Number.isFinite(number) || number < 0) {
+    throw new Error(`${fieldName} inválido`);
+  }
+  return number;
+}
+
+function finitePositive(value, fieldName) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
     throw new Error(`${fieldName} inválido`);
   }
   return number;

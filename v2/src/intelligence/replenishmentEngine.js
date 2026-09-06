@@ -1,4 +1,9 @@
 import { MOVEMENT_TYPES } from '../core/movementTypes.js';
+import {
+  INTELLIGENCE_MODES,
+  DEFAULT_INTELLIGENCE_POLICY,
+  normalizeIntelligenceMode
+} from '../core/catalog.js';
 import { calculateCoverageDays } from '../inventory/stockEngine.js';
 
 const DAY_MS = 86400000;
@@ -122,6 +127,215 @@ export function buildDemandTrend(
   };
 }
 
+export function buildAdaptiveDemandForecast(
+  movements,
+  productId,
+  now = new Date(),
+  { trendWindowDays = 14 } = {}
+) {
+  const profile = buildConsumptionProfile(
+    movements,
+    productId,
+    now
+  );
+  const trend = buildDemandTrend(
+    movements,
+    productId,
+    now,
+    { windowDays: trendWindowDays }
+  );
+
+  const baseDaily = nonNegative(
+    profile.estimatedDailyConsumption
+  );
+  const adjustedDaily = adjustDailyConsumptionForTrend(
+    baseDaily,
+    trend
+  );
+  const adjustmentFactor = baseDaily > 0
+    ? adjustedDaily / baseDaily
+    : 1;
+
+  const reasonCodes = [];
+  const confidenceReasons = [];
+
+  if (profile.historyDays === 0) {
+    reasonCodes.push('NO_HISTORY');
+    confidenceReasons.push('No hay surtidos históricos para estimar demanda.');
+  } else if (profile.confidence === 'INSUFFICIENT') {
+    reasonCodes.push('HISTORY_INSUFFICIENT');
+    confidenceReasons.push(
+      `Solo hay ${profile.historyDays} día(s) de historial útil; VIGÍA no proyecta demanda todavía.`
+    );
+  } else {
+    reasonCodes.push('RECENT_CONSUMPTION');
+    confidenceReasons.push(
+      `La demanda base usa ${profile.historyDays} día(s) de historial y ${profile.movementCount} surtido(s).`
+    );
+  }
+
+  if (trend.confidence === 'INSUFFICIENT') {
+    reasonCodes.push('TREND_INSUFFICIENT');
+    confidenceReasons.push(
+      'La tendencia reciente no tiene suficientes movimientos para modificar la demanda base.'
+    );
+  } else {
+    reasonCodes.push(`TREND_${trend.direction}`);
+    confidenceReasons.push(
+      `Tendencia ${trend.direction} en ventana de ${trend.windowDays} días con cambio ${trend.percentChange ?? 0}%.`
+    );
+  }
+
+  return {
+    historyDays: profile.historyDays,
+    movementCount: profile.movementCount,
+    baseDailyConsumption: round(baseDaily),
+    baseWeeklyConsumption: round(baseDaily * 7),
+    trendAdjustedDailyConsumption: round(adjustedDaily),
+    forecastDaily: round(adjustedDaily),
+    forecastWeekly: round(adjustedDaily * 7),
+    trendAdjustmentFactor: round(adjustmentFactor),
+    trendWindowDays: trend.windowDays,
+    trendDirection: trend.direction,
+    trendPercentChange: trend.percentChange,
+    trendConfidence: trend.confidence,
+    confidence: profile.confidence,
+    confidenceReasons,
+    reasonCodes,
+    profile,
+    trend
+  };
+}
+
+export function getAdaptiveReplenishmentSuggestion(
+  product,
+  context = {}
+) {
+  const mode = normalizeIntelligenceMode(
+    product?.intelligenceMode ?? DEFAULT_INTELLIGENCE_POLICY.mode
+  );
+  const forecast = context.forecast || null;
+  const forecastDaily = nonNegative(
+    forecast?.forecastDaily ??
+    context.forecastDaily ??
+    context.dailyConsumption
+  );
+  const confidence =
+    forecast?.confidence ||
+    context.confidence ||
+    'INSUFFICIENT';
+
+  const targetDays = positiveOr(
+    product?.targetDays ?? context.targetDays,
+    DEFAULT_INTELLIGENCE_POLICY.targetDays
+  );
+  const safetyDays = nonNegative(
+    product?.safetyDays ??
+    context.safetyDays ??
+    DEFAULT_INTELLIGENCE_POLICY.safetyDays
+  );
+
+  const stock = nonNegative(context.stock);
+  const pendingInbound = nonNegative(context.pendingInbound);
+  const projectedAvailable = stock + pendingInbound;
+  const manualMin = nonNegative(product?.minStock);
+  const manualMax = nonNegative(product?.maxStock);
+  const dynamicReady =
+    forecastDaily > 0 &&
+    confidence !== 'INSUFFICIENT';
+
+  const recommendedMin = dynamicReady
+    ? forecastDaily * targetDays
+    : manualMin;
+  const rawDynamicTarget = dynamicReady
+    ? forecastDaily * (targetDays + safetyDays)
+    : manualMin;
+  const recommendedMax = dynamicReady
+    ? rawDynamicTarget
+    : manualMax > 0
+      ? manualMax
+      : manualMin;
+
+  const reasonCodes = [
+    ...(forecast?.reasonCodes || [])
+  ];
+  const warningCodes = [];
+
+  let targetStock;
+
+  if (!dynamicReady) {
+    targetStock = manualMin;
+    reasonCodes.push('MANUAL_SEED_FALLBACK');
+  } else if (mode === INTELLIGENCE_MODES.SEED) {
+    if (confidence === 'LOW') {
+      targetStock = Math.max(manualMin, rawDynamicTarget);
+      reasonCodes.push('SEED_LOW_CONFIDENCE_FLOOR');
+    } else {
+      targetStock = rawDynamicTarget;
+      reasonCodes.push('SEED_DYNAMIC_TARGET');
+    }
+  } else if (mode === INTELLIGENCE_MODES.ADAPTIVE) {
+    targetStock = rawDynamicTarget;
+    reasonCodes.push('ADAPTIVE_DYNAMIC_TARGET');
+  } else {
+    targetStock = rawDynamicTarget;
+
+    if (targetStock < manualMin) {
+      targetStock = manualMin;
+      warningCodes.push('DEMAND_BELOW_HARD_MIN');
+    }
+
+    if (manualMax > 0 && targetStock > manualMax) {
+      targetStock = manualMax;
+      warningCodes.push('DEMAND_ABOVE_HARD_MAX');
+    }
+
+    reasonCodes.push('HARD_LIMIT_APPLIED');
+  }
+
+  if (pendingInbound > 0) {
+    reasonCodes.push('PENDING_INBOUND_INCLUDED');
+  }
+
+  const suggestedQuantity = Math.max(
+    0,
+    Math.ceil(targetStock - projectedAvailable)
+  );
+
+  const coverageDays = calculateCoverageDays(
+    stock,
+    forecastDaily
+  );
+  const projectedCoverageDays = calculateCoverageDays(
+    projectedAvailable,
+    forecastDaily
+  );
+
+  return {
+    mode,
+    confidence,
+    forecastDaily: round(forecastDaily),
+    forecastWeekly: round(forecastDaily * 7),
+    targetDays: round(targetDays),
+    safetyDays: round(safetyDays),
+    manualMin: round(manualMin),
+    manualMax: round(manualMax),
+    vigiaRecommendedMin: round(recommendedMin),
+    vigiaRecommendedMax: round(recommendedMax),
+    rawDynamicTarget: round(rawDynamicTarget),
+    vigiaTargetStock: round(targetStock),
+    stock: round(stock),
+    pendingInbound: round(pendingInbound),
+    projectedAvailable: round(projectedAvailable),
+    suggestedQuantity,
+    coverageDays: finiteOrNull(coverageDays),
+    projectedCoverageDays: finiteOrNull(projectedCoverageDays),
+    reasonCodes: uniqueCodes(reasonCodes),
+    warningCodes: uniqueCodes(warningCodes),
+    dynamicReady
+  };
+}
+
 export function buildWeeklySeasonality(
   movements,
   productId,
@@ -220,24 +434,10 @@ export function getTrendAwareReplenishmentSuggestion(
   const baseDaily = nonNegative(context.dailyConsumption);
   const trend = context.trend || null;
   const safetyDays = nonNegative(context.safetyDays ?? 0);
-
-  let adjustedDailyConsumption = baseDaily;
-
-  if (
-    trend &&
-    trend.confidence !== 'INSUFFICIENT' &&
-    Number.isFinite(Number(trend.percentChange))
-  ) {
-    const change = Number(trend.percentChange) / 100;
-
-    if (trend.direction === 'UP') {
-      adjustedDailyConsumption =
-        baseDaily * Math.min(1.5, 1 + (change * 0.5));
-    } else if (trend.direction === 'DOWN') {
-      adjustedDailyConsumption =
-        baseDaily * Math.max(0.85, 1 + (change * 0.25));
-    }
-  }
+  const adjustedDailyConsumption = adjustDailyConsumptionForTrend(
+    baseDaily,
+    trend
+  );
 
   const targetDays = positiveOr(context.targetDays, 7);
   const demandDays = targetDays + safetyDays;
@@ -336,6 +536,28 @@ export function classifyStockRisk(product, context = {}) {
   return { level: 'GOOD', suggestion };
 }
 
+function adjustDailyConsumptionForTrend(baseDaily, trend) {
+  let adjustedDailyConsumption = nonNegative(baseDaily);
+
+  if (
+    trend &&
+    trend.confidence !== 'INSUFFICIENT' &&
+    Number.isFinite(Number(trend.percentChange))
+  ) {
+    const change = Number(trend.percentChange) / 100;
+
+    if (trend.direction === 'UP') {
+      adjustedDailyConsumption =
+        adjustedDailyConsumption * Math.min(1.5, 1 + (change * 0.5));
+    } else if (trend.direction === 'DOWN') {
+      adjustedDailyConsumption =
+        adjustedDailyConsumption * Math.max(0.85, 1 + (change * 0.25));
+    }
+  }
+
+  return adjustedDailyConsumption;
+}
+
 function emptySeasonality(lookbackDays) {
   return {
     lookbackDays,
@@ -409,6 +631,10 @@ function determineReason({
   if (minimumDeficit > 0 && targetStock <= minStock) return 'BELOW_MINIMUM';
   if (minimumDeficit > 0) return 'BELOW_MINIMUM_AND_PREDICTED_DEMAND';
   return 'PREDICTED_DEMAND';
+}
+
+function uniqueCodes(values) {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function nonNegative(value) {
