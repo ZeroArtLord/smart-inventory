@@ -136,6 +136,12 @@ test('V4-E conecta el reporte operativo con forecast V4-D y objetivo adaptativo'
     );
   }
 
+  // Añade historia suficiente para que el fixture pruebe una señal
+  // adaptativa con confianza MEDIA, no una fase de calentamiento LOW.
+  movements.push(
+    supply('prd-v4', 1, now, 35)
+  );
+
   const [row] = buildInventoryReport([
     {
       id: 'prd-v4',
