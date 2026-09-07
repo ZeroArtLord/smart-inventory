@@ -195,9 +195,9 @@ test('reconteo usa stock VIGÍA actual como nueva referencia y puede quedar MATC
   const count = await createCompleteCount({
     ownerId: 'warehouse-v5d-2',
     aExpected: 0,
-    aCounted: 1,
+    aCounted: 0,
     bExpected: 0,
-    bCounted: 0
+    bCounted: 1
   });
 
   await submitCountForReconciliation(count.id, {
@@ -208,16 +208,13 @@ test('reconteo usa stock VIGÍA actual como nueva referencia y puede quedar MATC
     roleCode: 'GOD'
   });
 
-  const currentMovements = await getAll(STORES.MOVEMENTS);
-  const currentDeltaForA = currentMovements
-    .filter(m => m.productId === productA.id)
-    .reduce((sum, m) => sum + Number(m.delta || 0), 0);
-
+  // productB no recibió movimiento en la conciliación anterior (fue IGNORADO),
+  // por lo tanto su stock VIGÍA actual sigue siendo 0.
   const recounted = await recountReconciliationLine(
     opened.reconciliation.id,
-    productA.id,
+    productB.id,
     {
-      countedStock: currentDeltaForA,
+      countedStock: 0,
       userId: 'god-v5d',
       roleCode: 'GOD',
       reason: 'Segundo conteo físico'
