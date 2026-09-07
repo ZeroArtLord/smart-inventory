@@ -5,6 +5,11 @@ import { fileURLToPath } from 'node:url';
 
 const files = [
   '../src/ui/app.js',
+  '../src/ui/countWorkflowUi.js',
+  '../src/ui/countReconciliationUi.js',
+  '../src/ui/replenishmentWorkflowUi.js',
+  '../src/ui/saintSupplyReportUi.js',
+  '../src/ui/vigiaIntelligenceUi.js',
   '../sw.js'
 ];
 
