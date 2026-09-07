@@ -97,16 +97,22 @@ function installStyles() {
     .v5-count-kpi small{display:block;color:var(--muted,#64748b)}
     .v5-count-kpi strong{font-size:20px}
     .v5-count-product-card{border:1px solid var(--border);border-radius:16px;padding:18px;background:var(--surface,#fff);display:grid;gap:15px}
+    .v5-count-product-card.v5-count-editing{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 16%,transparent)}
     .v5-count-product-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
     .v5-count-product-head h2{margin:3px 0}
     .v5-count-input{font-size:30px!important;font-weight:800;text-align:center;min-height:64px}
     .v5-count-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .v5-count-pending-button{position:relative}
     .v5-count-pending-list{display:grid;gap:8px}
-    .v5-count-pending-row,.v5-count-jump-row{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:10px}
+    .v5-count-pending-row,.v5-count-jump-row,.v5-count-recent-row{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:10px}
+    .v5-count-jump-row[data-counted="true"]{background:color-mix(in srgb,var(--accent) 5%,var(--surface,#fff))}
     .v5-count-search{width:100%;margin-top:4px}
     .v5-count-jump-list{display:grid;gap:6px;max-height:250px;overflow:auto;margin-top:8px}
     .v5-count-section-title{display:flex;justify-content:space-between;gap:10px;align-items:center}
+    .v5-count-edit-note{display:grid;gap:4px;padding:12px;border:1px solid color-mix(in srgb,var(--accent) 35%,var(--border));border-radius:12px;background:color-mix(in srgb,var(--accent) 6%,var(--surface,#fff))}
+    .v5-count-review{margin-top:12px;border-top:1px solid var(--border);padding-top:12px}
+    .v5-count-review summary{cursor:pointer;font-weight:800}
+    .v5-count-review-list{display:grid;gap:6px;margin-top:10px}
     @media(max-width:760px){
       .v5-count-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
       .v5-count-actions{grid-template-columns:1fr}
@@ -186,10 +192,22 @@ async function renderV5Count(documentId) {
       lines,
       metadata: documentRecord.metadata
     });
+    const lastCountedLine = lines.length
+      ? lines[lines.length - 1]
+      : null;
+    const lastCountedProduct = lastCountedLine
+      ? activeProducts.find(product => product.id === lastCountedLine.productId) || null
+      : null;
 
     root.innerHTML = `
       <section class="v5-count-shell">
-        ${renderOverallHeader(overall, workflow, pendingProducts.length)}
+        ${renderOverallHeader(
+          overall,
+          workflow,
+          pendingProducts.length,
+          lastCountedProduct,
+          lastCountedLine
+        )}
         ${workflow.mode === COUNT_WORKFLOW_MODES.PENDING
           ? renderPendingWorkspace({
               documentId,
@@ -218,23 +236,42 @@ async function renderV5Count(documentId) {
     `;
 
     requestAnimationFrame(() => {
-      document.getElementById('v5CountValue')?.focus();
+      const input = document.getElementById('v5CountValue');
+      input?.focus();
+      if (input?.dataset.editing === 'true') {
+        input.select();
+      }
     });
   } finally {
     rendering = false;
   }
 }
 
-function renderOverallHeader(overall, workflow, pendingCount) {
+function renderOverallHeader(
+  overall,
+  workflow,
+  pendingCount,
+  lastCountedProduct,
+  lastCountedLine
+) {
   return `
     <article class="card v5-count-shell-head">
       <div class="v5-count-toolbar">
         <div>
           <div class="product-meta" style="font-weight:800;color:var(--accent)">V5 · CONTEO OPERATIVO</div>
           <h3 style="margin:3px 0">Conteo físico por categoría</h3>
-          <div class="product-meta">Puedes cambiar de almacén/categoría, dejar productos pendientes y continuar después.</div>
+          <div class="product-meta">Puedes cambiar de categoría, corregir cualquier conteo guardado, dejar productos pendientes y continuar después.</div>
         </div>
         <div class="v5-count-toolbar-actions">
+          ${lastCountedProduct && lastCountedLine ? `
+            <button
+              class="secondary"
+              data-v5-count-action="edit-last"
+              data-product-id="${escapeHtml(lastCountedProduct.id)}"
+              data-category-id="${escapeHtml(lastCountedProduct.categoryId || '__UNCATEGORIZED__')}"
+              type="button"
+            >↶ Corregir último · ${escapeHtml(String(lastCountedLine.countedStock))}</button>
+          ` : ''}
           ${workflow.activeCategoryId || workflow.mode === COUNT_WORKFLOW_MODES.PENDING
             ? '<button class="secondary" data-v5-count-action="categories" type="button">← Categorías</button>'
             : ''}
@@ -307,7 +344,7 @@ function renderCategoryHub({ categoryProgress, overall, pendingProducts }) {
       <article class="card count-finished-card">
         <div class="count-complete-icon">✓</div>
         <h3>Conteo completo</h3>
-        <p class="product-meta">Todos los productos activos tienen una existencia física guardada.</p>
+        <p class="product-meta">Todos los productos activos tienen una existencia física guardada. Puedes corregir cualquier línea antes de cerrar.</p>
         <button class="success count-close-button" data-action="close-document" type="button">Cerrar conteo</button>
       </article>
     ` : ''}
@@ -336,7 +373,10 @@ function renderCategoryWorkspace({
     `;
   }
 
-  const countedIds = new Set(lines.map(line => line.productId));
+  const lineByProduct = new Map(
+    lines.map(line => [line.productId, line])
+  );
+  const countedIds = new Set(lineByProduct.keys());
   const pendingIds = new Set(workflow.pendingProductIds);
   const categoryProducts = products.filter(product =>
     (product.categoryId || '__UNCATEGORIZED__') === selectedCategory.categoryId
@@ -344,10 +384,7 @@ function renderCategoryWorkspace({
 
   const forcedId = appRoot.dataset.v5CountForcedProductId || '';
   let nextProduct = forcedId
-    ? categoryProducts.find(product =>
-        product.id === forcedId &&
-        !countedIds.has(product.id)
-      )
+    ? categoryProducts.find(product => product.id === forcedId)
     : null;
 
   if (!nextProduct) {
@@ -360,9 +397,14 @@ function renderCategoryWorkspace({
     });
   }
 
-  const jumpProducts = categoryProducts.filter(product =>
-    !countedIds.has(product.id)
-  );
+  const existingLine = nextProduct
+    ? lineByProduct.get(nextProduct.id) || null
+    : null;
+  const jumpProducts = categoryProducts;
+  const recentCounted = lines
+    .filter(line => categoryProducts.some(product => product.id === line.productId))
+    .slice(-6)
+    .reverse();
 
   return `
     <article class="card">
@@ -381,25 +423,65 @@ function renderCategoryWorkspace({
 
       ${jumpProducts.length ? `
         <label style="display:block;margin-top:12px">
-          Buscar dentro de ${escapeHtml(selectedCategory.categoryName)}
+          Buscar o corregir dentro de ${escapeHtml(selectedCategory.categoryName)}
           <input id="v5CountSearch" class="v5-count-search" autocomplete="off" placeholder="Nombre, SAINT o SKU...">
         </label>
         <div class="v5-count-jump-list">
-          ${jumpProducts.map(product => `
-            <div class="v5-count-jump-row" data-v5-count-search-row="${escapeHtml(searchText(product))}">
-              <div>
-                <strong>${escapeHtml(product.name)}</strong>
-                <small class="product-meta">${product.saintCode ? 'SAINT ' + escapeHtml(product.saintCode) : ''}${pendingIds.has(product.id) ? ' · PENDIENTE' : ''}</small>
+          ${jumpProducts.map(product => {
+            const countedLine = lineByProduct.get(product.id) || null;
+            const isPending = pendingIds.has(product.id);
+            const statusText = countedLine
+              ? ` · CONTADO ${escapeHtml(String(countedLine.countedStock))}`
+              : isPending
+                ? ' · PENDIENTE'
+                : ' · SIN CONTAR';
+            const actionLabel = countedLine
+              ? 'Editar'
+              : isPending
+                ? 'Contar'
+                : 'Ir';
+
+            return `
+              <div
+                class="v5-count-jump-row"
+                data-counted="${countedLine ? 'true' : 'false'}"
+                data-v5-count-search-row="${escapeHtml(searchText(product))}"
+              >
+                <div>
+                  <strong>${escapeHtml(product.name)}</strong>
+                  <small class="product-meta">${product.saintCode ? 'SAINT ' + escapeHtml(product.saintCode) : ''}${statusText}</small>
+                </div>
+                <button class="secondary" data-v5-count-action="jump" data-product-id="${escapeHtml(product.id)}" type="button">${actionLabel}</button>
               </div>
-              <button class="secondary" data-v5-count-action="jump" data-product-id="${escapeHtml(product.id)}" type="button">Ir</button>
-            </div>
-          `).join('')}
+            `;
+          }).join('')}
         </div>
+      ` : ''}
+
+      ${recentCounted.length ? `
+        <details class="v5-count-review">
+          <summary>Revisar últimos contados (${recentCounted.length})</summary>
+          <div class="v5-count-review-list">
+            ${recentCounted.map(line => `
+              <div class="v5-count-recent-row">
+                <div>
+                  <strong>${escapeHtml(line.productName)}</strong>
+                  <small class="product-meta">Guardado ${escapeHtml(String(line.countedStock))} · esperado ${escapeHtml(String(line.expectedStock))}</small>
+                </div>
+                <button class="secondary" data-v5-count-action="jump" data-product-id="${escapeHtml(line.productId)}" type="button">Editar</button>
+              </div>
+            `).join('')}
+          </div>
+        </details>
       ` : ''}
     </article>
 
     ${nextProduct
-      ? renderProductCard(nextProduct, pendingIds.has(nextProduct.id))
+      ? renderProductCard(
+          nextProduct,
+          pendingIds.has(nextProduct.id),
+          existingLine
+        )
       : `
         <article class="card count-finished-card">
           <div class="count-complete-icon">✓</div>
@@ -407,7 +489,7 @@ function renderCategoryWorkspace({
           <p class="product-meta">
             ${selectedCategory.pending
               ? `Quedan ${selectedCategory.pending} producto(s) pendientes para revisar después.`
-              : 'No quedan productos sin recorrer en esta categoría.'}
+              : 'No quedan productos sin recorrer en esta categoría. Puedes editar cualquier contado desde la lista superior.'}
           </p>
           <div class="v5-count-actions">
             <button class="secondary" data-v5-count-action="categories" type="button">Elegir otra categoría</button>
@@ -422,6 +504,7 @@ function renderCategoryWorkspace({
       <article class="card count-finished-card">
         <div class="count-complete-icon">✓</div>
         <h3>Conteo general completo</h3>
+        <p class="product-meta">Antes de cerrar todavía puedes corregir cualquier producto contado.</p>
         <button class="success count-close-button" data-action="close-document" type="button">Cerrar conteo</button>
       </article>
     ` : ''}
@@ -475,7 +558,7 @@ function renderPendingWorkspace({
       </div>
     </article>
 
-    ${nextProduct ? renderProductCard(nextProduct, true) : `
+    ${nextProduct ? renderProductCard(nextProduct, true, null) : `
       <article class="card count-finished-card">
         <div class="count-complete-icon">✓</div>
         <h3>Sin pendientes</h3>
@@ -487,18 +570,21 @@ function renderPendingWorkspace({
       <article class="card count-finished-card">
         <div class="count-complete-icon">✓</div>
         <h3>Conteo general completo</h3>
+        <p class="product-meta">Puedes corregir líneas guardadas desde su categoría antes de cerrar.</p>
         <button class="success count-close-button" data-action="close-document" type="button">Cerrar conteo</button>
       </article>
     ` : ''}
   `;
 }
 
-function renderProductCard(product, wasPending) {
+function renderProductCard(product, wasPending, existingLine = null) {
+  const editing = Boolean(existingLine);
+
   return `
-    <article class="v5-count-product-card">
+    <article class="v5-count-product-card ${editing ? 'v5-count-editing' : ''}">
       <div class="v5-count-product-head">
         <div>
-          <div class="product-meta">${wasPending ? 'Pendiente seleccionado' : 'Producto actual'}</div>
+          <div class="product-meta">${editing ? 'Corrigiendo conteo guardado' : wasPending ? 'Pendiente seleccionado' : 'Producto actual'}</div>
           <h2>${escapeHtml(product.name)}</h2>
           <div class="product-meta">
             ${product.saintCode ? 'SAINT ' + escapeHtml(product.saintCode) + ' · ' : ''}
@@ -506,8 +592,19 @@ function renderProductCard(product, wasPending) {
             ${escapeHtml(product.unitCode || 'UND')}
           </div>
         </div>
-        ${wasPending ? '<span class="badge status-warning">PENDIENTE</span>' : ''}
+        ${editing
+          ? '<span class="badge status-warning">EDITANDO</span>'
+          : wasPending
+            ? '<span class="badge status-warning">PENDIENTE</span>'
+            : ''}
       </div>
+
+      ${editing ? `
+        <div class="v5-count-edit-note">
+          <strong>Este producto ya estaba contado.</strong>
+          <span class="product-meta">Guardado ${escapeHtml(String(existingLine.countedStock))} · esperado original ${escapeHtml(String(existingLine.expectedStock))}. La corrección reemplaza solo la línea del borrador; no duplica el producto ni crea movimientos.</span>
+        </div>
+      ` : ''}
 
       <label>
         Existencia física
@@ -515,22 +612,51 @@ function renderProductCard(product, wasPending) {
           id="v5CountValue"
           class="numeric-input v5-count-input"
           inputmode="decimal"
+          enterkeyhint="done"
           autocomplete="off"
           data-product-id="${escapeHtml(product.id)}"
+          data-editing="${editing ? 'true' : 'false'}"
           placeholder="0"
+          value="${editing ? escapeHtml(String(existingLine.countedStock)) : ''}"
         >
       </label>
-      <div class="product-meta">Admite expresiones: 12+3, 24/2, (10+5)*2, 12,5.</div>
+      <div class="product-meta">Admite expresiones: 12+3, 24/2, (10+5)*2, 12,5. En teléfono usa los operadores inferiores sin perder el teclado numérico.</div>
+
+      ${renderCountMathPad('v5CountValue')}
 
       <div class="v5-count-actions">
         <button class="primary" data-v5-count-action="save" data-product-id="${escapeHtml(product.id)}" type="button">
-          Guardar y continuar · Enter
+          ${editing ? 'Guardar corrección · Enter' : 'Guardar y continuar · Enter'}
         </button>
-        <button class="secondary" data-v5-count-action="skip" data-product-id="${escapeHtml(product.id)}" type="button">
-          Saltar / dejar pendiente
-        </button>
+        ${editing
+          ? '<button class="secondary" data-v5-count-action="cancel-edit" type="button">Cancelar corrección</button>'
+          : `<button class="secondary" data-v5-count-action="skip" data-product-id="${escapeHtml(product.id)}" type="button">Saltar / dejar pendiente</button>`}
       </div>
     </article>
+  `;
+}
+
+function renderCountMathPad(targetId) {
+  return `
+    <div class="math-pad" aria-label="Operaciones matemáticas">
+      ${countMathButton(targetId, '+', '+')}
+      ${countMathButton(targetId, '-', '−')}
+      ${countMathButton(targetId, '*', '×')}
+      ${countMathButton(targetId, '/', '÷')}
+      ${countMathButton(targetId, '(', '(')}
+      ${countMathButton(targetId, ')', ')')}
+    </div>
+  `;
+}
+
+function countMathButton(target, symbol, label) {
+  return `
+    <button
+      data-math-target="${escapeHtml(target)}"
+      data-symbol="${escapeHtml(symbol)}"
+      type="button"
+      aria-label="${escapeHtml(label)}"
+    >${escapeHtml(label)}</button>
   `;
 }
 
@@ -566,9 +692,27 @@ async function handleV5CountAction(button) {
     return renderV5Count(documentId);
   }
 
+  if (action === 'edit-last') {
+    const productId = button.dataset.productId || '';
+    const categoryId = button.dataset.categoryId || '__UNCATEGORIZED__';
+    if (!productId) throw new Error('No hay un último conteo para corregir');
+
+    appRoot.dataset.v5CountForcedProductId = productId;
+    await updateCountWorkflow(documentId, {
+      mode: COUNT_WORKFLOW_MODES.CATEGORY,
+      activeCategoryId: categoryId
+    });
+    return renderV5Count(documentId);
+  }
+
   if (action === 'jump') {
     appRoot.dataset.v5CountForcedProductId =
       button.dataset.productId || '';
+    return renderV5Count(documentId);
+  }
+
+  if (action === 'cancel-edit') {
+    delete appRoot.dataset.v5CountForcedProductId;
     return renderV5Count(documentId);
   }
 
@@ -587,11 +731,18 @@ async function handleV5CountAction(button) {
     const countedStock = evaluateNumericExpression(
       input?.value
     );
+    const lines = await listDocumentLines(documentId);
+    const existingLine = lines.find(line =>
+      line.productId === productId
+    ) || null;
 
     await saveDocumentLine({
       documentId,
       productId,
-      countedStock
+      countedStock,
+      ...(existingLine
+        ? { expectedStock: existingLine.expectedStock }
+        : {})
     });
 
     await clearCountProductPending(
