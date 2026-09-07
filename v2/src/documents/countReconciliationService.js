@@ -514,10 +514,11 @@ export async function ignoreReconciliationLine(
 /**
  * Único punto V5-D que puede modificar stock.
  *
- * Seguridad temporal: el conteo físico pertenece a un instante. Si después
- * hubo Entradas/Surtidos/Ajustes, trasladamos ese físico hasta "ahora" con
- * los movimientos posteriores. Así un surtido posterior al conteo NO vuelve
- * a descontarse durante la conciliación.
+ * La diferencia de un conteo (físico - esperado) se mantiene válida si luego
+ * ocurren movimientos operativos normales ENTRY/SUPPLY: ambos lados cambian
+ * en la misma magnitud. En cambio, un ADJUSTMENT/REVERSAL posterior puede
+ * haber corregido ya la discrepancia; en ese caso bloqueamos el ajuste y
+ * exigimos RECONTAR. Esto evita aplicar dos veces una corrección sensible.
  */
 export async function adjustReconciliationLine(
   reconciliationId,
@@ -571,66 +572,51 @@ export async function adjustReconciliationLine(
         movementStore.index('productId').getAll(productId)
       );
       const locationId = reconciliation.locationId || null;
+      const later = movementsAfterReference(
+        movements,
+        referenceAt,
+        locationId,
+        reconciliation.id
+      );
+      const sensitiveLater = later.filter(movement =>
+        movement.type === MOVEMENT_TYPES.ADJUSTMENT ||
+        movement.type === MOVEMENT_TYPES.REVERSAL
+      );
+
+      if (sensitiveLater.length) {
+        throw new Error(
+          `Hay ${sensitiveLater.length} ajuste(s)/reverso(s) posterior(es) a este conteo. Recuenta el producto antes de ajustar.`
+        );
+      }
+
       const currentStock = round(
         calculateStock(movements, productId, { locationId })
       );
-      const laterDelta = round(
-        movementsAfterReferenceDelta(
-          movements,
-          referenceAt,
-          locationId,
-          reconciliation.id
-        )
+      const delta = round(
+        finite(line.countedStock, 'Existencia contada') -
+        finite(line.expectedStock, 'Existencia esperada')
       );
-      const physicalAtReference = finite(
-        line.countedStock,
-        'Existencia contada'
-      );
-      const targetStock = round(physicalAtReference + laterDelta);
 
+      if (almostEqual(delta, 0)) {
+        throw new Error('No existe diferencia que ajustar');
+      }
+
+      const targetStock = round(currentStock + delta);
       if (targetStock < -0.000001) {
         throw new Error(
-          'Los movimientos posteriores hacen imposible aplicar este conteo con seguridad. Recuenta el producto.'
+          'Este ajuste dejaría stock negativo con la existencia actual. Recuenta el producto antes de ajustar.'
         );
       }
 
-      const delta = round(targetStock - currentStock);
       const now = new Date().toISOString();
       const decisionReason =
         clean(reason) || 'Conciliación de conteo físico';
-
-      if (almostEqual(delta, 0)) {
-        const matchedLine = {
-          ...line,
-          decision: RECONCILIATION_DECISION.MATCHED,
-          decisionReason,
-          decisionBy: userId,
-          decisionAt: now,
-          decisionExpectedStock: currentStock,
-          decisionTargetStock: targetStock,
-          decisionDelta: 0,
-          version: nextEntityVersion(line),
-          updatedAt: now
-        };
-
-        await requestToPromise(lineStore.put(matchedLine));
-        await requestToPromise(
-          queueStore.add(
-            createSyncItem(
-              'documentLine',
-              matchedLine.id,
-              'UPDATE',
-              matchedLine
-            )
-          )
-        );
-
-        return {
-          line: matchedLine,
-          movement: null,
-          matched: true
-        };
-      }
+      const laterOperationalDelta = round(
+        later.reduce(
+          (sum, movement) => sum + stockDeltaForMovement(movement),
+          0
+        )
+      );
 
       const movement = buildMovement({
         productId,
@@ -649,10 +635,12 @@ export async function adjustReconciliationLine(
           reconciliationLineId: line.id,
           sourceCountLineId: line.sourceCountLineId || null,
           referenceAt,
-          physicalAtReference,
-          laterMovementDelta: laterDelta,
+          laterOperationalMovementCount: later.length,
+          laterOperationalDelta,
           stockBeforeDecision: currentStock,
           targetStock,
+          expectedStockAtCount: line.expectedStock,
+          countedStockAtCount: line.countedStock,
           reason: decisionReason,
           authorizedRole: 'GOD'
         }
@@ -865,28 +853,24 @@ async function updateReconciliationLine(
   );
 }
 
-function movementsAfterReferenceDelta(
+function movementsAfterReference(
   movements,
   referenceAt,
   locationId,
   reconciliationDocumentId
 ) {
   const referenceMs = Date.parse(referenceAt);
-  if (!Number.isFinite(referenceMs)) return 0;
+  if (!Number.isFinite(referenceMs)) return [];
 
-  return movements.reduce((total, movement) => {
-    if (!movement || movement.voided === true) return total;
-    if (locationId && movement.locationId !== locationId) return total;
-    if (movement.documentId === reconciliationDocumentId) return total;
+  return movements.filter(movement => {
+    if (!movement || movement.voided === true) return false;
+    if (locationId && movement.locationId !== locationId) return false;
+    if (movement.documentId === reconciliationDocumentId) return false;
 
     const at = movement.effectiveAt || movement.createdAt;
     const movementMs = Date.parse(at || '');
-    if (!Number.isFinite(movementMs) || movementMs <= referenceMs) {
-      return total;
-    }
-
-    return total + stockDeltaForMovement(movement);
-  }, 0);
+    return Number.isFinite(movementMs) && movementMs > referenceMs;
+  });
 }
 
 function reconciliationDocumentId(countDocumentId) {
