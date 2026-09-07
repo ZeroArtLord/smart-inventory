@@ -3,12 +3,19 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-async function read(relativePath) {
-  const path = fileURLToPath(new URL(relativePath, import.meta.url));
-  return readFile(path, 'utf8');
+function resolve(relativePath) {
+  return fileURLToPath(new URL(relativePath, import.meta.url));
 }
 
-test('PWA V5 precachea shell operativo completo y assets mobile', async () => {
+async function read(relativePath) {
+  return readFile(resolve(relativePath), 'utf8');
+}
+
+async function readBinary(relativePath) {
+  return readFile(resolve(relativePath));
+}
+
+test('PWA V5 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
   assert.match(sw, /smart-inventory-v2-shell-38/);
@@ -39,6 +46,27 @@ test('PWA V5 precachea shell operativo completo y assets mobile', async () => {
 
   for (const asset of requiredAssets) {
     assert.ok(sw.includes(`'${asset}'`), `Falta en APP_SHELL: ${asset}`);
+    const bytes = await readBinary(`../${asset.slice(2)}`);
+    assert.ok(bytes.length > 0, `Asset vacío o inexistente: ${asset}`);
+  }
+});
+
+test('iconos PNG de instalación tienen firma PNG válida', async () => {
+  const signature = '89504e470d0a1a0a';
+  const icons = [
+    '../icons/vigia-apple-touch-icon.png',
+    '../icons/vigia-192.png',
+    '../icons/vigia-512.png',
+    '../icons/vigia-512-maskable.png'
+  ];
+
+  for (const icon of icons) {
+    const bytes = await readBinary(icon);
+    assert.equal(
+      bytes.subarray(0, 8).toString('hex'),
+      signature,
+      `Firma PNG inválida: ${icon}`
+    );
   }
 });
 
@@ -70,6 +98,7 @@ test('index incluye hardening de iOS, viewport seguro y CSS mobile final', async
   const html = await read('../index.html');
 
   assert.match(html, /viewport-fit=cover/);
+  assert.match(html, /mobile-web-app-capable" content="yes"/);
   assert.match(html, /apple-mobile-web-app-capable" content="yes"/);
   assert.match(html, /apple-mobile-web-app-title" content="VIGÍA"/);
   assert.match(html, /vigia-apple-touch-icon\.png/);
