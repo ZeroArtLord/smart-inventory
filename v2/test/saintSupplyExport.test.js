@@ -90,12 +90,14 @@ test('reporte SAINT conserva código, cantidad y unidad base', () => {
   ]);
 });
 
-test('metadata de destino tiene prioridad y el reporte identifica Código SAINT faltante', () => {
+test('metadata visible tiene prioridad y el reporte identifica Código SAINT faltante', () => {
   const model = buildSaintSupplyReportModel({
     document: supply({
+      notes: 'Nota normal',
       metadata: {
         destinationName: 'BARRA PRINCIPAL',
-        responsibleName: 'Armando'
+        responsibleName: 'Armando',
+        saintNotes: 'Descargar como surtido interno'
       }
     }),
     lines: [
@@ -118,6 +120,9 @@ test('metadata de destino tiene prioridad y el reporte identifica Código SAINT 
   });
 
   assert.equal(model.destination, 'BARRA PRINCIPAL');
+  assert.equal(model.responsible, 'Armando');
+  assert.equal(model.rows[0].Responsable, 'Armando');
+  assert.equal(model.documentNotes, 'Descargar como surtido interno');
   assert.equal(model.missingSaintCount, 1);
   assert.equal(model.readyForManualSaint, false);
   assert.match(model.warnings.join(' '), /sin Código SAINT/i);
