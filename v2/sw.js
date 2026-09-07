@@ -1,13 +1,25 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-37';
+const CACHE_NAME = 'smart-inventory-v2-shell-38';
 
 const APP_SHELL = [
   './',
   './index.html',
-  './css/app.css',
   './manifest.webmanifest',
+  './icons/vigia-icon.svg',
+  './icons/vigia-maskable.svg',
+  './css/app.css',
+  './css/v5-procurement.css',
+  './css/v5-saint-report.css',
+  './css/v5-reconciliation.css',
+  './css/v5-live-supply.css',
+  './css/mobile-launch-hardening.css',
   './vendor/xlsx.full.min.js',
   './src/ui/app.js',
   './src/ui/vigiaIntelligenceUi.js',
+  './src/ui/countWorkflowUi.js',
+  './src/ui/countReconciliationUi.js',
+  './src/ui/liveSupplyUi.js',
+  './src/ui/replenishmentWorkflowUi.js',
+  './src/ui/saintSupplyReportUi.js',
   './src/auth/authProvider.js',
   './src/auth/firebaseClient.js',
   './src/auth/authBootstrap.js',
@@ -37,14 +49,21 @@ const APP_SHELL = [
   './src/intelligence/demandLearning.js',
   './src/intelligence/intelligenceExplanation.js',
   './src/replenishment/replenishmentService.js',
+  './src/replenishment/warehouseProcurementService.js',
   './src/scanner/barcodeScanner.js',
   './src/export/exportService.js',
+  './src/export/saintSupplyExport.js',
   './src/reporting/reportingEngine.js',
   './src/ui/dashboardService.js',
   './src/admin/adminClient.js',
   './src/audit/auditClient.js',
   './src/documents/documentTypes.js',
-  './src/documents/documentService.js'
+  './src/documents/documentService.js',
+  './src/documents/countWorkflow.js',
+  './src/documents/countWorkflowService.js',
+  './src/documents/countReconciliationService.js',
+  './src/documents/liveSupplyService.js',
+  './src/documents/supplyReportContextService.js'
 ];
 
 self.addEventListener('install', event => {
