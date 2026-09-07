@@ -1,6 +1,6 @@
 {
-  "name": "Smart Inventory V2",
-  "short_name": "SmartInv V2",
+  "name": "VIGÍA - Inventory Intelligence",
+  "short_name": "VIGÍA",
   "id": "./index.html",
   "start_url": "./index.html",
   "scope": "./",
@@ -9,14 +9,30 @@
     "window-controls-overlay",
     "standalone"
   ],
-  "background_color": "#f3f4f6",
-  "theme_color": "#111827",
+  "orientation": "any",
+  "background_color": "#f5f7fb",
+  "theme_color": "#2f6fed",
   "lang": "es",
   "categories": [
     "business",
     "productivity"
   ],
-  "description": "Asistente operativo de almacén local-first.",
+  "description": "VIGÍA, asistente operativo de almacén local-first e Inventory Intelligence.",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "./icons/vigia-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/vigia-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
   "shortcuts": [
     {
       "name": "Conteo",
@@ -34,7 +50,7 @@
       "url": "./index.html?view=entry"
     },
     {
-      "name": "Abastecer",
+      "name": "Comprar / Pedir",
       "short_name": "Abastecer",
       "url": "./index.html?view=replenishment"
     }
