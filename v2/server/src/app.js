@@ -18,6 +18,8 @@ const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicRoot = path.resolve(__dirname, '../..');
+const indexHtml = path.resolve(publicRoot, 'index.html');
+const serviceWorkerFile = path.resolve(publicRoot, 'sw.js');
 const xlsxBrowserBundle = path.resolve(
   __dirname,
   '../node_modules/xlsx/dist/xlsx.full.min.js'
@@ -38,6 +40,7 @@ app.use(helmet({
       ],
       connectSrc: [
         "'self'",
+        'https://www.gstatic.com',
         'https://*.googleapis.com',
         'https://*.firebaseapp.com'
       ],
@@ -159,6 +162,17 @@ app.use(
 
 app.get('/vendor/xlsx.full.min.js', (_req, res) => {
   res.sendFile(xlsxBrowserBundle);
+});
+
+app.get(['/', '/index.html'], (_req, res) => {
+  res.set('Cache-Control', 'no-cache, must-revalidate');
+  res.sendFile(indexHtml);
+});
+
+app.get('/sw.js', (_req, res) => {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.set('Service-Worker-Allowed', '/');
+  res.sendFile(serviceWorkerFile);
 });
 
 app.use((req, res, next) => {
