@@ -7,7 +7,6 @@ import {
   cancelLiveSupplyRemaining,
   restoreLiveSupplyRemaining,
   finalizeLiveSupplyCart,
-  cancelLiveSupplyCart,
   createLiveSupplyDeliveryToken,
   LIVE_SUPPLY_CART_KIND,
   LIVE_SUPPLY_DELIVERY_KIND
@@ -39,47 +38,58 @@ if (appRoot) {
     });
   });
 
-  // Interceptamos el cierre legacy ANTES de que app.js pueda convertir todas
-  // las líneas del carrito padre en un segundo descuento de stock.
+  // Fail-closed: ningún cierre de la pantalla Surtido puede atravesar el
+  // closeDocument legacy mientras todavía estamos decidiendo si se trata de
+  // un carrito V5-E. Una corrección hija recibe su aviso y luego continúa por
+  // el flujo legacy de corrección; el padre siempre usa finalizeLiveSupplyCart.
   appRoot.addEventListener('click', event => {
     const closeButton = event.target.closest(
       '.document-close-button[data-action="close-document"]'
     );
     if (!closeButton) return;
 
-    const id = activeSupplyDocumentId();
-    if (!id) return;
+    const workspace = closeButton.closest('.document-workspace-v2');
+    const heading = workspace?.querySelector('.document-editor-card h3');
+    if (!workspace || heading?.textContent.trim() !== 'Surtido') return;
+
+    if (workspace.querySelector('.v5-live-correction-notice')) {
+      return;
+    }
 
     event.preventDefault();
     event.stopImmediatePropagation();
 
-    finishLiveCart(id).catch(error => {
+    const documentId = activeSupplyDocumentId();
+    if (!documentId) {
+      showLiveToast('No se pudo identificar el surtido activo.', 'danger');
+      return;
+    }
+
+    const continueSafely = async () => {
+      if (!workspace.querySelector('.v5-live-supply-panel')) {
+        await enhanceSupplyView();
+      }
+
+      if (workspace.querySelector('.v5-live-correction-notice')) {
+        // Ya sabemos que es una entrega hija en corrección. El segundo click
+        // programático atraviesa este listener gracias al aviso presente.
+        closeButton.click();
+        return;
+      }
+
+      if (!workspace.querySelector('.v5-live-supply-panel')) {
+        throw new Error(
+          'V5-E no pudo confirmar el modo seguro del surtido. No se cerró nada.'
+        );
+      }
+
+      await finishLiveCart(documentId);
+    };
+
+    continueSafely().catch(error => {
       reportError(error);
       showLiveToast(error.message || String(error), 'danger');
     });
-  }, true);
-
-  // Un carrito vivo puede cancelarse desde la lista de borradores. La
-  // cancelación no reversa entregas físicas ya cerradas.
-  appRoot.addEventListener('click', event => {
-    const button = event.target.closest(
-      '[data-action="cancel-document"][data-id]'
-    );
-    if (!button) return;
-
-    get(STORES.DOCUMENTS, button.dataset.id)
-      .then(document => {
-        if (document?.metadata?.kind !== LIVE_SUPPLY_CART_KIND) return;
-
-        event.preventDefault();
-        event.stopImmediatePropagation();
-
-        cancelLiveCartFromList(document.id).catch(error => {
-          reportError(error);
-          showLiveToast(error.message || String(error), 'danger');
-        });
-      })
-      .catch(reportError);
   }, true);
 }
 
@@ -90,25 +100,46 @@ async function enhanceSupplyView() {
 
   const heading = workspace.querySelector('.document-editor-card h3');
   if (!heading || heading.textContent.trim() !== 'Surtido') return;
-  if (workspace.querySelector('.v5-live-supply-panel')) return;
+  if (
+    workspace.querySelector('.v5-live-supply-panel') ||
+    workspace.querySelector('.v5-live-correction-notice')
+  ) {
+    return;
+  }
 
   const documentId = activeSupplyDocumentId();
   if (!documentId) return;
 
-  const documentRecord = await get(STORES.DOCUMENTS, documentId);
-  if (!documentRecord || documentRecord.type !== 'SUPPLY') return;
-
-  // Los borradores de corrección de una entrega hija deben seguir el flujo
-  // explícito de corrección; nunca se convierten silenciosamente en padre.
-  if (documentRecord.metadata?.kind === LIVE_SUPPLY_DELIVERY_KIND) {
-    injectCorrectionNotice(workspace, documentRecord);
-    return;
+  const closeButton = workspace.querySelector(
+    '.document-close-button[data-action="close-document"]'
+  );
+  if (closeButton) {
+    closeButton.disabled = true;
+    closeButton.dataset.v5LiveGuard = 'pending';
   }
 
-  if (documentRecord.status !== 'DRAFT') return;
   enhancing = true;
 
   try {
+    const documentRecord = await get(STORES.DOCUMENTS, documentId);
+    if (!documentRecord || documentRecord.type !== 'SUPPLY') {
+      releaseLegacyClose(closeButton);
+      return;
+    }
+
+    // Los borradores de corrección de una entrega hija siguen el flujo
+    // explícito de corrección. Nunca se convierten silenciosamente en padre.
+    if (documentRecord.metadata?.kind === LIVE_SUPPLY_DELIVERY_KIND) {
+      injectCorrectionNotice(workspace, documentRecord);
+      releaseLegacyClose(closeButton);
+      return;
+    }
+
+    if (documentRecord.status !== 'DRAFT') {
+      releaseLegacyClose(closeButton);
+      return;
+    }
+
     const session = await safeSession();
     let liveDocument = documentRecord;
 
@@ -121,21 +152,34 @@ async function enhanceSupplyView() {
     const summary = await getLiveSupplyCartSummary(liveDocument.id);
     renderLivePanel(workspace, summary);
 
-    const closeButton = workspace.querySelector(
-      '.document-close-button[data-action="close-document"]'
-    );
     if (closeButton) {
       closeButton.textContent = 'Finalizar carrito V5-E';
       closeButton.classList.add('v5-live-finalize-button');
+      closeButton.disabled = false;
+      closeButton.dataset.v5LiveGuard = 'ready';
     }
+  } catch (error) {
+    // Ante un fallo de clasificación del padre dejamos el botón bloqueado:
+    // es preferible no cerrar a aplicar por accidente las líneas planificadas.
+    if (closeButton) {
+      closeButton.disabled = true;
+      closeButton.dataset.v5LiveGuard = 'failed';
+      closeButton.title = 'V5-E bloqueó el cierre hasta confirmar el modo seguro';
+    }
+    throw error;
   } finally {
     enhancing = false;
   }
 }
 
+function releaseLegacyClose(button) {
+  if (!button) return;
+  button.disabled = false;
+  button.dataset.v5LiveGuard = 'legacy';
+}
+
 function renderLivePanel(workspace, summary) {
-  const old = workspace.querySelector('.v5-live-supply-panel');
-  if (old) old.remove();
+  workspace.querySelector('.v5-live-supply-panel')?.remove();
 
   const panel = document.createElement('article');
   panel.className = 'card v5-live-supply-panel';
@@ -145,7 +189,7 @@ function renderLivePanel(workspace, summary) {
       <div>
         <div class="v5-live-eyebrow">V5-E · SURTIDO VIVO · EXACT-ONCE</div>
         <h3>Carrito abierto durante el turno</h3>
-        <p>Cada botón <strong>Entregar</strong> crea un surtido hijo cerrado. Solo esa entrega física descuenta stock.</p>
+        <p>Cada <strong>Entregar</strong> crea un surtido hijo cerrado. Solo esa entrega física descuenta stock.</p>
       </div>
       <div class="v5-live-head-badges">
         <span class="badge status-good">${summary.closedDeliveryCount} entrega(s)</span>
@@ -157,7 +201,7 @@ function renderLivePanel(workspace, summary) {
 
     <div class="v5-live-rule">
       <strong>Regla de seguridad:</strong>
-      editar el carrito cambia lo planificado, pero jamás reescribe una entrega ya hecha. Repetir el mismo token tampoco duplica stock.
+      editar el carrito cambia lo planificado, pero jamás reescribe una entrega hecha. Repetir el mismo token tampoco duplica stock.
     </div>
 
     <div class="v5-live-kpis">
@@ -214,11 +258,8 @@ function renderLivePanel(workspace, summary) {
   `;
 
   const editor = workspace.querySelector('.document-editor-card');
-  if (editor) {
-    editor.insertAdjacentElement('afterend', panel);
-  } else {
-    workspace.prepend(panel);
-  }
+  if (editor) editor.insertAdjacentElement('afterend', panel);
+  else workspace.prepend(panel);
 }
 
 function renderLiveRow(row) {
@@ -240,7 +281,9 @@ function renderLiveRow(row) {
         <strong>${escapeHtml(row.productName)}</strong>
         <small>
           Plan ${format(row.planned)} · Entregado ${format(row.delivered)} ·
-          ${row.cancelled ? `Cancelado ${format(row.remaining)}` : `Pendiente ${format(row.remaining)}`}
+          ${row.cancelled
+            ? `Cancelado ${format(row.remaining)}`
+            : `Pendiente ${format(row.remaining)}`}
         </small>
       </div>
 
@@ -336,11 +379,8 @@ async function handleLiveAction(button) {
 async function finishLiveCart(documentId) {
   if (actionRunning) return;
   const documentRecord = await get(STORES.DOCUMENTS, documentId);
-
-  // Si no es V5-E, dejamos que el flujo legacy continúe. El listener captura
-  // solo se vuelve bloqueante cuando el documento ya fue marcado LIVE.
   if (documentRecord?.metadata?.kind !== LIVE_SUPPLY_CART_KIND) {
-    return;
+    throw new Error('El cierre seguro V5-E no encontró un carrito vivo');
   }
 
   actionRunning = true;
@@ -359,7 +399,7 @@ async function finishLiveCart(documentId) {
     }
 
     const confirmed = window.confirm(
-      '¿Finalizar el carrito vivo? Las entregas ya cerradas quedan inmutables y el carrito padre NO vuelve a descontar stock.'
+      '¿Finalizar el carrito vivo? Las entregas cerradas quedan inmutables y el carrito padre NO vuelve a descontar stock.'
     );
     if (!confirmed) return;
 
@@ -374,25 +414,6 @@ async function finishLiveCart(documentId) {
     actionRunning = false;
     setPanelBusy(false);
   }
-}
-
-async function cancelLiveCartFromList(documentId) {
-  const documentRecord = await get(STORES.DOCUMENTS, documentId);
-  if (documentRecord?.metadata?.kind !== LIVE_SUPPLY_CART_KIND) return;
-
-  const confirmed = window.confirm(
-    '¿Cancelar este carrito vivo? Las entregas físicas ya registradas NO se reversarán.'
-  );
-  if (!confirmed) return;
-
-  const session = await safeSession();
-  await cancelLiveSupplyCart(documentId, {
-    userId: session?.userId || documentRecord.ownerId || null,
-    reason: 'Carrito cancelado desde lista de surtidos'
-  });
-
-  showLiveToast('Carrito cancelado. Entregas históricas conservadas.', 'success');
-  reopenSupplyView();
 }
 
 async function rerenderLivePanel(documentId) {
@@ -439,9 +460,13 @@ function injectCorrectionNotice(workspace, documentRecord) {
   notice.innerHTML = `
     <div class="status-warning">
       <strong>Corrección de entrega V5-E</strong><br>
-      Este documento reabre una entrega ya compensada. Al cerrarlo se generará una nueva salida trazable; no pertenece al carrito padre editable.
+      Este borrador proviene de una entrega ya compensada. Al cerrarlo se genera una nueva salida trazable y no se convierte en carrito padre.
     </div>
-    <small>${escapeHtml(documentRecord.metadata?.correctionOfDocumentId || documentRecord.id)}</small>
+    <small>${escapeHtml(
+      documentRecord.metadata?.correctionOfDocumentId ||
+      documentRecord.metadata?.parentCartId ||
+      documentRecord.id
+    )}</small>
   `;
   workspace.prepend(notice);
 }
@@ -460,9 +485,7 @@ function setPanelBusy(busy) {
 }
 
 function reopenSupplyView() {
-  const button = document.querySelector(
-    '.app-nav [data-view="supply"]'
-  );
+  const button = document.querySelector('.app-nav [data-view="supply"]');
   if (button) {
     button.click();
     return;
@@ -493,9 +516,7 @@ function format(value) {
 function formatDate(value) {
   if (!value) return '—';
   const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? '—'
-    : date.toLocaleString('es');
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('es');
 }
 
 function cssEscape(value) {
