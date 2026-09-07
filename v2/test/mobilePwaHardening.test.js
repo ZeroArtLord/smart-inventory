@@ -18,7 +18,7 @@ async function readBinary(relativePath) {
 test('PWA V5 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
-  assert.match(sw, /smart-inventory-v2-shell-38/);
+  assert.match(sw, /smart-inventory-v2-shell-39/);
 
   const requiredAssets = [
     './css/mobile-launch-hardening.css',
@@ -49,6 +49,40 @@ test('PWA V5 precachea shell operativo completo y assets mobile reales', async (
     const bytes = await readBinary(`../${asset.slice(2)}`);
     assert.ok(bytes.length > 0, `Asset vacío o inexistente: ${asset}`);
   }
+});
+
+test('recarga normal permite Firebase a través del service worker y revalida shell', async () => {
+  const server = await read('../server/src/app.js');
+  const sw = await read('../sw.js');
+
+  assert.ok(
+    server.includes("'https://www.gstatic.com'"),
+    'CSP debe permitir conexión del service worker a Firebase runtime'
+  );
+  assert.ok(
+    server.includes("app.get(['/', '/index.html']"),
+    'index debe tener ruta explícita para política de revalidación'
+  );
+  assert.ok(
+    server.includes("res.set('Cache-Control', 'no-cache, must-revalidate')"),
+    'index debe revalidarse en recargas normales'
+  );
+  assert.ok(
+    server.includes("app.get('/sw.js'"),
+    'service worker debe tener ruta explícita'
+  );
+  assert.ok(
+    server.includes("no-cache, no-store, must-revalidate"),
+    'service worker no debe quedar congelado por HTTP cache'
+  );
+  assert.ok(
+    sw.includes("url.origin === 'https://www.gstatic.com'"),
+    'service worker debe reconocer Firebase runtime'
+  );
+  assert.ok(
+    sw.includes('networkFirstWithCache(event.request)'),
+    'Firebase runtime debe conservar fallback cacheado después de una carga online'
+  );
 });
 
 test('iconos PNG de instalación tienen firma PNG válida', async () => {
