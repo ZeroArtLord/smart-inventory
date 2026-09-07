@@ -12,6 +12,7 @@ import {
 } from '../export/saintSupplyExport.js';
 import { downloadXlsx } from '../export/exportService.js';
 
+const LIVE_SUPPLY_CART_KIND = 'LIVE_SUPPLY_CART';
 const app = document.getElementById('app');
 let enhancing = false;
 
@@ -194,6 +195,15 @@ async function exportSaintSupply(documentId, format) {
     getAll(STORES.PRODUCTS),
     getAll(STORES.LOCATIONS)
   ]);
+
+  if (
+    record?.metadata?.kind === LIVE_SUPPLY_CART_KIND ||
+    record?.metadata?.closeMode === LIVE_SUPPLY_CART_KIND
+  ) {
+    throw new Error(
+      'El carrito V5-E es un acumulador operativo. El descargo SAINT debe salir de cada entrega física cerrada, no de las cantidades planificadas del padre.'
+    );
+  }
 
   const model = buildSaintSupplyReportModel({
     document: record,
