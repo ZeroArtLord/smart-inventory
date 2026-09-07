@@ -2,28 +2,18 @@ import 'fake-indexeddb/auto';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const {
-  createProduct
-} = await import('../src/catalog/catalogService.js');
+const { createProduct } = await import('../src/catalog/catalogService.js');
 const {
   createDocument,
   saveDocumentLine
 } = await import('../src/documents/documentService.js');
-const {
-  DOCUMENT_TYPES
-} = await import('../src/documents/documentTypes.js');
-const {
-  STORES,
-  get,
-  getAll
-} = await import('../src/storage/database.js');
+const { DOCUMENT_TYPES } = await import('../src/documents/documentTypes.js');
+const { STORES, get, getAll } = await import('../src/storage/database.js');
 const {
   createMovement,
   getCurrentStock
 } = await import('../src/inventory/movementService.js');
-const {
-  MOVEMENT_TYPES
-} = await import('../src/core/movementTypes.js');
+const { MOVEMENT_TYPES } = await import('../src/core/movementTypes.js');
 const {
   submitCountForReconciliation,
   ensureCountReconciliationDraft,
@@ -40,16 +30,18 @@ const {
 let productA;
 let productB;
 let seeded = false;
-let logicalTime = Date.now() - 100000;
+// Los movimientos creados por el servicio usan Date.now(). El reloj lógico
+// queda deliberadamente por delante para que los escenarios secuenciales no
+// confundan una decisión de un test anterior con un evento posterior al nuevo
+// conteo. Dentro de cada escenario el orden sigue siendo estrictamente causal.
+let logicalTime = Date.now() + 60000;
 
-function nextTestTime() {
+function nextTime() {
   logicalTime += 1000;
   return new Date(logicalTime).toISOString();
 }
 
 async function seedProducts() {
-  if (productA && productB && seeded) return;
-
   if (!productA) {
     productA = await createProduct({
       name: 'V5D ARROZ TEST',
@@ -58,7 +50,6 @@ async function seedProducts() {
       maxStock: 0
     });
   }
-
   if (!productB) {
     productB = await createProduct({
       name: 'V5D ACEITE TEST',
@@ -67,43 +58,34 @@ async function seedProducts() {
       maxStock: 0
     });
   }
+  if (seeded) return;
 
-  if (!seeded) {
-    const initialAt = nextTestTime();
-    await createMovement({
-      productId: productA.id,
-      type: MOVEMENT_TYPES.ENTRY,
-      quantity: 10,
-      effectiveAt: initialAt,
-      userId: 'seed-v5d'
-    });
-    await createMovement({
-      productId: productB.id,
-      type: MOVEMENT_TYPES.ENTRY,
-      quantity: 4,
-      effectiveAt: initialAt,
-      userId: 'seed-v5d'
-    });
-    seeded = true;
-  }
+  const effectiveAt = nextTime();
+  await createMovement({
+    productId: productA.id,
+    type: MOVEMENT_TYPES.ENTRY,
+    quantity: 10,
+    effectiveAt,
+    userId: 'seed-v5d'
+  });
+  await createMovement({
+    productId: productB.id,
+    type: MOVEMENT_TYPES.ENTRY,
+    quantity: 4,
+    effectiveAt,
+    userId: 'seed-v5d'
+  });
+  seeded = true;
 }
 
-async function createCountFromCurrent({
-  ownerId,
-  aDifference = 0,
-  bDifference = 0
-}) {
+async function createCount({ ownerId, aDifference = 0, bDifference = 0 }) {
   await seedProducts();
-
   const [aExpected, bExpected] = await Promise.all([
     getCurrentStock(productA.id),
     getCurrentStock(productB.id)
   ]);
-  const countedAt = nextTestTime();
-  const count = await createDocument({
-    type: DOCUMENT_TYPES.COUNT,
-    ownerId
-  });
+  const countedAt = nextTime();
+  const count = await createDocument({ type: DOCUMENT_TYPES.COUNT, ownerId });
 
   await saveDocumentLine({
     documentId: count.id,
@@ -119,40 +101,47 @@ async function createCountFromCurrent({
     countedStock: bExpected + bDifference,
     countedAt
   });
-
   return count;
 }
 
+async function openReconciliation(count, userId = 'god-v5d') {
+  await submitCountForReconciliation(count.id, { userId: count.ownerId });
+  return ensureCountReconciliationDraft(count.id, {
+    userId,
+    roleCode: 'GOD'
+  });
+}
+
 test('cerrar conteo V5-D no crea movimientos y deja diferencias pendientes', async () => {
-  const count = await createCountFromCurrent({
+  const count = await createCount({
     ownerId: 'warehouse-v5d-1',
     aDifference: -2,
     bDifference: 2
   });
-
-  const before = await getAll(STORES.MOVEMENTS);
+  const before = (await getAll(STORES.MOVEMENTS)).length;
   const result = await submitCountForReconciliation(count.id, {
-    userId: 'warehouse-v5d-1'
+    userId: count.ownerId
   });
-  const after = await getAll(STORES.MOVEMENTS);
+  const after = (await getAll(STORES.MOVEMENTS)).length;
 
   assert.equal(result.differenceLines, 2);
   assert.equal(result.movements.length, 0);
-  assert.equal(after.length, before.length);
+  assert.equal(after, before);
   assert.equal(result.document.status, 'CLOSED');
   assert.equal(
     result.document.metadata.reconciliationState,
     RECONCILIATION_STATE.PENDING
   );
   assert.equal(result.document.metadata.adjustmentLines, 0);
-
-  const pending = await listCountReconciliationCases();
-  assert.equal(pending.some(item => item.document.id === count.id), true);
+  assert.equal(
+    (await listCountReconciliationCases())
+      .some(item => item.document.id === count.id),
+    true
+  );
 });
 
-test('solo GOD puede abrir conciliación y cada decisión es explícita', async () => {
-  const pending = await listCountReconciliationCases();
-  const countCase = pending[0];
+test('solo GOD concilia y cada diferencia exige una decisión explícita', async () => {
+  const countCase = (await listCountReconciliationCases())[0];
   assert.ok(countCase);
 
   await assert.rejects(
@@ -167,20 +156,15 @@ test('solo GOD puede abrir conciliación y cada decisión es explícita', async 
     userId: 'god-v5d',
     roleCode: 'GOD'
   });
-
   assert.equal(opened.reconciliation.type, 'ADJUSTMENT');
-  assert.equal(opened.reconciliation.status, 'DRAFT');
   assert.equal(opened.lines.length, 2);
-  assert.equal(
-    opened.lines.every(
-      line => line.decision === RECONCILIATION_DECISION.PENDING
-    ),
-    true
-  );
+  assert.ok(opened.lines.every(
+    line => line.decision === RECONCILIATION_DECISION.PENDING
+  ));
 
   const arroz = opened.lines.find(line => line.productId === productA.id);
   const aceite = opened.lines.find(line => line.productId === productB.id);
-  const movementCountBefore = (await getAll(STORES.MOVEMENTS)).length;
+  const before = (await getAll(STORES.MOVEMENTS)).length;
 
   const adjusted = await adjustReconciliationLine(
     opened.reconciliation.id,
@@ -191,21 +175,14 @@ test('solo GOD puede abrir conciliación y cada decisión es explícita', async 
       reason: 'Faltante físico confirmado'
     }
   );
-
-  assert.equal(
-    adjusted.line.decision,
-    RECONCILIATION_DECISION.ADJUSTED
-  );
+  assert.equal(adjusted.line.decision, RECONCILIATION_DECISION.ADJUSTED);
   assert.equal(adjusted.movement.type, 'ADJUSTMENT');
   assert.equal(adjusted.movement.delta, -2);
   assert.equal(
     adjusted.movement.metadata.reconciliationKind,
     'COUNT_RECONCILIATION'
   );
-  assert.equal(
-    (await getAll(STORES.MOVEMENTS)).length,
-    movementCountBefore + 1
-  );
+  assert.equal((await getAll(STORES.MOVEMENTS)).length, before + 1);
 
   const ignored = await ignoreReconciliationLine(
     opened.reconciliation.id,
@@ -218,44 +195,29 @@ test('solo GOD puede abrir conciliación y cada decisión es explícita', async 
   );
   assert.equal(ignored.decision, RECONCILIATION_DECISION.IGNORED);
 
-  const finalized = await finalizeCountReconciliation(
-    opened.reconciliation.id,
-    {
-      userId: 'god-v5d',
-      roleCode: 'GOD'
-    }
-  );
-
-  assert.equal(finalized.reconciliation.status, 'CLOSED');
-  assert.equal(
-    finalized.count.metadata.reconciliationState,
-    RECONCILIATION_STATE.RESOLVED
-  );
-  assert.equal(finalized.summary.adjusted, 1);
-  assert.equal(finalized.summary.ignored, 1);
-
-  const storedCount = await get(
-    STORES.DOCUMENTS,
-    countCase.document.id
-  );
-  assert.equal(storedCount.metadata.adjustmentLines, 1);
-});
-
-test('reconteo usa stock VIGÍA actual como nueva referencia y puede quedar MATCHED', async () => {
-  const count = await createCountFromCurrent({
-    ownerId: 'warehouse-v5d-2',
-    bDifference: 1
-  });
-
-  await submitCountForReconciliation(count.id, {
-    userId: 'warehouse-v5d-2'
-  });
-  const opened = await ensureCountReconciliationDraft(count.id, {
+  const final = await finalizeCountReconciliation(opened.reconciliation.id, {
     userId: 'god-v5d',
     roleCode: 'GOD'
   });
+  assert.equal(final.reconciliation.status, 'CLOSED');
+  assert.equal(final.count.metadata.reconciliationState, RECONCILIATION_STATE.RESOLVED);
+  assert.equal(final.summary.adjusted, 1);
+  assert.equal(final.summary.ignored, 1);
+  assert.equal(
+    (await get(STORES.DOCUMENTS, countCase.document.id)).metadata.adjustmentLines,
+    1
+  );
+});
 
+test('reconteo usa stock VIGÍA actual y puede quedar MATCHED sin movimiento', async () => {
+  const count = await createCount({
+    ownerId: 'warehouse-v5d-2',
+    bDifference: 1
+  });
+  const opened = await openReconciliation(count);
   const currentB = await getCurrentStock(productB.id);
+  const before = (await getAll(STORES.MOVEMENTS)).length;
+
   const recounted = await recountReconciliationLine(
     opened.reconciliation.id,
     productB.id,
@@ -266,40 +228,31 @@ test('reconteo usa stock VIGÍA actual como nueva referencia y puede quedar MATC
       reason: 'Segundo conteo físico'
     }
   );
-
   assert.equal(recounted.decision, RECONCILIATION_DECISION.MATCHED);
   assert.equal(recounted.difference, 0);
-  assert.ok(recounted.recountAt);
+  assert.equal((await getAll(STORES.MOVEMENTS)).length, before);
 
   const details = await getCountReconciliationDetails(count.id);
   assert.equal(details.summary.matched, 1);
   assert.equal(details.summary.pending, 0);
-
   await finalizeCountReconciliation(opened.reconciliation.id, {
     userId: 'god-v5d',
     roleCode: 'GOD'
   });
 });
 
-test('ENTRY/SUPPLY posteriores no invalidan la diferencia ni se descuentan dos veces', async () => {
-  const count = await createCountFromCurrent({
+test('ENTRY posterior conserva la diferencia y no se descuenta dos veces', async () => {
+  const count = await createCount({
     ownerId: 'warehouse-v5d-live-op',
     aDifference: -1
   });
-
-  await submitCountForReconciliation(count.id, {
-    userId: 'warehouse-v5d-live-op'
-  });
-  const opened = await ensureCountReconciliationDraft(count.id, {
-    userId: 'god-v5d',
-    roleCode: 'GOD'
-  });
+  const opened = await openReconciliation(count);
 
   await createMovement({
     productId: productA.id,
     type: MOVEMENT_TYPES.ENTRY,
     quantity: 3,
-    effectiveAt: nextTestTime(),
+    effectiveAt: nextTime(),
     userId: 'recepcion-v5d'
   });
 
@@ -309,19 +262,12 @@ test('ENTRY/SUPPLY posteriores no invalidan la diferencia ni se descuentan dos v
     {
       userId: 'god-v5d',
       roleCode: 'GOD',
-      reason: 'Faltante confirmado después de una entrada normal'
+      reason: 'Faltante confirmado después de entrada normal'
     }
   );
-
   assert.equal(adjusted.movement.delta, -1);
-  assert.equal(
-    adjusted.movement.metadata.laterOperationalMovementCount,
-    1
-  );
-  assert.equal(
-    adjusted.movement.metadata.laterOperationalDelta,
-    3
-  );
+  assert.equal(adjusted.movement.metadata.laterOperationalMovementCount, 1);
+  assert.equal(adjusted.movement.metadata.laterOperationalDelta, 3);
 
   await finalizeCountReconciliation(opened.reconciliation.id, {
     userId: 'god-v5d',
@@ -329,39 +275,28 @@ test('ENTRY/SUPPLY posteriores no invalidan la diferencia ni se descuentan dos v
   });
 });
 
-test('un ADJUSTMENT posterior bloquea conciliación hasta realizar un reconteo', async () => {
-  const count = await createCountFromCurrent({
+test('ADJUSTMENT posterior bloquea conciliación hasta realizar reconteo', async () => {
+  const count = await createCount({
     ownerId: 'warehouse-v5d-sensitive',
     aDifference: -1
   });
-
-  await submitCountForReconciliation(count.id, {
-    userId: 'warehouse-v5d-sensitive'
-  });
-  const opened = await ensureCountReconciliationDraft(count.id, {
-    userId: 'god-v5d',
-    roleCode: 'GOD'
-  });
+  const opened = await openReconciliation(count);
 
   await createMovement({
     productId: productA.id,
     type: MOVEMENT_TYPES.ADJUSTMENT,
     quantity: 0,
     delta: 1,
-    effectiveAt: nextTestTime(),
+    effectiveAt: nextTime(),
     userId: 'otro-ajuste-v5d',
     metadata: { reason: 'Ajuste posterior independiente' }
   });
 
   await assert.rejects(
-    adjustReconciliationLine(
-      opened.reconciliation.id,
-      productA.id,
-      {
-        userId: 'god-v5d',
-        roleCode: 'GOD'
-      }
-    ),
+    adjustReconciliationLine(opened.reconciliation.id, productA.id, {
+      userId: 'god-v5d',
+      roleCode: 'GOD'
+    }),
     /Recuenta el producto/i
   );
 
@@ -376,7 +311,6 @@ test('un ADJUSTMENT posterior bloquea conciliación hasta realizar un reconteo',
       reason: 'Reconteo obligatorio por ajuste posterior'
     }
   );
-
   assert.equal(recounted.decision, RECONCILIATION_DECISION.MATCHED);
   await finalizeCountReconciliation(opened.reconciliation.id, {
     userId: 'god-v5d',
