@@ -40,6 +40,12 @@ const {
 let productA;
 let productB;
 let seeded = false;
+let logicalTime = Date.now() - 100000;
+
+function nextTestTime() {
+  logicalTime += 1000;
+  return new Date(logicalTime).toISOString();
+}
 
 async function seedProducts() {
   if (productA && productB && seeded) return;
@@ -63,7 +69,7 @@ async function seedProducts() {
   }
 
   if (!seeded) {
-    const initialAt = new Date(Date.now() - 10000).toISOString();
+    const initialAt = nextTestTime();
     await createMovement({
       productId: productA.id,
       type: MOVEMENT_TYPES.ENTRY,
@@ -93,7 +99,7 @@ async function createCountFromCurrent({
     getCurrentStock(productA.id),
     getCurrentStock(productB.id)
   ]);
-  const countedAt = new Date(Date.now() - 1000).toISOString();
+  const countedAt = nextTestTime();
   const count = await createDocument({
     type: DOCUMENT_TYPES.COUNT,
     ownerId
@@ -293,7 +299,7 @@ test('ENTRY/SUPPLY posteriores no invalidan la diferencia ni se descuentan dos v
     productId: productA.id,
     type: MOVEMENT_TYPES.ENTRY,
     quantity: 3,
-    effectiveAt: new Date().toISOString(),
+    effectiveAt: nextTestTime(),
     userId: 'recepcion-v5d'
   });
 
@@ -342,7 +348,7 @@ test('un ADJUSTMENT posterior bloquea conciliación hasta realizar un reconteo',
     type: MOVEMENT_TYPES.ADJUSTMENT,
     quantity: 0,
     delta: 1,
-    effectiveAt: new Date().toISOString(),
+    effectiveAt: nextTestTime(),
     userId: 'otro-ajuste-v5d',
     metadata: { reason: 'Ajuste posterior independiente' }
   });
