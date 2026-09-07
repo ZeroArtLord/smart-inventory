@@ -35,13 +35,53 @@ Archivos V5-A:
 - `test/countWorkflowService.test.js`
 - `index.html` carga `countWorkflowUi.js`
 
-PR: #2 `V5-A · Conteo operativo por categoría y pendientes` (draft).
+CI inicial V5-A #547: client-tests, server-syntax y server-integration en SUCCESS.
 
-CI run inicial: #547
+## V5-B — Comprar / Pedir manual + Extras
 
-- client-tests: SUCCESS
-- server-syntax: SUCCESS
-- server-integration: SUCCESS
+Estado: IMPLEMENTADO EN BRANCH · TESTS AÑADIDOS · CI FINAL EN VALIDACIÓN.
+
+Incluye:
+
+- búsqueda manual de cualquier producto del catálogo aunque VIGÍA no lo sugiera;
+- cantidad decidida por el usuario, con expresiones matemáticas seguras;
+- selección humana `COMPRA` o `PEDIDO` aunque difiera del método habitual del producto;
+- stock, mercancía en camino y sugerencia VIGÍA visibles solo como referencia;
+- motivo/nota opcional persistido junto con el contexto de la decisión;
+- trazabilidad de cantidad sugerida, stock y tránsito existentes al momento de decidir;
+- `Compra X / Extra` fuera del catálogo con descripción, cantidad, unidad y nota;
+- extras sincronizables sin crear productos, códigos SAINT ni movimientos;
+- extras jamás modifican stock ni aprendizaje de demanda;
+- extra se puede marcar `Comprado` o `Cancelado` sin generar una Entrada;
+- protección visual para impedir que un Extra use el flujo normal `Recibir` de inventario;
+- UI responsive añadida al workspace existente de `Comprar / Pedir` sin reescribir el núcleo productivo.
+
+Implementación de extras:
+
+- reutiliza de forma controlada la entidad sincronizable `replenishment` ya existente;
+- usa un `productId` sintético con prefijo `__VIGIA_EXTRA__:`;
+- `sourceSuggestion.kind = EXTRA` identifica inequívocamente el renglón;
+- PostgreSQL no tiene FK de `replenishments.product_id` hacia productos, por lo que no contamina catálogo;
+- los extras permanecen `DRAFT` hasta `Comprado`/`Cancelado`, por lo que no forman parte del tránsito de ningún producto real;
+- no requiere migración PostgreSQL nueva.
+
+Archivos V5-B:
+
+- `src/replenishment/warehouseProcurementService.js`
+- `src/ui/replenishmentWorkflowUi.js`
+- `css/v5-procurement.css`
+- `test/warehouseProcurementService.test.js`
+- `test/warehouseProcurementSyncContract.test.js`
+- `index.html` carga la UI/CSS V5-B.
+
+Pruebas V5-B cubren:
+
+- compra manual distinta al método habitual del producto;
+- persistencia y cola de sincronización;
+- extra fuera de catálogo sin producto nuevo;
+- extra sin movimientos de inventario;
+- completar/cancelar extras;
+- contrato de validación del servidor para compras manuales y extras sintéticos.
 
 ## Reglas operativas acordadas
 
@@ -54,25 +94,11 @@ CI run inicial: #547
 7. Ajustes de conciliación sensibles se reservarán al rol GOD.
 8. Documentos y movimientos originales no se reescriben silenciosamente; correcciones deben ser trazables.
 9. VIGÍA debe permitir operación sin papel; los surtidos cerrados serán el material de descargo manual en SAINT hasta Fase 26.
-
-## V5-B — Comprar / Pedir manual + Extras
-
-Pendiente.
-
-Requisitos:
-
-- buscar cualquier producto aunque VIGÍA no lo sugiera;
-- cantidad manual editable;
-- elegir COMPRA o PEDIDO;
-- sugerencia VIGÍA visible pero no obligatoria;
-- motivo/nota opcional;
-- EXTRA fuera de catálogo con descripción, cantidad, unidad y nota;
-- extra no modifica stock ni aprendizaje;
-- lista final conjunta para operación/impresión.
+10. Un Extra fuera de catálogo pertenece a la lista operativa de compras, nunca al inventario.
 
 ## V5-C — Reporte de surtido SAINT-ready
 
-Pendiente.
+SIGUIENTE.
 
 Debe incluir Código SAINT, producto, cantidad, unidad, destino, responsable, fecha, documento y totales. Exportar/imprimir de forma limpia para transcripción manual a SAINT.
 
