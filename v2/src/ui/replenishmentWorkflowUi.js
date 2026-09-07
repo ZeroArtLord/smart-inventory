@@ -51,21 +51,26 @@ if (app) {
 }
 
 async function enhanceReplenishmentWorkspace() {
-  if (state.enhancing) return;
-  if (!isReplenishmentView()) return;
+  if (state.enhancing || !isReplenishmentView()) return;
 
   state.enhancing = true;
   try {
     let root = document.getElementById('v5ProcurementManual');
-    if (!root) {
-      const layout = app.querySelector('.replenish-layout-v2');
-      if (!layout) return;
 
-      root = document.createElement('section');
-      root.id = 'v5ProcurementManual';
-      root.className = 'card v5-procurement-manual';
-      layout.prepend(root);
+    // Si el panel ya existe no lo volvemos a pintar desde el observer.
+    // Eso evita un ciclo MutationObserver -> innerHTML -> MutationObserver.
+    if (root) {
+      await patchExtraCards();
+      return;
     }
+
+    const layout = app.querySelector('.replenish-layout-v2');
+    if (!layout) return;
+
+    root = document.createElement('section');
+    root.id = 'v5ProcurementManual';
+    root.className = 'card v5-procurement-manual';
+    layout.prepend(root);
 
     await renderManualPanel(root);
     await patchExtraCards();
@@ -95,9 +100,7 @@ async function renderManualPanel(root) {
       <div>
         <div class="product-meta v5-eyebrow">V5 · DECISIÓN HUMANA</div>
         <h3>Agregar compra o pedido manual</h3>
-        <p>
-          VIGÍA recomienda; tú decides. Puedes agregar cualquier producto aunque la sugerencia sea 0.
-        </p>
+        <p>VIGÍA recomienda; tú decides. Puedes agregar cualquier producto aunque la sugerencia sea 0.</p>
       </div>
       <div class="v5-procurement-badges">
         <span class="badge">${products.length} producto(s) activos</span>
@@ -109,11 +112,7 @@ async function renderManualPanel(root) {
       <div class="v5-manual-product-panel">
         <label class="v5-field">
           <span>Buscar producto del catálogo</span>
-          <input
-            id="v5ProcurementSearch"
-            autocomplete="off"
-            placeholder="Arroz, Código SAINT, SKU…"
-          >
+          <input id="v5ProcurementSearch" autocomplete="off" placeholder="Arroz, Código SAINT, SKU…">
         </label>
 
         <div id="v5ProcurementResults" class="v5-procurement-results">
@@ -161,11 +160,7 @@ async function renderManualPanel(root) {
 
             <label class="v5-field v5-field-wide">
               <span>Motivo / nota opcional</span>
-              <input
-                id="v5ProcurementReason"
-                autocomplete="off"
-                placeholder="Ej. Evento especial de 100 personas"
-              >
+              <input id="v5ProcurementReason" autocomplete="off" placeholder="Ej. Evento especial de 100 personas">
             </label>
           </div>
 
@@ -222,9 +217,7 @@ async function renderManualPanel(root) {
           <input name="notes" autocomplete="off" placeholder="Ej. Para reparación de iluminación">
         </label>
 
-        <button class="secondary v5-add-extra" data-v5-action="add-extra" type="submit">
-          ＋ Agregar extra
-        </button>
+        <button class="secondary v5-add-extra" data-v5-action="add-extra" type="submit">＋ Agregar extra</button>
 
         <div class="v5-extra-safety">
           <strong>Separado del inventario.</strong>
@@ -245,91 +238,91 @@ async function renderManualPanel(root) {
 async function handleDocumentInput(event) {
   if (event.target.id !== 'v5ProcurementSearch') return;
 
-  const query = String(event.target.value || '').trim();
-  state.results = query.length >= 2
-    ? await searchProducts(query, { limit: 8 })
-    : [];
+  try {
+    const query = String(event.target.value || '').trim();
+    state.results = query.length >= 2
+      ? await searchProducts(query, { limit: 8 })
+      : [];
 
-  const container = document.getElementById('v5ProcurementResults');
-  if (container) container.innerHTML = renderSearchResults();
+    const container = document.getElementById('v5ProcurementResults');
+    if (container) container.innerHTML = renderSearchResults();
+  } catch (error) {
+    toast(error.message || String(error));
+  }
 }
 
 async function handleDocumentClick(event) {
-  const productButton = event.target.closest('[data-v5-product-id]');
-  if (productButton) {
-    event.preventDefault();
-    const productId = productButton.dataset.v5ProductId;
-    const matches = await searchProducts(
-      productButton.dataset.v5ProductName || '',
-      { limit: 20 }
-    );
-    state.selectedProduct = matches.find(item => item.id === productId) || null;
-
-    if (!state.selectedProduct) {
+  try {
+    const productButton = event.target.closest('[data-v5-product-id]');
+    if (productButton) {
+      event.preventDefault();
+      const productId = productButton.dataset.v5ProductId;
       const products = await getAll(STORES.PRODUCTS);
       state.selectedProduct = products.find(item => item.id === productId) || null;
+      state.selectedMetrics = state.selectedProduct
+        ? await loadProductMetrics(state.selectedProduct.id)
+        : null;
+      state.results = [];
+
+      const root = document.getElementById('v5ProcurementManual');
+      if (root) await renderManualPanel(root);
+      return;
     }
 
-    state.selectedMetrics = state.selectedProduct
-      ? await loadProductMetrics(state.selectedProduct.id)
-      : null;
-    state.results = [];
-    const root = document.getElementById('v5ProcurementManual');
-    if (root) await renderManualPanel(root);
-    return;
-  }
+    const actionButton = event.target.closest('[data-v5-action]');
+    if (!actionButton) return;
 
-  const actionButton = event.target.closest('[data-v5-action]');
-  if (!actionButton) return;
+    const action = actionButton.dataset.v5Action;
 
-  const action = actionButton.dataset.v5Action;
+    if (action === 'clear-product') {
+      state.selectedProduct = null;
+      state.selectedMetrics = null;
+      state.results = [];
+      const root = document.getElementById('v5ProcurementManual');
+      if (root) await renderManualPanel(root);
+      return;
+    }
 
-  if (action === 'clear-product') {
-    state.selectedProduct = null;
-    state.selectedMetrics = null;
-    state.results = [];
-    const root = document.getElementById('v5ProcurementManual');
-    if (root) await renderManualPanel(root);
-    return;
-  }
+    if (action === 'add-manual-product') {
+      event.preventDefault();
+      await addManualProduct();
+      return;
+    }
 
-  if (action === 'add-manual-product') {
-    event.preventDefault();
-    await addManualProduct();
-    return;
-  }
+    if (action === 'add-extra') {
+      event.preventDefault();
+      await addExtra();
+      return;
+    }
 
-  if (action === 'add-extra') {
-    event.preventDefault();
-    await addExtra();
-    return;
-  }
+    if (action === 'complete-extra') {
+      event.preventDefault();
+      await completeProcurementExtra(actionButton.dataset.id, {
+        userId: await currentUserId()
+      });
+      toast('Extra marcado como comprado');
+      refreshReplenishmentView();
+      return;
+    }
 
-  if (action === 'complete-extra') {
-    event.preventDefault();
-    await completeProcurementExtra(actionButton.dataset.id, {
-      userId: await currentUserId()
-    });
-    toast('Extra marcado como comprado');
-    refreshReplenishmentView();
-    return;
-  }
-
-  if (action === 'cancel-extra') {
-    event.preventDefault();
-    if (!confirm('¿Cancelar este extra de la lista de compras?')) return;
-    await cancelProcurementExtra(actionButton.dataset.id, {
-      userId: await currentUserId()
-    });
-    toast('Extra cancelado');
-    refreshReplenishmentView();
+    if (action === 'cancel-extra') {
+      event.preventDefault();
+      if (!confirm('¿Cancelar este extra de la lista de compras?')) return;
+      await cancelProcurementExtra(actionButton.dataset.id, {
+        userId: await currentUserId()
+      });
+      toast('Extra cancelado');
+      refreshReplenishmentView();
+    }
+  } catch (error) {
+    toast(error.message || String(error));
   }
 }
 
 async function addManualProduct() {
-  if (!state.selectedProduct) throwAndToast('Selecciona un producto');
-
   try {
+    if (!state.selectedProduct) throw new Error('Selecciona un producto');
+
     const quantity = evaluateNumericExpression(
       document.getElementById('v5ProcurementQuantity')?.value || ''
     );
@@ -353,9 +346,7 @@ async function addManualProduct() {
       pendingInboundAtDecision: metrics.pendingInbound ?? 0
     });
 
-    toast(
-      `${method === 'PURCHASE' ? 'Compra' : 'Pedido'} agregado: ${state.selectedProduct.name}`
-    );
+    toast(`${method === 'PURCHASE' ? 'Compra' : 'Pedido'} agregado: ${state.selectedProduct.name}`);
     state.selectedProduct = null;
     state.selectedMetrics = null;
     state.results = [];
@@ -448,15 +439,13 @@ async function patchExtraCards() {
       ![
         REPLENISHMENT_STATUS.RECEIVED,
         REPLENISHMENT_STATUS.CANCELLED
-      ].includes(extra.status)
+      ].includes(extra.status) &&
+      actions.dataset.v5ExtraPatched !== extra.id
     ) {
+      actions.dataset.v5ExtraPatched = extra.id;
       actions.innerHTML = `
-        <button class="success" data-v5-action="complete-extra" data-id="${escapeHtml(extra.id)}" type="button">
-          ✓ Comprado
-        </button>
-        <button class="danger" data-v5-action="cancel-extra" data-id="${escapeHtml(extra.id)}" type="button">
-          Cancelar extra
-        </button>
+        <button class="success" data-v5-action="complete-extra" data-id="${escapeHtml(extra.id)}" type="button">✓ Comprado</button>
+        <button class="danger" data-v5-action="cancel-extra" data-id="${escapeHtml(extra.id)}" type="button">Cancelar extra</button>
       `;
     }
   }
@@ -466,12 +455,7 @@ function renderSearchResults() {
   if (!state.results.length) return '';
 
   return state.results.map(product => `
-    <button
-      class="v5-procurement-result"
-      data-v5-product-id="${escapeHtml(product.id)}"
-      data-v5-product-name="${escapeHtml(product.name)}"
-      type="button"
-    >
+    <button class="v5-procurement-result" data-v5-product-id="${escapeHtml(product.id)}" type="button">
       <span>
         <strong>${escapeHtml(product.name)}</strong>
         <small>
@@ -511,11 +495,6 @@ function toast(message) {
   node.textContent = String(message || 'Listo');
   document.body.appendChild(node);
   setTimeout(() => node.remove(), 2600);
-}
-
-function throwAndToast(message) {
-  toast(message);
-  throw new Error(message);
 }
 
 function formatNumber(value) {
