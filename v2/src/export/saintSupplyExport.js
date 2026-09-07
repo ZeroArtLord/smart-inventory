@@ -33,9 +33,9 @@ export function buildSaintSupplyReportModel({
 
   const destination = resolveDestination(document, locationById);
   const responsible = clean(
+    document.metadata?.responsibleName ||
     document.closedBy ||
     document.ownerId ||
-    document.metadata?.responsibleName ||
     ''
   );
   const effectiveAt =
@@ -107,7 +107,11 @@ export function buildSaintSupplyReportModel({
     effectiveAt,
     dateText,
     reference: clean(document.reference),
-    documentNotes: clean(document.notes),
+    documentNotes: clean(
+      document.metadata?.saintNotes ||
+      document.notes ||
+      ''
+    ),
     rows,
     columns: SAINT_SUPPLY_COLUMNS,
     lineCount: rows.length,
@@ -195,11 +199,12 @@ export function printSaintSupplyReport(model) {
   tr:nth-child(even) td{background:#f8fafc}
   .num{width:30px;text-align:center}.code{width:112px;font-weight:700}.qty{width:72px;text-align:right;font-weight:800}.unit{width:58px;text-align:center}.product{font-weight:700}
   .totals{margin-top:12px;border:1px solid #d8dee8;border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;gap:14px;font-size:11px}
+  .notes{margin-top:10px;border-left:3px solid #1f4e78;padding:7px 10px;background:#f8fafc;font-size:10px}
   .signatures{display:grid;grid-template-columns:1fr 1fr;gap:80px;margin-top:34px}
   .signature{border-top:1px solid #667085;padding-top:5px;text-align:center;color:#667085;font-size:10px}
   .footer{margin-top:20px;padding-top:8px;border-top:1px solid #e4e7ec;color:#98a2b3;font-size:9px;display:flex;justify-content:space-between}
   @page{size:A4 landscape;margin:8mm}
-  @media print{.page{padding:0;max-width:none}.warning{break-inside:avoid}.signatures{break-inside:avoid}}
+  @media print{.page{padding:0;max-width:none}.warning,.notes,.signatures{break-inside:avoid}}
 </style>
 </head>
 <body>
@@ -245,6 +250,10 @@ export function printSaintSupplyReport(model) {
     <div><strong>Total por unidad:</strong> ${escapeHtml(model.totalsText)}</div>
     <div><strong>Líneas:</strong> ${model.lineCount}</div>
   </div>
+
+  ${model.documentNotes
+    ? `<div class="notes"><strong>Nota del surtido:</strong> ${escapeHtml(model.documentNotes)}</div>`
+    : ''}
 
   <div class="signatures">
     <div class="signature">Entregado / Almacén</div>
