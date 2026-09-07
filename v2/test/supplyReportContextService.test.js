@@ -3,8 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const {
-  createDocument,
-  closeDocument
+  createDocument
 } = await import('../src/documents/documentService.js');
 const {
   DOCUMENT_TYPES
@@ -15,7 +14,8 @@ const {
 const {
   STORES,
   get,
-  getAll
+  getAll,
+  put
 } = await import('../src/storage/database.js');
 
 test('guarda destino y responsable en metadata del surtido y los sincroniza', async () => {
@@ -56,9 +56,13 @@ test('no permite editar contexto SAINT después de cerrar el surtido', async () 
     ownerId: 'almacenista-v5c-closed'
   });
 
-  // Un surtido vacío puede cerrarse en el servicio actual sin crear movimientos.
-  await closeDocument(document.id, {
-    userId: 'almacenista-v5c-closed'
+  // Este test aísla la regla de edición del contexto: simula un documento ya
+  // cerrado sin ejecutar el flujo de cierre, que correctamente exige líneas.
+  await put(STORES.DOCUMENTS, {
+    ...document,
+    status: 'CLOSED',
+    closedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   });
 
   await assert.rejects(
