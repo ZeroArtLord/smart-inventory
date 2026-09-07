@@ -4,6 +4,10 @@ import {
   nextEntityVersion
 } from '../core/versioning.js';
 import {
+  MOVEMENT_TYPES,
+  stockDeltaForMovement
+} from '../core/movementTypes.js';
+import {
   STORES,
   get,
   getAll,
@@ -12,12 +16,11 @@ import {
   runTransaction
 } from '../storage/database.js';
 import { SYNC_STATUS } from '../sync/localQueue.js';
+import { calculateStock } from '../inventory/stockEngine.js';
 import {
   buildMovement,
-  buildMovementSyncItem,
-  getCurrentStock
+  buildMovementSyncItem
 } from '../inventory/movementService.js';
-import { MOVEMENT_TYPES } from '../core/movementTypes.js';
 import {
   DOCUMENT_STATUS,
   DOCUMENT_TYPES
@@ -40,8 +43,8 @@ export const RECONCILIATION_DECISION = Object.freeze({
 });
 
 /**
- * V5-D: cierra la medición física SIN crear ajustes.
- * Las diferencias quedan congeladas para revisión posterior por GOD.
+ * V5-D cierra la medición física SIN convertir diferencias en movimientos.
+ * El stock permanece exactamente igual hasta una decisión explícita de GOD.
  */
 export async function submitCountForReconciliation(
   documentId,
@@ -77,7 +80,8 @@ export async function submitCountForReconciliation(
           .map(product => product.id)
       );
       const countedIds = new Set(lines.map(line => line.productId));
-      const missing = [...activeProductIds].filter(productId => !countedIds.has(productId));
+      const missing = [...activeProductIds]
+        .filter(productId => !countedIds.has(productId));
 
       if (missing.length) {
         throw new Error(
@@ -132,9 +136,6 @@ export async function submitCountForReconciliation(
   );
 }
 
-/**
- * Devuelve conteos V5-D pendientes / en revisión y, opcionalmente, resueltos.
- */
 export async function listCountReconciliationCases({
   includeResolved = false
 } = {}) {
@@ -148,7 +149,9 @@ export async function listCountReconciliationCases({
   return documents
     .filter(document => document.type === DOCUMENT_TYPES.COUNT)
     .filter(document => document.status === DOCUMENT_STATUS.CLOSED)
-    .filter(document => document.metadata?.closeMode === COUNT_RECONCILIATION_KIND)
+    .filter(document =>
+      document.metadata?.closeMode === COUNT_RECONCILIATION_KIND
+    )
     .filter(document => {
       const state = document.metadata?.reconciliationState;
       return includeResolved
@@ -168,14 +171,20 @@ export async function listCountReconciliationCases({
       const differences = countLines.filter(line =>
         !almostEqual(Number(line.countedStock), Number(line.expectedStock))
       );
+
       return {
         document,
         lineCount: countLines.length,
         differenceCount: differences.length,
-        shortageCount: differences.filter(line => Number(line.difference) < 0).length,
-        surplusCount: differences.filter(line => Number(line.difference) > 0).length,
+        shortageCount: differences
+          .filter(line => Number(line.difference) < 0).length,
+        surplusCount: differences
+          .filter(line => Number(line.difference) > 0).length,
         absoluteDifference: round(
-          differences.reduce((sum, line) => sum + Math.abs(Number(line.difference || 0)), 0)
+          differences.reduce(
+            (sum, line) => sum + Math.abs(Number(line.difference || 0)),
+            0
+          )
         )
       };
     })
@@ -186,8 +195,8 @@ export async function listCountReconciliationCases({
 }
 
 /**
- * Crea un documento ADJUSTMENT separado para registrar decisiones de GOD.
- * No crea movimientos todavía.
+ * Crea un ADJUSTMENT separado para las decisiones de conciliación.
+ * La creación del documento y sus líneas todavía NO cambia stock.
  */
 export async function ensureCountReconciliationDraft(
   countDocumentId,
@@ -205,8 +214,15 @@ export async function ensureCountReconciliationDraft(
       const count = await requestToPromise(documentStore.get(countId));
       assertReconcilableCount(count);
 
-      const existing = await requestToPromise(documentStore.get(reconciliationId));
+      const existing = await requestToPromise(
+        documentStore.get(reconciliationId)
+      );
+
       if (existing) {
+        if (existing.status !== DOCUMENT_STATUS.DRAFT) {
+          throw new Error('La conciliación de este conteo ya fue cerrada');
+        }
+
         return {
           count,
           reconciliation: existing,
@@ -254,29 +270,48 @@ export async function ensureCountReconciliationDraft(
 
       await requestToPromise(documentStore.add(reconciliation));
       await requestToPromise(
-        queueStore.add(createSyncItem('document', reconciliation.id, 'CREATE', reconciliation))
+        queueStore.add(
+          createSyncItem(
+            'document',
+            reconciliation.id,
+            'CREATE',
+            reconciliation
+          )
+        )
       );
 
       const reconciliationLines = [];
 
       for (const source of differenceLines) {
+        const expectedStock = finite(
+          source.expectedStock,
+          'Existencia esperada'
+        );
+        const countedStock = finite(
+          source.countedStock,
+          'Existencia contada'
+        );
+
         const line = {
           id: reconciliationLineId(reconciliation.id, source.productId),
           documentId: reconciliation.id,
           productId: source.productId,
           productName: source.productName,
           documentType: DOCUMENT_TYPES.ADJUSTMENT,
-          expectedStock: finite(source.expectedStock, 'Existencia esperada'),
-          countedStock: finite(source.countedStock, 'Existencia contada'),
-          difference: finite(source.countedStock, 'Existencia contada') -
-            finite(source.expectedStock, 'Existencia esperada'),
+          expectedStock,
+          countedStock,
+          difference: round(countedStock - expectedStock),
           reconciliationKind: COUNT_RECONCILIATION_KIND,
           sourceCountDocumentId: count.id,
           sourceCountLineId: source.id,
+          sourceCountedAt: source.countedAt || null,
           decision: RECONCILIATION_DECISION.PENDING,
           decisionReason: null,
           decisionBy: null,
           decisionAt: null,
+          decisionExpectedStock: null,
+          decisionTargetStock: null,
+          decisionDelta: null,
           movementId: null,
           recountAt: null,
           recountBy: null,
@@ -287,7 +322,9 @@ export async function ensureCountReconciliationDraft(
 
         await requestToPromise(lineStore.add(line));
         await requestToPromise(
-          queueStore.add(createSyncItem('documentLine', line.id, 'CREATE', line))
+          queueStore.add(
+            createSyncItem('documentLine', line.id, 'CREATE', line)
+          )
         );
         reconciliationLines.push(line);
       }
@@ -307,7 +344,9 @@ export async function ensureCountReconciliationDraft(
 
       await requestToPromise(documentStore.put(updatedCount));
       await requestToPromise(
-        queueStore.add(createSyncItem('document', updatedCount.id, 'UPDATE', updatedCount))
+        queueStore.add(
+          createSyncItem('document', updatedCount.id, 'UPDATE', updatedCount)
+        )
       );
 
       return {
@@ -332,22 +371,26 @@ export async function getCountReconciliationDetails(countDocumentId) {
     reconciliationDocumentId(countId);
   const reconciliation = await get(STORES.DOCUMENTS, reconciliationId);
   const lines = reconciliation
-    ? await getAllByIndex(STORES.DOCUMENT_LINES, 'documentId', reconciliation.id)
+    ? await getAllByIndex(
+        STORES.DOCUMENT_LINES,
+        'documentId',
+        reconciliation.id
+      )
     : [];
 
   return {
     count,
     reconciliation,
     lines: lines.sort((a, b) =>
-      String(a.productName || '').localeCompare(String(b.productName || ''), 'es')
+      String(a.productName || '')
+        .localeCompare(String(b.productName || ''), 'es')
     ),
     summary: summarizeReconciliationLines(lines)
   };
 }
 
 /**
- * Recontar toma como nuevo esperado el stock VIGÍA actual en ese instante.
- * Si coincide, la línea queda MATCHED. Si no, vuelve a PENDING para decisión GOD.
+ * Recontar siempre toma el stock VIGÍA ACTUAL de la ubicación como referencia.
  */
 export async function recountReconciliationLine(
   reconciliationId,
@@ -361,31 +404,66 @@ export async function recountReconciliationLine(
 ) {
   assertGod(roleCode);
   const newCount = nonNegative(countedStock, 'Existencia recontada');
-  const currentStock = await getCurrentStock(productId);
 
-  return updateReconciliationLine(
-    reconciliationId,
-    productId,
-    async line => {
+  return runTransaction(
+    [
+      STORES.DOCUMENTS,
+      STORES.DOCUMENT_LINES,
+      STORES.MOVEMENTS,
+      STORES.SYNC_QUEUE
+    ],
+    'readwrite',
+    async (documentStore, lineStore, movementStore, queueStore) => {
+      const reconciliation = await requestToPromise(
+        documentStore.get(reconciliationId)
+      );
+      assertGodReconciliationDraft(reconciliation);
+
+      const id = reconciliationLineId(reconciliation.id, productId);
+      const line = await requestToPromise(lineStore.get(id));
+      if (!line) throw new Error('Diferencia no encontrada');
       assertLinePendingOrMatched(line);
+
+      const movements = await requestToPromise(
+        movementStore.index('productId').getAll(productId)
+      );
+      const currentStock = round(
+        calculateStock(movements, productId, {
+          locationId: reconciliation.locationId || null
+        })
+      );
       const difference = round(newCount - currentStock);
       const now = new Date().toISOString();
-      return {
+      const matched = almostEqual(difference, 0);
+
+      const updated = {
         ...line,
-        expectedStock: round(currentStock),
+        expectedStock: currentStock,
         countedStock: newCount,
         difference,
-        decision: almostEqual(difference, 0)
+        decision: matched
           ? RECONCILIATION_DECISION.MATCHED
           : RECONCILIATION_DECISION.PENDING,
         decisionReason: clean(reason) || 'Reconteo físico',
-        decisionBy: almostEqual(difference, 0) ? userId : null,
-        decisionAt: almostEqual(difference, 0) ? now : null,
+        decisionBy: matched ? userId : null,
+        decisionAt: matched ? now : null,
+        decisionExpectedStock: matched ? currentStock : null,
+        decisionTargetStock: matched ? currentStock : null,
+        decisionDelta: matched ? 0 : null,
         recountAt: now,
         recountBy: userId,
         version: nextEntityVersion(line),
         updatedAt: now
       };
+
+      await requestToPromise(lineStore.put(updated));
+      await requestToPromise(
+        queueStore.add(
+          createSyncItem('documentLine', updated.id, 'UPDATE', updated)
+        )
+      );
+
+      return updated;
     }
   );
 }
@@ -393,9 +471,14 @@ export async function recountReconciliationLine(
 export async function ignoreReconciliationLine(
   reconciliationId,
   productId,
-  { userId = null, roleCode = null, reason = 'Diferencia revisada y no aplicada' } = {}
+  {
+    userId = null,
+    roleCode = null,
+    reason = 'Diferencia revisada y no aplicada'
+  } = {}
 ) {
   assertGod(roleCode);
+
   return updateReconciliationLine(
     reconciliationId,
     productId,
@@ -403,13 +486,24 @@ export async function ignoreReconciliationLine(
       if (line.decision === RECONCILIATION_DECISION.ADJUSTED) {
         throw new Error('La línea ya fue ajustada');
       }
+      if (line.decision === RECONCILIATION_DECISION.IGNORED) {
+        throw new Error('La línea ya fue ignorada');
+      }
+      if (line.decision === RECONCILIATION_DECISION.MATCHED) {
+        throw new Error('La línea ya quedó cuadrada por reconteo');
+      }
+
       const now = new Date().toISOString();
       return {
         ...line,
         decision: RECONCILIATION_DECISION.IGNORED,
-        decisionReason: clean(reason) || 'Diferencia revisada y no aplicada',
+        decisionReason:
+          clean(reason) || 'Diferencia revisada y no aplicada',
         decisionBy: userId,
         decisionAt: now,
+        decisionExpectedStock: line.expectedStock,
+        decisionTargetStock: null,
+        decisionDelta: 0,
         version: nextEntityVersion(line),
         updatedAt: now
       };
@@ -418,7 +512,12 @@ export async function ignoreReconciliationLine(
 }
 
 /**
- * Único punto V5-D que modifica stock: GOD acepta una diferencia concreta.
+ * Único punto V5-D que puede modificar stock.
+ *
+ * Seguridad temporal: el conteo físico pertenece a un instante. Si después
+ * hubo Entradas/Surtidos/Ajustes, trasladamos ese físico hasta "ahora" con
+ * los movimientos posteriores. Así un surtido posterior al conteo NO vuelve
+ * a descontarse durante la conciliación.
  */
 export async function adjustReconciliationLine(
   reconciliationId,
@@ -448,30 +547,98 @@ export async function adjustReconciliationLine(
       const lineId = reconciliationLineId(reconciliation.id, productId);
       const line = await requestToPromise(lineStore.get(lineId));
       if (!line) throw new Error('Diferencia no encontrada');
+
       if (line.decision === RECONCILIATION_DECISION.ADJUSTED) {
         throw new Error('Esta diferencia ya fue ajustada');
       }
       if (line.decision === RECONCILIATION_DECISION.IGNORED) {
         throw new Error('Esta diferencia fue marcada como ignorada');
       }
-
-      const delta = round(
-        finite(line.countedStock, 'Existencia contada') -
-        finite(line.expectedStock, 'Existencia esperada')
-      );
-
-      if (almostEqual(delta, 0)) {
-        throw new Error('No existe diferencia que ajustar');
+      if (line.decision === RECONCILIATION_DECISION.MATCHED) {
+        throw new Error('La diferencia ya quedó cuadrada');
       }
 
+      const referenceAt = normalizeDate(
+        line.recountAt || line.sourceCountedAt
+      );
+      if (!referenceAt) {
+        throw new Error(
+          'No existe hora confiable del conteo. Recuenta el producto antes de ajustar.'
+        );
+      }
+
+      const movements = await requestToPromise(
+        movementStore.index('productId').getAll(productId)
+      );
+      const locationId = reconciliation.locationId || null;
+      const currentStock = round(
+        calculateStock(movements, productId, { locationId })
+      );
+      const laterDelta = round(
+        movementsAfterReferenceDelta(
+          movements,
+          referenceAt,
+          locationId,
+          reconciliation.id
+        )
+      );
+      const physicalAtReference = finite(
+        line.countedStock,
+        'Existencia contada'
+      );
+      const targetStock = round(physicalAtReference + laterDelta);
+
+      if (targetStock < -0.000001) {
+        throw new Error(
+          'Los movimientos posteriores hacen imposible aplicar este conteo con seguridad. Recuenta el producto.'
+        );
+      }
+
+      const delta = round(targetStock - currentStock);
       const now = new Date().toISOString();
+      const decisionReason =
+        clean(reason) || 'Conciliación de conteo físico';
+
+      if (almostEqual(delta, 0)) {
+        const matchedLine = {
+          ...line,
+          decision: RECONCILIATION_DECISION.MATCHED,
+          decisionReason,
+          decisionBy: userId,
+          decisionAt: now,
+          decisionExpectedStock: currentStock,
+          decisionTargetStock: targetStock,
+          decisionDelta: 0,
+          version: nextEntityVersion(line),
+          updatedAt: now
+        };
+
+        await requestToPromise(lineStore.put(matchedLine));
+        await requestToPromise(
+          queueStore.add(
+            createSyncItem(
+              'documentLine',
+              matchedLine.id,
+              'UPDATE',
+              matchedLine
+            )
+          )
+        );
+
+        return {
+          line: matchedLine,
+          movement: null,
+          matched: true
+        };
+      }
+
       const movement = buildMovement({
         productId,
         type: MOVEMENT_TYPES.ADJUSTMENT,
         quantity: 0,
         delta,
         documentId: reconciliation.id,
-        locationId: reconciliation.locationId || null,
+        locationId,
         userId,
         effectiveAt: now,
         metadata: {
@@ -481,22 +648,30 @@ export async function adjustReconciliationLine(
           reconciliationDocumentId: reconciliation.id,
           reconciliationLineId: line.id,
           sourceCountLineId: line.sourceCountLineId || null,
-          expectedStock: line.expectedStock,
-          countedStock: line.countedStock,
-          reason: clean(reason) || 'Conciliación de conteo físico',
+          referenceAt,
+          physicalAtReference,
+          laterMovementDelta: laterDelta,
+          stockBeforeDecision: currentStock,
+          targetStock,
+          reason: decisionReason,
           authorizedRole: 'GOD'
         }
       });
 
       await requestToPromise(movementStore.add(movement));
-      await requestToPromise(queueStore.add(buildMovementSyncItem(movement)));
+      await requestToPromise(
+        queueStore.add(buildMovementSyncItem(movement))
+      );
 
       const updatedLine = {
         ...line,
         decision: RECONCILIATION_DECISION.ADJUSTED,
-        decisionReason: clean(reason) || 'Conciliación de conteo físico',
+        decisionReason,
         decisionBy: userId,
         decisionAt: now,
+        decisionExpectedStock: currentStock,
+        decisionTargetStock: targetStock,
+        decisionDelta: delta,
         movementId: movement.id,
         version: nextEntityVersion(line),
         updatedAt: now
@@ -504,10 +679,21 @@ export async function adjustReconciliationLine(
 
       await requestToPromise(lineStore.put(updatedLine));
       await requestToPromise(
-        queueStore.add(createSyncItem('documentLine', updatedLine.id, 'UPDATE', updatedLine))
+        queueStore.add(
+          createSyncItem(
+            'documentLine',
+            updatedLine.id,
+            'UPDATE',
+            updatedLine
+          )
+        )
       );
 
-      return { line: updatedLine, movement };
+      return {
+        line: updatedLine,
+        movement,
+        matched: false
+      };
     }
   );
 }
@@ -535,15 +721,20 @@ export async function finalizeCountReconciliation(
       }
 
       const unresolved = lines.filter(line =>
-        line.decision === RECONCILIATION_DECISION.PENDING ||
-        !line.decision
+        !line.decision ||
+        line.decision === RECONCILIATION_DECISION.PENDING
       );
       if (unresolved.length) {
-        throw new Error(`Quedan ${unresolved.length} diferencia(s) sin resolver`);
+        throw new Error(
+          `Quedan ${unresolved.length} diferencia(s) sin resolver`
+        );
       }
 
-      const sourceCountId = reconciliation.metadata?.sourceCountDocumentId;
-      const sourceCount = await requestToPromise(documentStore.get(sourceCountId));
+      const sourceCountId =
+        reconciliation.metadata?.sourceCountDocumentId;
+      const sourceCount = await requestToPromise(
+        documentStore.get(sourceCountId)
+      );
       if (!sourceCount) throw new Error('Conteo origen no encontrado');
 
       const now = new Date().toISOString();
@@ -581,10 +772,19 @@ export async function finalizeCountReconciliation(
       await requestToPromise(documentStore.put(closedReconciliation));
       await requestToPromise(documentStore.put(resolvedCount));
       await requestToPromise(
-        queueStore.add(createSyncItem('document', closedReconciliation.id, 'UPDATE', closedReconciliation))
+        queueStore.add(
+          createSyncItem(
+            'document',
+            closedReconciliation.id,
+            'UPDATE',
+            closedReconciliation
+          )
+        )
       );
       await requestToPromise(
-        queueStore.add(createSyncItem('document', resolvedCount.id, 'UPDATE', resolvedCount))
+        queueStore.add(
+          createSyncItem('document', resolvedCount.id, 'UPDATE', resolvedCount)
+        )
       );
 
       return {
@@ -611,11 +811,18 @@ export function summarizeReconciliationLines(lines = []) {
 
   for (const line of lines) {
     const difference = Number(line.difference || 0);
-    const decision = line.decision || RECONCILIATION_DECISION.PENDING;
-    if (decision === RECONCILIATION_DECISION.ADJUSTED) summary.adjusted++;
-    else if (decision === RECONCILIATION_DECISION.IGNORED) summary.ignored++;
-    else if (decision === RECONCILIATION_DECISION.MATCHED) summary.matched++;
-    else summary.pending++;
+    const decision =
+      line.decision || RECONCILIATION_DECISION.PENDING;
+
+    if (decision === RECONCILIATION_DECISION.ADJUSTED) {
+      summary.adjusted++;
+    } else if (decision === RECONCILIATION_DECISION.IGNORED) {
+      summary.ignored++;
+    } else if (decision === RECONCILIATION_DECISION.MATCHED) {
+      summary.matched++;
+    } else {
+      summary.pending++;
+    }
 
     if (difference < 0) summary.shortages++;
     if (difference > 0) summary.surpluses++;
@@ -649,11 +856,37 @@ async function updateReconciliationLine(
       const updated = await updater(line);
       await requestToPromise(lineStore.put(updated));
       await requestToPromise(
-        queueStore.add(createSyncItem('documentLine', updated.id, 'UPDATE', updated))
+        queueStore.add(
+          createSyncItem('documentLine', updated.id, 'UPDATE', updated)
+        )
       );
       return updated;
     }
   );
+}
+
+function movementsAfterReferenceDelta(
+  movements,
+  referenceAt,
+  locationId,
+  reconciliationDocumentId
+) {
+  const referenceMs = Date.parse(referenceAt);
+  if (!Number.isFinite(referenceMs)) return 0;
+
+  return movements.reduce((total, movement) => {
+    if (!movement || movement.voided === true) return total;
+    if (locationId && movement.locationId !== locationId) return total;
+    if (movement.documentId === reconciliationDocumentId) return total;
+
+    const at = movement.effectiveAt || movement.createdAt;
+    const movementMs = Date.parse(at || '');
+    if (!Number.isFinite(movementMs) || movementMs <= referenceMs) {
+      return total;
+    }
+
+    return total + stockDeltaForMovement(movement);
+  }, 0);
 }
 
 function reconciliationDocumentId(countDocumentId) {
@@ -676,7 +909,10 @@ function assertDraftCount(document) {
 
 function assertReconcilableCount(document) {
   if (!document) throw new Error('Conteo no encontrado');
-  if (document.type !== DOCUMENT_TYPES.COUNT || document.status !== DOCUMENT_STATUS.CLOSED) {
+  if (
+    document.type !== DOCUMENT_TYPES.COUNT ||
+    document.status !== DOCUMENT_STATUS.CLOSED
+  ) {
     throw new Error('El conteo todavía no está listo para conciliación');
   }
   if (document.metadata?.closeMode !== COUNT_RECONCILIATION_KIND) {
@@ -710,7 +946,9 @@ function assertLinePendingOrMatched(line) {
     throw new Error('La línea ya fue ajustada');
   }
   if (line.decision === RECONCILIATION_DECISION.IGNORED) {
-    throw new Error('La línea fue ignorada; cambia la decisión antes de recontar');
+    throw new Error(
+      'La línea fue ignorada; no puede recontarse después de resolverla'
+    );
   }
 }
 
@@ -748,7 +986,9 @@ function groupBy(items, keyFn) {
 
 function finite(value, label) {
   const number = Number(value);
-  if (!Number.isFinite(number)) throw new Error(`${label} inválida`);
+  if (!Number.isFinite(number)) {
+    throw new Error(`${label} inválida`);
+  }
   return number;
 }
 
@@ -760,6 +1000,12 @@ function nonNegative(value, label) {
 
 function almostEqual(a, b) {
   return Math.abs(Number(a || 0) - Number(b || 0)) <= 0.000001;
+}
+
+function normalizeDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 function round(value) {
