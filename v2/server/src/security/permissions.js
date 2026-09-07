@@ -15,6 +15,8 @@ export const PERMISSIONS = Object.freeze({
   SAINT_SEND: 'saint.send'
 });
 
+const COUNT_RECONCILIATION_KIND = 'COUNT_RECONCILIATION';
+
 export function hasPermission(auth, permission) {
   const permissions = Array.isArray(auth?.permissions)
     ? auth.permissions
@@ -29,6 +31,23 @@ export function hasPermission(auth, permission) {
 }
 
 export function assertEventPermission(auth, event) {
+  // V5-D: el permiso genérico adjustment.write no es suficiente para
+  // conciliaciones de conteo. En este flujo la autorización es jerárquica:
+  // únicamente el rol GOD puede iniciar/revisar decisiones o crear el
+  // ADJUSTMENT que modifica stock. La simple entrega del conteo en estado
+  // PENDING continúa usando count.write para que el almacenista pueda contar.
+  if (requiresGodCountReconciliation(event)) {
+    if (String(auth?.roleCode || '').trim().toUpperCase() !== 'GOD') {
+      const error = new Error(
+        'Solo el rol DIOS puede conciliar diferencias de conteo'
+      );
+      error.code = 'PERMISSION_DENIED';
+      error.statusCode = 403;
+      throw error;
+    }
+    return 'role:GOD';
+  }
+
   if (event?.entityType === 'initialLoad') {
     const required = [
       PERMISSIONS.CATALOG_WRITE,
@@ -108,6 +127,44 @@ export function permissionForEvent(event) {
   }
 
   return PERMISSIONS.INVENTORY_WRITE;
+}
+
+export function requiresGodCountReconciliation(event) {
+  const payload = event?.payload || {};
+  const metadata = payload.metadata || {};
+
+  if (
+    event?.entityType === 'document' &&
+    payload.type === 'ADJUSTMENT' &&
+    metadata.kind === COUNT_RECONCILIATION_KIND
+  ) {
+    return true;
+  }
+
+  if (
+    event?.entityType === 'documentLine' &&
+    payload.reconciliationKind === COUNT_RECONCILIATION_KIND
+  ) {
+    return true;
+  }
+
+  if (
+    event?.entityType === 'movement' &&
+    metadata.reconciliationKind === COUNT_RECONCILIATION_KIND
+  ) {
+    return true;
+  }
+
+  if (
+    event?.entityType === 'document' &&
+    payload.type === 'COUNT' &&
+    metadata.closeMode === COUNT_RECONCILIATION_KIND &&
+    ['REVIEWING', 'RESOLVED'].includes(metadata.reconciliationState)
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function permissionForDocumentType(type) {
