@@ -34,6 +34,7 @@ test('PWA V5 precachea shell operativo completo y assets mobile reales', async (
     './src/ui/countReconciliationBulkUi.js',
     './src/ui/liveSupplyUi.js',
     './src/ui/quickStockCorrectionUi.js',
+    './src/ui/quickStockCorrectionRefreshUi.js',
     './src/ui/replenishmentWorkflowUi.js',
     './src/ui/saintSupplyReportUi.js',
     './src/catalog/saintBridge.js',
@@ -150,6 +151,7 @@ test('index incluye hardening de iOS, viewport seguro y CSS mobile final', async
   assert.match(html, /v5-quick-stock\.css/);
   assert.match(html, /countReconciliationBulkUi\.js/);
   assert.match(html, /quickStockCorrectionUi\.js/);
+  assert.match(html, /quickStockCorrectionRefreshUi\.js/);
   assert.ok(
     html.indexOf('saintBridgeUi.js') < html.indexOf('countReconciliationUi.js'),
     'El guard del puente SAINT debe cargar antes de la conciliación legacy'
