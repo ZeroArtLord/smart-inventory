@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-40';
+const CACHE_NAME = 'smart-inventory-v2-shell-41';
 
 const APP_SHELL = [
   './',
@@ -23,6 +23,7 @@ const APP_SHELL = [
   './src/ui/countWorkflowUi.js',
   './src/ui/saintBridgeUi.js',
   './src/ui/countReconciliationUi.js',
+  './src/ui/countReconciliationBulkUi.js',
   './src/ui/liveSupplyUi.js',
   './src/ui/replenishmentWorkflowUi.js',
   './src/ui/saintSupplyReportUi.js',
@@ -69,6 +70,7 @@ const APP_SHELL = [
   './src/documents/countWorkflow.js',
   './src/documents/countWorkflowService.js',
   './src/documents/countReconciliationService.js',
+  './src/documents/countReconciliationBulkService.js',
   './src/documents/saintBridgeReclassificationService.js',
   './src/documents/liveSupplyService.js',
   './src/documents/supplyReportContextService.js'
