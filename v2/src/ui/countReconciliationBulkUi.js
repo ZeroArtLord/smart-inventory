@@ -35,7 +35,6 @@ async function enhanceBulkControls() {
 
   const panel = document.getElementById('v5CountReconciliationPanel');
   if (!panel || !panel.querySelector('.v5-recon-back')) return;
-  if (panel.querySelector('.v5-recon-bulk')) return;
 
   const finalize = panel.querySelector(
     '[data-v5-recon-action="finalize"][data-reconciliation-id]'
@@ -77,7 +76,11 @@ async function enhanceBulkControls() {
       !protectedIds.has(line.productId)
     );
 
-    if (!pending.length && !pendingBridgePlans.length) return;
+    const existing = panel.querySelector('.v5-recon-bulk');
+    if (!pending.length && !pendingBridgePlans.length) {
+      existing?.remove();
+      return;
+    }
 
     const netDelta = round(normalPending.reduce(
       (sum, line) => sum + Number(line.difference || 0),
@@ -93,10 +96,22 @@ async function enhanceBulkControls() {
     const surpluses = normalPending.filter(line =>
       Number(line.difference || 0) > 0
     ).length;
+    const stateKey = [
+      reconciliationId,
+      pendingBridgePlans.length,
+      normalPending.length,
+      shortages,
+      surpluses,
+      netDelta,
+      absoluteDelta
+    ].join(':');
+
+    if (existing?.dataset.stateKey === stateKey) return;
 
     const node = document.createElement('section');
     node.className = 'v5-recon-bulk';
     node.dataset.reconciliationId = reconciliationId;
+    node.dataset.stateKey = stateKey;
     node.innerHTML = `
       <div class="v5-recon-bulk-head">
         <div>
@@ -125,7 +140,7 @@ async function enhanceBulkControls() {
         <div class="v5-recon-bulk-blocked">
           <strong>Puente SAINT protegido.</strong>
           Primero aplica ${pendingBridgePlans.length} reclasificación(es) SAINT desde el panel de arriba.
-          Después este botón ajustará de golpe únicamente las diferencias normales restantes.
+          Después este botón se habilitará automáticamente y ajustará de golpe únicamente las diferencias normales restantes.
         </div>
       ` : ''}
 
@@ -153,6 +168,11 @@ async function enhanceBulkControls() {
         </span>
       </div>
     `;
+
+    if (existing) {
+      existing.replaceWith(node);
+      return;
+    }
 
     const linesHost = panel.querySelector('.v5-recon-lines');
     if (linesHost) linesHost.before(node);
