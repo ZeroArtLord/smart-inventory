@@ -90,6 +90,57 @@ test('reporte SAINT conserva código, cantidad y unidad base', () => {
   ]);
 });
 
+test('variantes VIGÍA se agregan a un solo código SAINT sin perder composición', () => {
+  const bridgeProducts = [
+    {
+      id: 'p-pepsi',
+      name: 'REFRESCO BOTELLA PEPSI MAX 350ML',
+      saintCode: '1014761',
+      inventoryUnitId: 'unit_und',
+      saintBridgeSourceProductId: 'p-generic',
+      saintBridgeCode: '344121',
+      saintBridgeName: 'REFRESCOS BOTELLA 350ML'
+    },
+    {
+      id: 'p-7up',
+      name: 'REFRESCO BOTELLA 7UP 350ML',
+      saintCode: '80147',
+      inventoryUnitId: 'unit_und',
+      saintBridgeSourceProductId: 'p-generic',
+      saintBridgeCode: '344121',
+      saintBridgeName: 'REFRESCOS BOTELLA 350ML'
+    }
+  ];
+
+  const model = buildSaintSupplyReportModel({
+    document: supply(),
+    lines: [
+      {
+        productId: 'p-pepsi',
+        productName: bridgeProducts[0].name,
+        quantity: 12
+      },
+      {
+        productId: 'p-7up',
+        productName: bridgeProducts[1].name,
+        quantity: 8
+      }
+    ],
+    products: bridgeProducts,
+    locations: []
+  });
+
+  assert.equal(model.rows.length, 1);
+  assert.equal(model.sourceLineCount, 2);
+  assert.equal(model.bridgeAggregatedLineCount, 1);
+  assert.equal(model.rows[0]['Código SAINT'], '344121');
+  assert.equal(model.rows[0].Producto, 'REFRESCOS BOTELLA 350ML');
+  assert.equal(model.rows[0].Cantidad, 20);
+  assert.match(model.rows[0].Notas, /PEPSI MAX 350ML: 12/);
+  assert.match(model.rows[0].Notas, /7UP 350ML: 8/);
+  assert.equal(model.readyForManualSaint, true);
+});
+
 test('metadata visible tiene prioridad y el reporte identifica Código SAINT faltante', () => {
   const model = buildSaintSupplyReportModel({
     document: supply({
