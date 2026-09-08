@@ -27,4 +27,11 @@ ALTER TABLE products
     OR saint_bridge_source_product_id <> id
   );
 
+ALTER TABLE products
+  DROP CONSTRAINT IF EXISTS products_saint_bridge_source_inactive;
+
+ALTER TABLE products
+  ADD CONSTRAINT products_saint_bridge_source_inactive
+  CHECK (saint_bridge_source = false OR active = false);
+
 COMMIT;
