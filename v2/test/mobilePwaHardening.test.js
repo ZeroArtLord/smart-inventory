@@ -18,7 +18,7 @@ async function readBinary(relativePath) {
 test('PWA V5 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
-  assert.match(sw, /smart-inventory-v2-shell-40/);
+  assert.match(sw, /smart-inventory-v2-shell-41/);
 
   const requiredAssets = [
     './css/mobile-launch-hardening.css',
@@ -30,6 +30,7 @@ test('PWA V5 precachea shell operativo completo y assets mobile reales', async (
     './src/ui/countWorkflowUi.js',
     './src/ui/saintBridgeUi.js',
     './src/ui/countReconciliationUi.js',
+    './src/ui/countReconciliationBulkUi.js',
     './src/ui/liveSupplyUi.js',
     './src/ui/replenishmentWorkflowUi.js',
     './src/ui/saintSupplyReportUi.js',
@@ -37,6 +38,7 @@ test('PWA V5 precachea shell operativo completo y assets mobile reales', async (
     './src/documents/countWorkflow.js',
     './src/documents/countWorkflowService.js',
     './src/documents/countReconciliationService.js',
+    './src/documents/countReconciliationBulkService.js',
     './src/documents/saintBridgeReclassificationService.js',
     './src/documents/liveSupplyService.js',
     './src/documents/supplyReportContextService.js',
@@ -142,9 +144,14 @@ test('index incluye hardening de iOS, viewport seguro y CSS mobile final', async
   assert.match(html, /vigia-apple-touch-icon\.png/);
   assert.match(html, /mobile-launch-hardening\.css/);
   assert.match(html, /v5-saint-bridge\.css/);
+  assert.match(html, /countReconciliationBulkUi\.js/);
   assert.ok(
     html.indexOf('saintBridgeUi.js') < html.indexOf('countReconciliationUi.js'),
     'El guard del puente SAINT debe cargar antes de la conciliación legacy'
+  );
+  assert.ok(
+    html.indexOf('countReconciliationUi.js') < html.indexOf('countReconciliationBulkUi.js'),
+    'La UI masiva debe extender la conciliación base después de cargarla'
   );
 });
 
