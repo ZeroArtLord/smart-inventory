@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-39';
+const CACHE_NAME = 'smart-inventory-v2-shell-40';
 
 const APP_SHELL = [
   './',
@@ -15,11 +15,13 @@ const APP_SHELL = [
   './css/v5-saint-report.css',
   './css/v5-reconciliation.css',
   './css/v5-live-supply.css',
+  './css/v5-saint-bridge.css',
   './css/mobile-launch-hardening.css',
   './vendor/xlsx.full.min.js',
   './src/ui/app.js',
   './src/ui/vigiaIntelligenceUi.js',
   './src/ui/countWorkflowUi.js',
+  './src/ui/saintBridgeUi.js',
   './src/ui/countReconciliationUi.js',
   './src/ui/liveSupplyUi.js',
   './src/ui/replenishmentWorkflowUi.js',
@@ -39,6 +41,7 @@ const APP_SHELL = [
   './src/catalog/catalogUi.js',
   './src/catalog/catalogImportGuard.js',
   './src/catalog/saintInitialLoad.js',
+  './src/catalog/saintBridge.js',
   './src/storage/database.js',
   './src/sync/localQueue.js',
   './src/sync/syncSettings.js',
@@ -66,6 +69,7 @@ const APP_SHELL = [
   './src/documents/countWorkflow.js',
   './src/documents/countWorkflowService.js',
   './src/documents/countReconciliationService.js',
+  './src/documents/saintBridgeReclassificationService.js',
   './src/documents/liveSupplyService.js',
   './src/documents/supplyReportContextService.js'
 ];
