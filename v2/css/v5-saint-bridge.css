@@ -1,0 +1,27 @@
+.v5-bridge-count-notice,
+.v5-saint-bridge-reconciliation{border:1px solid color-mix(in srgb,var(--accent) 38%,var(--border));background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 5%,var(--surface,#fff)),var(--surface,#fff))}
+.v5-bridge-count-head,.v5-bridge-recon-head,.v5-bridge-card-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}
+.v5-bridge-count-head h3,.v5-bridge-recon-head h3{margin:3px 0 5px}
+.v5-bridge-count-head p,.v5-bridge-recon-head p{margin:0;color:var(--muted,#64748b)}
+.v5-bridge-count-list,.v5-bridge-recon-list{display:grid;gap:10px;margin-top:14px}
+.v5-bridge-count-row{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface,#fff)}
+.v5-bridge-count-row small,.v5-bridge-card small{display:block;color:var(--muted,#64748b);margin-top:3px}
+.v5-bridge-count-values{display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end;font-size:.82rem}
+.v5-bridge-count-values span{padding:6px 9px;border-radius:999px;background:color-mix(in srgb,var(--accent) 7%,var(--surface,#fff))}
+.v5-saint-bridge-reconciliation{margin:14px 0;padding:16px;border-radius:16px}
+.v5-bridge-card{display:grid;gap:12px;padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--surface,#fff)}
+.v5-bridge-card.resolved{border-color:color-mix(in srgb,#179c52 45%,var(--border))}
+.v5-bridge-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.v5-bridge-kpis>div{padding:9px;border:1px solid var(--border);border-radius:10px}
+.v5-bridge-kpis small{font-size:.72rem}
+.v5-bridge-kpis strong{font-size:1rem}
+.v5-bridge-flavor-list{display:grid;gap:5px;margin-top:9px}
+.v5-bridge-flavor-row{display:flex;justify-content:space-between;gap:12px;padding:7px 9px;border-radius:8px;background:color-mix(in srgb,var(--accent) 4%,var(--surface,#fff))}
+.v5-bridge-card details summary{cursor:pointer;font-weight:800}
+.v5-bridge-card [data-v5-bridge-action="apply"]{min-height:48px;width:100%}
+@media(max-width:760px){
+  .v5-bridge-count-head,.v5-bridge-recon-head,.v5-bridge-card-head,.v5-bridge-count-row{flex-direction:column;align-items:stretch}
+  .v5-bridge-count-values{justify-content:flex-start}
+  .v5-bridge-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:430px){.v5-bridge-kpis{grid-template-columns:1fr}}
