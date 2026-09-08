@@ -55,13 +55,20 @@ syncRouter.post('/push', async (req, res, next) => {
           continue;
         }
 
+        // Antes del upsert protegemos la configuración del puente. Así una
+        // edición normal de catálogo no puede reactivar el producto fuente ni
+        // cambiar el código externo que recibirá SAINT.
+        await canonicalizeProtectedProductBridgeFields(
+          client,
+          req.auth.workspaceId,
+          event,
+          { beforeApply: true }
+        );
+
         await applyEvent(client, req.auth, event);
 
-        // Los campos del puente SAINT son configuración protegida de servidor.
-        // Una edición normal de catálogo puede cambiar nombre/min/max, pero no
-        // puede falsificar el código externo que recibirá SAINT. Reescribimos
-        // el payload del evento con el valor canónico PostgreSQL antes de que
-        // otros clientes lo descarguen.
+        // Después del upsert volvemos a leer PostgreSQL para que el evento que
+        // descargan otros dispositivos contenga los valores canónicos.
         await canonicalizeProtectedProductBridgeFields(
           client,
           req.auth.workspaceId,
@@ -150,12 +157,14 @@ syncRouter.get('/pull', async (req, res, next) => {
 async function canonicalizeProtectedProductBridgeFields(
   client,
   workspaceId,
-  event
+  event,
+  { beforeApply = false } = {}
 ) {
   if (event?.entityType !== 'product' || !event?.entityId) return;
 
   const result = await client.query(
     `SELECT
+       active,
        saint_bridge_source,
        saint_bridge_source_product_id,
        saint_bridge_code,
@@ -166,13 +175,22 @@ async function canonicalizeProtectedProductBridgeFields(
     [workspaceId, event.entityId]
   );
 
+  // En CREATE todavía no existe una fila canónica y applyEvent mantiene el
+  // comportamiento normal. Los puentes se crean exclusivamente por el
+  // bootstrap de servidor auditado.
   if (result.rowCount !== 1) return;
   const row = result.rows[0];
+
   event.payload = {
     ...(event.payload || {}),
     saintBridgeSource: row.saint_bridge_source === true,
     saintBridgeSourceProductId: row.saint_bridge_source_product_id || null,
     saintBridgeCode: row.saint_bridge_code || '',
-    saintBridgeName: row.saint_bridge_name || ''
+    saintBridgeName: row.saint_bridge_name || '',
+    ...(row.saint_bridge_source === true ? { active: false } : {})
   };
+
+  if (beforeApply && row.saint_bridge_source === true) {
+    event.payload.active = false;
+  }
 }
