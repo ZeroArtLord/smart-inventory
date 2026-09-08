@@ -9,9 +9,11 @@ const files = [
   '../src/ui/countReconciliationUi.js',
   '../src/ui/countReconciliationBulkUi.js',
   '../src/ui/liveSupplyUi.js',
+  '../src/ui/quickStockCorrectionUi.js',
   '../src/ui/replenishmentWorkflowUi.js',
   '../src/ui/saintSupplyReportUi.js',
   '../src/ui/vigiaIntelligenceUi.js',
+  '../src/inventory/quickStockCorrectionService.js',
   '../sw.js'
 ];
 
