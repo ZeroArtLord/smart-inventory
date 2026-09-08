@@ -7,6 +7,7 @@ const files = [
   '../src/ui/app.js',
   '../src/ui/countWorkflowUi.js',
   '../src/ui/countReconciliationUi.js',
+  '../src/ui/countReconciliationBulkUi.js',
   '../src/ui/liveSupplyUi.js',
   '../src/ui/replenishmentWorkflowUi.js',
   '../src/ui/saintSupplyReportUi.js',
