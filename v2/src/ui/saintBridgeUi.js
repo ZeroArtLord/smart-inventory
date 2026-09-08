@@ -4,9 +4,7 @@ import {
   getAll,
   getAllByIndex
 } from '../storage/database.js';
-import {
-  buildSaintBridgeGroups
-} from '../catalog/saintBridge.js';
+import { buildSaintBridgeGroups } from '../catalog/saintBridge.js';
 import {
   submitCountWithSaintBridge,
   ensureSaintBridgeReconciliationDraft,
@@ -19,8 +17,8 @@ const app = document.getElementById('app');
 let enhancing = false;
 
 if (app) {
-  // Debe cargarse ANTES de countReconciliationUi.js. Captura el cierre y
-  // conserva el borrador actual; ningún conteo se borra ni se recrea.
+  // Este módulo se carga antes de countReconciliationUi.js para poder
+  // proteger el cierre del borrador actual sin recrearlo ni borrar líneas.
   document.addEventListener('click', interceptBridgeActions, true);
 
   const observer = new MutationObserver(() => {
@@ -28,7 +26,6 @@ if (app) {
       console.error('V5 SAINT bridge UI:', error)
     ));
   });
-
   observer.observe(app, { childList: true, subtree: true });
   enhanceBridgeUi().catch(() => {});
 }
@@ -37,7 +34,6 @@ async function interceptBridgeActions(event) {
   const countClose = event.target.closest(
     '.v5-count-shell [data-action="close-document"]'
   );
-
   if (countClose) {
     event.preventDefault();
     event.stopPropagation();
@@ -45,9 +41,17 @@ async function interceptBridgeActions(event) {
     return closeCountSafely(countClose);
   }
 
+  // El botón del puente no pertenece al flujo legacy de conciliación.
+  const bridgeButton = event.target.closest('[data-v5-bridge-action="apply"]');
+  if (bridgeButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    return applyBridgeSafely(bridgeButton);
+  }
+
   const actionButton = event.target.closest('[data-v5-recon-action]');
   if (!actionButton) return;
-
   const action = actionButton.dataset.v5ReconAction;
 
   if (action === 'open') {
@@ -117,34 +121,29 @@ async function interceptBridgeActions(event) {
         return navigateToReports();
       }
 
+      // Hay diferencias normales: las termina el flujo V5-D existente.
       actionButton.dataset.bridgeFinalizeReady = '1';
       actionButton.click();
     } catch (error) {
       toast(error.message || String(error), 'danger');
     }
-    return;
   }
+}
 
-  const bridgeButton = event.target.closest('[data-v5-bridge-action="apply"]');
-  if (!bridgeButton) return;
-
-  event.preventDefault();
-  event.stopPropagation();
-  event.stopImmediatePropagation();
-
+async function applyBridgeSafely(button) {
   if (!confirm(
     'VIGÍA reclasificará el stock genérico SAINT hacia los sabores contados. ' +
     'Es una operación atómica, trazable y solo de conciliación. ¿Continuar?'
   )) return;
 
-  bridgeButton.disabled = true;
-  bridgeButton.textContent = 'Reclasificando…';
+  button.disabled = true;
+  button.textContent = 'Reclasificando…';
 
   try {
     const session = await safeSession();
     const result = await applySaintBridgeReclassification(
-      bridgeButton.dataset.reconciliationId,
-      bridgeButton.dataset.sourceProductId,
+      button.dataset.reconciliationId,
+      button.dataset.sourceProductId,
       {
         userId: session?.userId || null,
         roleCode: session?.roleCode || null,
@@ -159,8 +158,8 @@ async function interceptBridgeActions(event) {
     markBridgeResolvedInDom(result.plan);
     await enhanceBridgeUi(true);
   } catch (error) {
-    bridgeButton.disabled = false;
-    bridgeButton.textContent = '👑 Aplicar reclasificación atómica';
+    button.disabled = false;
+    button.textContent = '👑 Aplicar reclasificación atómica';
     toast(error.message || String(error), 'danger');
   }
 }
@@ -180,7 +179,6 @@ async function closeCountSafely(button) {
     const result = await submitCountWithSaintBridge(documentId, {
       userId: session?.userId || null
     });
-
     delete app.dataset.v5CountDocumentId;
 
     const bridgeCount = result.bridgePlans?.length || 0;
@@ -209,7 +207,6 @@ async function closeCountSafely(button) {
 async function enhanceBridgeUi(force = false) {
   if (!app || enhancing) return;
   enhancing = true;
-
   try {
     await enhanceCountNotice(force);
     await enhanceReconciliationPanel(force);
@@ -237,10 +234,7 @@ async function enhanceCountNotice(force) {
   const cards = groups.map(group => {
     const control = lineByProduct.get(group.sourceProductId) || null;
     const countedVariants = group.variants
-      .map(product => ({
-        product,
-        line: lineByProduct.get(product.id) || null
-      }))
+      .map(product => ({ product, line: lineByProduct.get(product.id) || null }))
       .filter(item => item.line);
     const total = countedVariants.reduce(
       (sum, item) => sum + Number(item.line.countedStock || 0),
@@ -386,15 +380,15 @@ function markBridgeResolvedInDom(plan) {
 
   app.querySelectorAll('.v5-recon-line[data-recon-product]').forEach(card => {
     if (!ids.has(card.dataset.reconProduct)) return;
+    const id = card.dataset.reconProduct;
+    const name = id === plan.sourceProductId
+      ? plan.sourceProductName
+      : plan.variants.find(item => item.productId === id)?.productName || id;
     card.classList.add('resolved');
     card.innerHTML = `
       <div class="v5-recon-line-head">
         <div>
-          <strong>${escapeHtml(
-            card.dataset.reconProduct === plan.sourceProductId
-              ? plan.sourceProductName
-              : plan.variants.find(item => item.productId === card.dataset.reconProduct)?.productName || card.dataset.reconProduct
-          )}</strong>
+          <strong>${escapeHtml(name)}</strong>
           <small>Resuelto dentro del puente SAINT ${escapeHtml(plan.saintCode)}</small>
         </div>
         <span class="badge status-good">RECLASIFICADO</span>
