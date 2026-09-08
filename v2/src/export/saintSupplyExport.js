@@ -1,4 +1,9 @@
 import { catalogUnitCode } from '../catalog/catalogUi.js';
+import {
+  effectiveSaintCode,
+  effectiveSaintName,
+  isSaintBridgeVariant
+} from '../catalog/saintBridge.js';
 
 export const SAINT_SUPPLY_COLUMNS = Object.freeze([
   { key: 'Código SAINT', label: 'Código SAINT' },
@@ -13,8 +18,10 @@ export const SAINT_SUPPLY_COLUMNS = Object.freeze([
 ]);
 
 /**
- * Construye un reporte de surtido pensado para transcripción/descargo manual
- * en SAINT. Es una operación puramente de lectura: no crea ni modifica stock.
+ * Construye un reporte para SAINT sin perder el detalle físico de VIGÍA.
+ * Las variantes que pertenecen a un puente SAINT se agregan al código externo
+ * común, pero la composición por sabor queda escrita en Notas.
+ * Esta operación es puramente de lectura: nunca modifica stock.
  */
 export function buildSaintSupplyReportModel({
   document,
@@ -46,14 +53,14 @@ export function buildSaintSupplyReportModel({
   const dateText = formatDateTime(effectiveAt);
 
   const warnings = [];
-  const rows = [];
-  const totalsByUnit = new Map();
-  let totalQuantityRaw = 0;
+  const directRows = [];
+  const bridgeRows = new Map();
+  const sourceLines = Array.isArray(lines) ? lines : [];
 
-  for (const line of Array.isArray(lines) ? lines : []) {
+  for (const [index, line] of sourceLines.entries()) {
     const product = productById.get(line.productId) || null;
     const quantity = finitePositiveOrZero(line.quantity);
-    const saintCode = clean(product?.saintCode);
+    const saintCode = effectiveSaintCode(product);
     const unit = product ? catalogUnitCode(product) : clean(line.unitCode) || 'UND';
     const productName = clean(
       product?.name || line.productName || line.productId || 'Producto sin nombre'
@@ -64,16 +71,41 @@ export function buildSaintSupplyReportModel({
         `Producto no encontrado en catálogo para la línea ${clean(line.productId) || 'sin id'}.`
       );
     }
-
     if (!saintCode) {
       warnings.push(`Sin Código SAINT: ${productName}.`);
     }
-
     if (!(quantity > 0)) {
       warnings.push(`Cantidad no positiva en ${productName}.`);
     }
 
-    rows.push({
+    if (product && isSaintBridgeVariant(product)) {
+      const key = `${saintCode}::${unit}`;
+      const row = bridgeRows.get(key) || {
+        'Código SAINT': saintCode,
+        Producto: effectiveSaintName(product) || productName,
+        Cantidad: 0,
+        Unidad: unit,
+        Destino: destination,
+        Responsable: responsible,
+        Fecha: dateText,
+        Documento: clean(document.id),
+        Notas: '',
+        _composition: new Map(),
+        _notes: []
+      };
+
+      row.Cantidad = round(row.Cantidad + quantity);
+      row._composition.set(
+        productName,
+        round((row._composition.get(productName) || 0) + quantity)
+      );
+      if (clean(line.notes)) row._notes.push(clean(line.notes));
+      bridgeRows.set(key, row);
+      continue;
+    }
+
+    directRows.push({
+      _order: index,
       'Código SAINT': saintCode,
       Producto: productName,
       Cantidad: quantity,
@@ -84,18 +116,49 @@ export function buildSaintSupplyReportModel({
       Documento: clean(document.id),
       Notas: clean(line.notes)
     });
+  }
 
-    totalQuantityRaw += quantity;
+  const aggregatedBridgeRows = [...bridgeRows.values()].map(row => {
+    const composition = [...row._composition.entries()]
+      .sort(([a], [b]) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+      .map(([name, quantity]) => `${name}: ${formatNumber(quantity)}`)
+      .join('; ');
+    const extraNotes = [...new Set(row._notes)].join(' · ');
+
+    return {
+      'Código SAINT': row['Código SAINT'],
+      Producto: row.Producto,
+      Cantidad: round(row.Cantidad),
+      Unidad: row.Unidad,
+      Destino: row.Destino,
+      Responsable: row.Responsable,
+      Fecha: row.Fecha,
+      Documento: row.Documento,
+      Notas: [
+        composition ? `VIGÍA detalle: ${composition}` : '',
+        extraNotes
+      ].filter(Boolean).join(' · ')
+    };
+  });
+
+  const rows = [
+    ...directRows.map(({ _order, ...row }) => row),
+    ...aggregatedBridgeRows
+  ];
+
+  const totalsByUnit = new Map();
+  let totalQuantityRaw = 0;
+  for (const row of rows) {
+    totalQuantityRaw += Number(row.Cantidad || 0);
     totalsByUnit.set(
-      unit,
-      round((totalsByUnit.get(unit) || 0) + quantity)
+      row.Unidad,
+      round((totalsByUnit.get(row.Unidad) || 0) + Number(row.Cantidad || 0))
     );
   }
 
   const totals = [...totalsByUnit.entries()]
     .sort(([a], [b]) => a.localeCompare(b, 'es'))
     .map(([unit, quantity]) => ({ unit, quantity }));
-
   const missingSaintCount = rows.filter(row => !row['Código SAINT']).length;
 
   return {
@@ -115,8 +178,10 @@ export function buildSaintSupplyReportModel({
     rows,
     columns: SAINT_SUPPLY_COLUMNS,
     lineCount: rows.length,
+    sourceLineCount: sourceLines.length,
+    bridgeAggregatedLineCount: aggregatedBridgeRows.length,
     productCount: new Set(
-      (Array.isArray(lines) ? lines : [])
+      sourceLines
         .map(line => clean(line.productId))
         .filter(Boolean)
     ).size,
@@ -138,9 +203,6 @@ export function saintSupplyFilename(model, extension = '') {
   return `vigia_saint_surtido_${safeId}${extension}`;
 }
 
-/**
- * Reporte visual dedicado para imprimir o guardar como PDF desde el navegador.
- */
 export function printSaintSupplyReport(model) {
   if (typeof window === 'undefined' || !window.open) {
     throw new Error('La impresión requiere un navegador');
@@ -231,8 +293,8 @@ export function printSaintSupplyReport(model) {
   </section>
 
   <div class="summary">
-    <span class="pill">${model.lineCount} línea(s)</span>
-    <span class="pill">${model.productCount} producto(s)</span>
+    <span class="pill">${model.lineCount} línea(s) SAINT</span>
+    <span class="pill">${model.productCount} producto(s) VIGÍA</span>
     <span class="pill">Totales: ${escapeHtml(model.totalsText)}</span>
     <span class="pill ${model.readyForManualSaint ? 'good' : 'warn'}">
       ${model.readyForManualSaint ? '✓ Códigos SAINT completos' : `⚠ ${model.missingSaintCount} sin Código SAINT`}
@@ -248,7 +310,7 @@ export function printSaintSupplyReport(model) {
 
   <div class="totals">
     <div><strong>Total por unidad:</strong> ${escapeHtml(model.totalsText)}</div>
-    <div><strong>Líneas:</strong> ${model.lineCount}</div>
+    <div><strong>Líneas SAINT:</strong> ${model.lineCount}</div>
   </div>
 
   ${model.documentNotes
@@ -262,7 +324,7 @@ export function printSaintSupplyReport(model) {
 
   <footer class="footer">
     <span>VIGÍA · Documento trazable generado desde un surtido cerrado.</span>
-    <span>No modifica inventario al exportar.</span>
+    <span>Los grupos puente se agregan al código SAINT sin perder el detalle VIGÍA.</span>
   </footer>
 </div>
 <script>window.addEventListener('load',()=>window.print());<\/script>
