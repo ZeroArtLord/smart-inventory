@@ -18,7 +18,7 @@ async function readBinary(relativePath) {
 test('PWA V5 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
-  assert.match(sw, /smart-inventory-v2-shell-41/);
+  assert.match(sw, /smart-inventory-v2-shell-42/);
 
   const requiredAssets = [
     './css/mobile-launch-hardening.css',
@@ -27,14 +27,17 @@ test('PWA V5 precachea shell operativo completo y assets mobile reales', async (
     './css/v5-reconciliation.css',
     './css/v5-live-supply.css',
     './css/v5-saint-bridge.css',
+    './css/v5-quick-stock.css',
     './src/ui/countWorkflowUi.js',
     './src/ui/saintBridgeUi.js',
     './src/ui/countReconciliationUi.js',
     './src/ui/countReconciliationBulkUi.js',
     './src/ui/liveSupplyUi.js',
+    './src/ui/quickStockCorrectionUi.js',
     './src/ui/replenishmentWorkflowUi.js',
     './src/ui/saintSupplyReportUi.js',
     './src/catalog/saintBridge.js',
+    './src/inventory/quickStockCorrectionService.js',
     './src/documents/countWorkflow.js',
     './src/documents/countWorkflowService.js',
     './src/documents/countReconciliationService.js',
@@ -144,7 +147,9 @@ test('index incluye hardening de iOS, viewport seguro y CSS mobile final', async
   assert.match(html, /vigia-apple-touch-icon\.png/);
   assert.match(html, /mobile-launch-hardening\.css/);
   assert.match(html, /v5-saint-bridge\.css/);
+  assert.match(html, /v5-quick-stock\.css/);
   assert.match(html, /countReconciliationBulkUi\.js/);
+  assert.match(html, /quickStockCorrectionUi\.js/);
   assert.ok(
     html.indexOf('saintBridgeUi.js') < html.indexOf('countReconciliationUi.js'),
     'El guard del puente SAINT debe cargar antes de la conciliación legacy'
@@ -152,6 +157,10 @@ test('index incluye hardening de iOS, viewport seguro y CSS mobile final', async
   assert.ok(
     html.indexOf('countReconciliationUi.js') < html.indexOf('countReconciliationBulkUi.js'),
     'La UI masiva debe extender la conciliación base después de cargarla'
+  );
+  assert.ok(
+    html.indexOf('liveSupplyUi.js') < html.indexOf('quickStockCorrectionUi.js'),
+    'La corrección rápida debe extender el surtido vivo después de cargarlo'
   );
 });
 
