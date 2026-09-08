@@ -10,6 +10,7 @@ const files = [
   '../src/ui/countReconciliationBulkUi.js',
   '../src/ui/liveSupplyUi.js',
   '../src/ui/quickStockCorrectionUi.js',
+  '../src/ui/quickStockCorrectionRefreshUi.js',
   '../src/ui/replenishmentWorkflowUi.js',
   '../src/ui/saintSupplyReportUi.js',
   '../src/ui/vigiaIntelligenceUi.js',
