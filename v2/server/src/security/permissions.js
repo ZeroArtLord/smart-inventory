@@ -16,6 +16,7 @@ export const PERMISSIONS = Object.freeze({
 });
 
 const COUNT_RECONCILIATION_KIND = 'COUNT_RECONCILIATION';
+const QUICK_STOCK_CORRECTION_KIND = 'GOD_QUICK_STOCK_CORRECTION';
 
 export function hasPermission(auth, permission) {
   const permissions = Array.isArray(auth?.permissions)
@@ -37,14 +38,15 @@ export function assertEventPermission(auth, event) {
   // ADJUSTMENT que modifica stock. La simple entrega del conteo en estado
   // PENDING continúa usando count.write para que el almacenista pueda contar.
   if (requiresGodCountReconciliation(event)) {
-    if (String(auth?.roleCode || '').trim().toUpperCase() !== 'GOD') {
-      const error = new Error(
-        'Solo el rol DIOS puede conciliar diferencias de conteo'
-      );
-      error.code = 'PERMISSION_DENIED';
-      error.statusCode = 403;
-      throw error;
-    }
+    assertGodRole(auth, 'Solo el rol DIOS puede conciliar diferencias de conteo');
+    return 'role:GOD';
+  }
+
+  // Una corrección rápida cambia directamente la realidad lógica del stock
+  // mediante ADJUSTMENT. Aunque otro rol tuviera adjustment.write, esta vía
+  // administrativa queda reservada exclusivamente a GOD.
+  if (requiresGodQuickStockCorrection(event)) {
+    assertGodRole(auth, 'Solo el rol DIOS puede corregir stock directamente');
     return 'role:GOD';
   }
 
@@ -165,6 +167,26 @@ export function requiresGodCountReconciliation(event) {
   }
 
   return false;
+}
+
+export function requiresGodQuickStockCorrection(event) {
+  const payload = event?.payload || {};
+  const metadata = payload.metadata || {};
+
+  return (
+    event?.entityType === 'movement' &&
+    event?.operation === 'CREATE' &&
+    payload.type === 'ADJUSTMENT' &&
+    metadata.quickStockCorrectionKind === QUICK_STOCK_CORRECTION_KIND
+  );
+}
+
+function assertGodRole(auth, message) {
+  if (String(auth?.roleCode || '').trim().toUpperCase() === 'GOD') return;
+  const error = new Error(message);
+  error.code = 'PERMISSION_DENIED';
+  error.statusCode = 403;
+  throw error;
 }
 
 function permissionForDocumentType(type) {
