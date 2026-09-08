@@ -178,7 +178,10 @@ function nonNegative(value, label) {
 function correctionRatio(current, target) {
   const before = Math.abs(Number(current || 0));
   const delta = Math.abs(Number(target || 0) - Number(current || 0));
-  if (before <= 0.000001) return delta > 0 ? 1 : 0;
+  // Pasar de 0 a una existencia física confirmada es precisamente el caso de
+  // arranque que esta herramienta resuelve. Requiere confirmación normal, no
+  // una falsa alerta porcentual infinita.
+  if (before <= 0.000001) return 0;
   return delta / before;
 }
 
