@@ -57,6 +57,17 @@ syncRouter.post('/push', async (req, res, next) => {
 
         await applyEvent(client, req.auth, event);
 
+        // Los campos del puente SAINT son configuración protegida de servidor.
+        // Una edición normal de catálogo puede cambiar nombre/min/max, pero no
+        // puede falsificar el código externo que recibirá SAINT. Reescribimos
+        // el payload del evento con el valor canónico PostgreSQL antes de que
+        // otros clientes lo descarguen.
+        await canonicalizeProtectedProductBridgeFields(
+          client,
+          req.auth.workspaceId,
+          event
+        );
+
         await writeAuditEvent(client, req.auth, {
           action: `SYNC_${event.operation}`,
           entityType: event.entityType,
@@ -135,3 +146,33 @@ syncRouter.get('/pull', async (req, res, next) => {
     next(error);
   }
 });
+
+async function canonicalizeProtectedProductBridgeFields(
+  client,
+  workspaceId,
+  event
+) {
+  if (event?.entityType !== 'product' || !event?.entityId) return;
+
+  const result = await client.query(
+    `SELECT
+       saint_bridge_source,
+       saint_bridge_source_product_id,
+       saint_bridge_code,
+       saint_bridge_name
+     FROM products
+     WHERE workspace_id = $1
+       AND id = $2`,
+    [workspaceId, event.entityId]
+  );
+
+  if (result.rowCount !== 1) return;
+  const row = result.rows[0];
+  event.payload = {
+    ...(event.payload || {}),
+    saintBridgeSource: row.saint_bridge_source === true,
+    saintBridgeSourceProductId: row.saint_bridge_source_product_id || null,
+    saintBridgeCode: row.saint_bridge_code || '',
+    saintBridgeName: row.saint_bridge_name || ''
+  };
+}
