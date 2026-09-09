@@ -1,21 +1,15 @@
+import {
+  getThermalPrinterConfig,
+  saveThermalPrinterConfig,
+  testThermalPrinterConnection,
+  printThermalCalibration
+} from '../printing/thermalPrinterClient.js';
+
 const BUSINESS_NAME_KEY = 'vigia.procurement.businessName';
-const PRINTER_NAME_KEY = 'vigia.thermal.printerName';
-const FONT_SIZE_KEY = 'vigia.thermal.fontSizePx';
-const LINE_HEIGHT_KEY = 'vigia.thermal.lineHeight';
-const PADDING_KEY = 'vigia.thermal.paddingMm';
-
-const DEFAULTS = Object.freeze({
-  businessName: 'NOMBRE DEL NEGOCIO',
-  printerName: 'CAFETERIA',
-  fontSizePx: 10,
-  lineHeight: 1.25,
-  paddingMm: 2
-});
-
 const app = document.getElementById('app');
 let timer = null;
-
-applyTicketVariables(readConfig());
+let loading = false;
+let cachedConfig = null;
 
 if (app) {
   const observer = new MutationObserver(scheduleEnhance);
@@ -27,16 +21,39 @@ if (app) {
 
 function scheduleEnhance() {
   clearTimeout(timer);
-  timer = setTimeout(enhanceSettingsView, 40);
+  timer = setTimeout(() => {
+    enhanceSettingsView().catch(reportError);
+  }, 50);
 }
 
-function enhanceSettingsView() {
-  if (!isSettingsView()) return;
+async function enhanceSettingsView() {
+  if (!isSettingsView() || loading) return;
 
   const grid = app.querySelector('.settings-grid-v2');
-  if (!grid || document.getElementById('v6ThermalPrinterSettings')) return;
+  if (
+    !grid ||
+    document.getElementById('v6ThermalPrinterSettings')
+  ) {
+    return;
+  }
 
-  const config = readConfig();
+  loading = true;
+
+  try {
+    const config =
+      cachedConfig ||
+      await getThermalPrinterConfig();
+
+    cachedConfig = config;
+    renderCard(grid, config);
+  } catch (error) {
+    renderUnavailableCard(grid, error);
+  } finally {
+    loading = false;
+  }
+}
+
+function renderCard(grid, config) {
   const card = document.createElement('section');
   card.id = 'v6ThermalPrinterSettings';
   card.className = 'card v6t-printer-settings';
@@ -44,9 +61,14 @@ function enhanceSettingsView() {
     <div class="section-head">
       <div>
         <h3>Impresión 80mm</h3>
-        <p>Encabezado y calibración de la comandera térmica de este dispositivo.</p>
+        <p>
+          RC-8002 por TCP/IP directo. VIGÍA habla ESC/POS y no usa
+          el driver Generic / Text Only.
+        </p>
       </div>
-      <span class="badge">80 mm</span>
+      <span class="badge status-good">
+        ESC/POS directo · 80mm
+      </span>
     </div>
 
     <form id="v6ThermalPrinterForm" class="v6t-printer-form">
@@ -57,68 +79,140 @@ function enhanceSettingsView() {
           value="${esc(config.businessName)}"
           maxlength="80"
           autocomplete="organization"
-          placeholder="Ej. MI NEGOCIO"
           required
         >
-        <small>Este texto aparece centrado en el encabezado de Compras y Pedidos.</small>
+        <small>
+          Encabezado central para Compras, Pedidos y la prueba de calibración.
+        </small>
       </label>
 
       <label class="v6t-wide">
-        Impresora compartida / Windows
+        Referencia de la comandera
         <input
           name="printerName"
           value="${esc(config.printerName)}"
           maxlength="80"
           autocomplete="off"
-          placeholder="CAFETERIA"
+          placeholder="CAFETERIA · RC-8002"
         >
-        <small>Referencia para el operador. El navegador abre el diálogo de Windows; no selecciona impresoras silenciosamente.</small>
+        <small>
+          Solo es una etiqueta visible. La impresión real usa la IP y el puerto RAW.
+        </small>
       </label>
 
       <label>
-        Tamaño base
-        <div class="v6t-inline-control">
-          <input
-            name="fontSizePx"
-            type="number"
-            min="8"
-            max="16"
-            step="0.5"
-            value="${esc(config.fontSizePx)}"
-          >
-          <span>px</span>
-        </div>
-      </label>
-
-      <label>
-        Interlineado
+        IP de la comandera
         <input
-          name="lineHeight"
+          name="host"
+          value="${esc(config.host)}"
+          inputmode="numeric"
+          autocomplete="off"
+          placeholder="192.168.1.165"
+          required
+        >
+      </label>
+
+      <label>
+        Puerto RAW
+        <input
+          name="port"
           type="number"
           min="1"
-          max="1.8"
-          step="0.05"
-          value="${esc(config.lineHeight)}"
+          max="65535"
+          step="1"
+          value="${esc(config.port)}"
+          required
         >
+        <small>RC-8002 reportó 9100 en su self-test.</small>
       </label>
 
       <label>
-        Margen interno
+        Caracteres por línea
+        <input
+          name="charsPerLine"
+          type="number"
+          min="38"
+          max="48"
+          step="1"
+          value="${esc(config.charsPerLine)}"
+        >
+        <small>Calibrado actualmente en 44.</small>
+      </label>
+
+      <label>
+        Margen izquierdo
         <div class="v6t-inline-control">
           <input
-            name="paddingMm"
+            name="leftMarginDots"
             type="number"
             min="0"
-            max="6"
-            step="0.5"
-            value="${esc(config.paddingMm)}"
+            max="72"
+            step="1"
+            value="${esc(config.leftMarginDots)}"
           >
-          <span>mm</span>
+          <span>dots</span>
         </div>
+        <small>24 dots ≈ 3 mm en 203 dpi.</small>
+      </label>
+
+      <label>
+        Ancho útil
+        <div class="v6t-inline-control">
+          <input
+            name="printWidthDots"
+            type="number"
+            min="400"
+            max="576"
+            step="1"
+            value="${esc(config.printWidthDots)}"
+          >
+          <span>dots</span>
+        </div>
+        <small>528 dots deja aire a ambos lados del papel.</small>
+      </label>
+
+      <label>
+        Interlineado ESC/POS
+        <div class="v6t-inline-control">
+          <input
+            name="lineSpacingDots"
+            type="number"
+            min="24"
+            max="40"
+            step="1"
+            value="${esc(config.lineSpacingDots)}"
+          >
+          <span>dots</span>
+        </div>
+      </label>
+
+      <label>
+        Papel antes del corte
+        <div class="v6t-inline-control">
+          <input
+            name="feedLines"
+            type="number"
+            min="3"
+            max="12"
+            step="1"
+            value="${esc(config.feedLines)}"
+          >
+          <span>líneas</span>
+        </div>
+        <small>6 líneas protegen Firma de la cuchilla.</small>
       </label>
 
       <div class="v6t-printer-actions v6t-wide">
-        <button class="secondary" type="submit">Guardar configuración</button>
+        <button
+          class="secondary"
+          data-v6t-action="connection-test"
+          type="button"
+        >Probar conexión</button>
+
+        <button class="secondary" type="submit">
+          Guardar configuración
+        </button>
+
         <button
           class="primary"
           data-v6t-action="print-test"
@@ -128,8 +222,11 @@ function enhanceSettingsView() {
     </form>
 
     <div class="v6t-printer-note">
-      <strong>Prueba de calibración.</strong>
-      Úsala solo cuando cambies impresora o quieras ajustar tipografía, espacios y signos. Imprime, toma una foto del ticket y podremos afinar estos valores.
+      <strong>Formato calibrado con la RC-8002 real.</strong>
+      Encabezado centrado, columnas PRODUCTO / CANT. / OK, categorías entre líneas,
+      observación pequeña por producto, margen de 24 dots, ancho útil de 528 dots
+      y corte automático. El botón de prueba vive solo aquí porque no forma parte
+      del trabajo diario.
     </div>
   `;
 
@@ -138,219 +235,135 @@ function enhanceSettingsView() {
   else grid.appendChild(card);
 }
 
-function isSettingsView() {
-  const heading = [...(app?.querySelectorAll('h1,h2') || [])]
-    .map(node => String(node.textContent || '').trim())
-    .find(Boolean);
-  return heading === 'Configuración';
+function renderUnavailableCard(grid, error) {
+  const card = document.createElement('section');
+  card.id = 'v6ThermalPrinterSettings';
+  card.className = 'card v6t-printer-settings';
+  card.innerHTML = `
+    <div class="section-head">
+      <div>
+        <h3>Impresión 80mm</h3>
+        <p>Configuración central de la comandera térmica.</p>
+      </div>
+      <span class="badge status-warning">No disponible</span>
+    </div>
+    <div class="status-warning">
+      ${esc(
+        error?.message ||
+        'No se pudo leer la configuración térmica del servidor.'
+      )}
+    </div>
+  `;
+  grid.appendChild(card);
 }
 
-function handleSubmit(event) {
+function isSettingsView() {
+  return [...(app?.querySelectorAll('h1,h2') || [])]
+    .some(
+      node =>
+        String(node.textContent || '').trim() ===
+        'Configuración'
+    );
+}
+
+async function handleSubmit(event) {
   if (event.target.id !== 'v6ThermalPrinterForm') return;
   event.preventDefault();
 
   try {
-    const config = saveFromForm(event.target);
-    toast(`Impresión 80mm guardada · ${config.printerName || 'impresora de Windows'}`);
+    setBusy(true);
+    const config = await saveForm(event.target);
+    toast(
+      `Comandera guardada · ${config.host}:${config.port}`
+    );
   } catch (error) {
-    toast(error?.message || String(error));
+    reportError(error);
+  } finally {
+    setBusy(false);
   }
 }
 
-function handleClick(event) {
+async function handleClick(event) {
   const button = event.target.closest('[data-v6t-action]');
   if (!button) return;
 
-  if (button.dataset.v6tAction === 'print-test') {
-    try {
-      const form = document.getElementById('v6ThermalPrinterForm');
-      const config = form ? saveFromForm(form) : readConfig();
-      openCalibrationPrint(config);
-    } catch (error) {
-      toast(error?.message || String(error));
-    }
-    return;
-  }
+  try {
+    if (
+      button.dataset.v6tAction ===
+      'connection-test'
+    ) {
+      setBusy(true);
+      const form = document.getElementById(
+        'v6ThermalPrinterForm'
+      );
+      if (form) await saveForm(form);
 
-  if (button.dataset.v6tAction === 'close-test') {
-    document.getElementById('v6pPrintModal')?.remove();
+      const result =
+        await testThermalPrinterConnection();
+
+      toast(
+        `Conexión OK · ${result.printer.host}:${result.printer.port}`
+      );
+      return;
+    }
+
+    if (button.dataset.v6tAction === 'print-test') {
+      setBusy(true);
+      const form = document.getElementById(
+        'v6ThermalPrinterForm'
+      );
+      if (form) await saveForm(form);
+
+      const result = await printThermalCalibration();
+      toast(
+        `Prueba enviada · ${result.bytes} bytes · corte automático`
+      );
+    }
+  } catch (error) {
+    reportError(error);
+  } finally {
+    setBusy(false);
   }
 }
 
-function saveFromForm(form) {
+async function saveForm(form) {
   const data = new FormData(form);
-  const config = normalizeConfig({
+  const config = await saveThermalPrinterConfig({
     businessName: data.get('businessName'),
     printerName: data.get('printerName'),
-    fontSizePx: data.get('fontSizePx'),
-    lineHeight: data.get('lineHeight'),
-    paddingMm: data.get('paddingMm')
+    host: data.get('host'),
+    port: Number(data.get('port')),
+    charsPerLine: Number(data.get('charsPerLine')),
+    leftMarginDots: Number(data.get('leftMarginDots')),
+    printWidthDots: Number(data.get('printWidthDots')),
+    lineSpacingDots: Number(data.get('lineSpacingDots')),
+    feedLines: Number(data.get('feedLines')),
+    cut: true
   });
 
-  if (!config.businessName || config.businessName === DEFAULTS.businessName) {
-    throw new Error('Escribe el nombre real del negocio para el encabezado del ticket');
-  }
+  cachedConfig = config;
 
-  writeStorage(BUSINESS_NAME_KEY, config.businessName);
-  writeStorage(PRINTER_NAME_KEY, config.printerName);
-  writeStorage(FONT_SIZE_KEY, String(config.fontSizePx));
-  writeStorage(LINE_HEIGHT_KEY, String(config.lineHeight));
-  writeStorage(PADDING_KEY, String(config.paddingMm));
-  applyTicketVariables(config);
+  try {
+    localStorage.setItem(
+      BUSINESS_NAME_KEY,
+      config.businessName
+    );
+  } catch (_) {}
+
   return config;
 }
 
-function readConfig() {
-  return normalizeConfig({
-    businessName: readStorage(BUSINESS_NAME_KEY, DEFAULTS.businessName),
-    printerName: readStorage(PRINTER_NAME_KEY, DEFAULTS.printerName),
-    fontSizePx: readStorage(FONT_SIZE_KEY, DEFAULTS.fontSizePx),
-    lineHeight: readStorage(LINE_HEIGHT_KEY, DEFAULTS.lineHeight),
-    paddingMm: readStorage(PADDING_KEY, DEFAULTS.paddingMm)
-  });
-}
-
-function normalizeConfig(input = {}) {
-  return {
-    businessName: String(input.businessName || DEFAULTS.businessName).trim().slice(0, 80),
-    printerName: String(input.printerName || DEFAULTS.printerName).trim().slice(0, 80),
-    fontSizePx: clampNumber(input.fontSizePx, 8, 16, DEFAULTS.fontSizePx),
-    lineHeight: clampNumber(input.lineHeight, 1, 1.8, DEFAULTS.lineHeight),
-    paddingMm: clampNumber(input.paddingMm, 0, 6, DEFAULTS.paddingMm)
-  };
-}
-
-function applyTicketVariables(config) {
-  const root = document.documentElement;
-  if (!root) return;
-  root.style.setProperty('--vigia-ticket-font-size', `${config.fontSizePx}px`);
-  root.style.setProperty('--vigia-ticket-line-height', String(config.lineHeight));
-  root.style.setProperty('--vigia-ticket-padding', `${config.paddingMm}mm`);
-}
-
-function openCalibrationPrint(config) {
-  document.getElementById('v6pPrintModal')?.remove();
-
-  const host = document.createElement('div');
-  host.id = 'v6pPrintModal';
-  host.className = 'v6p-backdrop is-open';
-  host.innerHTML = `
-    <div class="v6p-modal v6p-print-modal">
-      <div class="v6p-modal-head">
-        <div>
-          <div class="v6p-eyebrow">PRUEBA 80MM</div>
-          <h3>Calibración de comandera</h3>
-          <p>Referencia configurada: ${esc(config.printerName || 'impresora de Windows')}</p>
-        </div>
-        <button class="v6p-ghost" data-v6t-action="close-test" type="button">Cerrar</button>
-      </div>
-      <div class="v6p-modal-body">
-        <div class="v6t-test-warning">
-          Se abrirá el cuadro de impresión de Windows. Selecciona <strong>${esc(config.printerName || 'tu comandera')}</strong> y usa escala 100%, sin encabezados ni pies del navegador.
-        </div>
-        <div class="v6p-ticket-preview">
-          ${renderCalibrationTicket(config)}
-        </div>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(host);
-
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      setTimeout(() => window.print(), 80);
+function setBusy(busy) {
+  document
+    .querySelectorAll('#v6ThermalPrinterSettings button')
+    .forEach(button => {
+      button.disabled = Boolean(busy);
     });
-  });
 }
 
-function renderCalibrationTicket(config) {
-  const now = new Intl.DateTimeFormat('es-VE', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  }).format(new Date());
-
-  return `
-    <section class="v6p-ticket v6t-calibration-ticket">
-      <header class="v6p-ticket-head">
-        <small>VIGÍA · Inventory Intelligence</small>
-        <strong>${esc(config.businessName)}</strong>
-        <b>PRUEBA DE IMPRESIÓN 80MM</b>
-        <span>CALIBRACIÓN</span>
-      </header>
-
-      <div class="v6p-ticket-meta">
-        <div><b>Fecha:</b> ${esc(now)}</div>
-        <div><b>Impresora:</b> ${esc(config.printerName || 'Windows')}</div>
-        <div><b>Ajuste:</b> ${esc(config.fontSizePx)}px · LH ${esc(config.lineHeight)} · ${esc(config.paddingMm)}mm</div>
-      </div>
-
-      <div class="v6p-ticket-rule"></div>
-      <div class="v6t-ruler">1234567890123456789012345678901234567890</div>
-      <div class="v6t-symbols">ÁÉÍÓÚ Ñ ñ / - + ( ) [ ] # * % &amp;</div>
-      <div class="v6p-ticket-rule"></div>
-
-      <div class="v6p-ticket-legend"><span>PRODUCTO</span><span>CANT.</span><span>OK</span></div>
-
-      <section class="v6p-ticket-category">
-        <h4>VÍVERES</h4>
-        ${testRow('MAYONESA KRAFT SACHETS', '1 CJ')}
-        ${testRow('PRODUCTO CON NOMBRE MUY LARGO PARA PROBAR SALTO DE LÍNEA', '2 BUL')}
-      </section>
-
-      <section class="v6p-ticket-category">
-        <h4>HORTALIZAS</h4>
-        ${testRow('AGUACATE', '30 KG', 'verdes para guasacaca')}
-      </section>
-
-      <section class="v6p-ticket-category">
-        <h4>BEBIDAS</h4>
-        ${testRow('REFRESCO DE LATA 355ML DIETA Y ZERO', '4 CJ')}
-      </section>
-
-      <section class="v6p-ticket-category">
-        <h4>EXTRAS</h4>
-        ${testRow('TEIPE ELÉCTRICO NEGRO', '3 UND', 'EXTRA · prueba de observación')}
-      </section>
-
-      <div class="v6p-ticket-notes"><b>Observaciones:</b><i></i><i></i></div>
-      <div class="v6p-ticket-rule is-solid"></div>
-      <footer>PRUEBA VIGÍA 80MM<br>Firma: __________________</footer>
-    </section>
-  `;
-}
-
-function testRow(name, quantity, note = '') {
-  return `
-    <div class="v6p-ticket-row">
-      <div><strong>${esc(name)}</strong>${note ? `<span>(${esc(note)})</span>` : ''}</div>
-      <b>${esc(quantity)}</b>
-      <i></i>
-    </div>
-  `;
-}
-
-function clampNumber(value, min, max, fallback) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.min(max, Math.max(min, number));
-}
-
-function readStorage(key, fallback) {
-  try {
-    const value = localStorage.getItem(key);
-    return value === null ? fallback : value;
-  } catch {
-    return fallback;
-  }
-}
-
-function writeStorage(key, value) {
-  try {
-    localStorage.setItem(key, String(value));
-  } catch {
-    throw new Error('El navegador no permitió guardar la configuración de impresión');
-  }
+function reportError(error) {
+  console.error(error);
+  toast(error?.message || String(error));
 }
 
 function toast(message) {
@@ -361,7 +374,7 @@ function toast(message) {
   node.className = 'v6p-toast';
   node.textContent = String(message || 'Listo');
   document.body.appendChild(node);
-  setTimeout(() => node.remove(), 2800);
+  setTimeout(() => node.remove(), 3000);
 }
 
 function esc(value) {
