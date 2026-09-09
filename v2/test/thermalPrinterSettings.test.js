@@ -4,69 +4,128 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 async function read(relativePath) {
-  return readFile(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8');
+  return readFile(
+    fileURLToPath(new URL(relativePath, import.meta.url)),
+    'utf8'
+  );
 }
 
-test('Configuración contiene impresora 80mm y prueba solo dentro de ajustes', async () => {
-  const ui = await read('../src/ui/thermalPrinterSettingsUi.js');
-  const print = await read('../src/ui/procurementWorkspaceV6Print.js');
+test(
+  'Configuración contiene RC-8002 ESC/POS directo y prueba solo dentro de ajustes',
+  async () => {
+    const ui = await read('../src/ui/thermalPrinterSettingsUi.js');
+    const print = await read('../src/ui/procurementWorkspaceV6Print.js');
+    const client = await read('../src/printing/thermalPrinterClient.js');
 
-  for (const text of [
-    'Impresión 80mm',
-    'Nombre del negocio en el ticket',
-    'Impresora compartida / Windows',
-    'CAFETERIA',
-    'Tamaño base',
-    'Interlineado',
-    'Margen interno',
-    'Imprimir prueba de calibración',
-    'vigia.procurement.businessName',
-    'window.print()'
-  ]) {
-    assert.ok(ui.includes(text), `Falta contrato de configuración térmica: ${text}`);
+    for (const text of [
+      'Impresión 80mm',
+      'Nombre del negocio en el ticket',
+      'IP de la comandera',
+      'Puerto RAW',
+      '192.168.1.165',
+      '9100',
+      'Caracteres por línea',
+      'Margen izquierdo',
+      'Ancho útil',
+      'Papel antes del corte',
+      'ESC/POS directo',
+      'Imprimir prueba de calibración',
+      'printThermalCalibration',
+      'testThermalPrinterConnection'
+    ]) {
+      assert.ok(
+        ui.includes(text),
+        `Falta contrato de configuración térmica: ${text}`
+      );
+    }
+
+    assert.equal(ui.includes('window.print()'), false);
+    assert.ok(client.includes('/api/v1/thermal-printer/test'));
+    assert.ok(client.includes('/api/v1/thermal-printer/ticket'));
+
+    assert.equal(
+      print.includes('Imprimir prueba de calibración'),
+      false,
+      'La prueba no debe aparecer en Mis listas'
+    );
+    assert.equal(print.includes('browser-print'), false);
+    assert.ok(
+      print.includes('data-v6p-action="direct-print"')
+    );
+    assert.ok(print.includes('data-list-id='));
   }
+);
 
-  assert.equal(
-    print.includes('Imprimir prueba de calibración'),
-    false,
-    'La prueba de impresión no debe aparecer en el flujo cotidiano de Mis listas'
-  );
-  assert.equal(
-    print.includes('v6pBusinessName'),
-    false,
-    'El nombre del negocio ya no se edita dentro de cada ticket'
-  );
-  assert.equal(
-    print.includes('save-business-name'),
-    false,
-    'El guardado del encabezado debe vivir solo en Configuración'
-  );
-  assert.ok(print.includes('Configuración → Impresión 80mm'));
-});
+test(
+  'impresión diaria usa módulo directo y carga lista completa desde IndexedDB',
+  async () => {
+    const direct = await read('../src/ui/thermalDirectPrintUi.js');
+    const client = await read('../src/printing/thermalPrinterClient.js');
 
-test('prueba 80mm incluye texto útil para calibrar tipografía espacios signos y wrapping', async () => {
-  const ui = await read('../src/ui/thermalPrinterSettingsUi.js');
+    for (const text of [
+      'direct-print',
+      'listProcurementLists',
+      'printThermalProcurementList',
+      'includeTerminal: true',
+      'Enviando a comandera'
+    ]) {
+      assert.ok(
+        direct.includes(text),
+        `Falta contrato de impresión directa: ${text}`
+      );
+    }
 
-  for (const text of [
-    'PRUEBA DE IMPRESIÓN 80MM',
-    '1234567890123456789012345678901234567890',
-    'ÁÉÍÓÚ Ñ ñ / - + ( ) [ ] # * %',
-    'PRODUCTO CON NOMBRE MUY LARGO PARA PROBAR SALTO DE LÍNEA',
-    'verdes para guasacaca',
-    'EXTRAS',
-    'TEIPE ELÉCTRICO NEGRO'
-  ]) {
-    assert.ok(ui.includes(text), `Falta muestra de calibración: ${text}`);
+    for (const text of [
+      'procurementCategoryOf',
+      'procurementDisplayQuantity',
+      'isProcurementExtra',
+      "status || '').toUpperCase() !== 'CANCELLED'",
+      'quantityText',
+      'extra:'
+    ]) {
+      assert.ok(
+        client.includes(text),
+        `Falta payload completo del ticket: ${text}`
+      );
+    }
   }
-});
+);
 
-test('CSS elimina la explicación duplicada y aplica calibración al ticket real', async () => {
-  const css = await read('../css/v6-thermal-printer.css');
+test(
+  'servidor limita configuración a GOD y tickets a purchases.write',
+  async () => {
+    const route = await read('../server/src/routes/thermalPrinter.js');
+    const app = await read('../server/src/app.js');
+    const escpos = await read('../server/src/printing/thermalEscPos.js');
+    const service = await read('../server/src/printing/thermalPrinterService.js');
 
-  assert.match(css, /\[data-vigia-intelligence-panel="replenishment"\][\s\S]*display:\s*none\s*!important/);
-  assert.match(css, /--vigia-ticket-font-size/);
-  assert.match(css, /--vigia-ticket-line-height/);
-  assert.match(css, /--vigia-ticket-padding/);
-  assert.match(css, /\.v6t-printer-settings/);
-  assert.match(css, /@media \(max-width: 760px\)/);
-});
+    assert.ok(app.includes("'/api/v1/thermal-printer'"));
+    assert.ok(app.includes("namespace: 'thermal-printer'"));
+    assert.ok(route.includes('assertGod(req.auth)'));
+    assert.ok(route.includes('PERMISSIONS.PURCHASE_WRITE'));
+    assert.ok(route.includes("'/ticket'"));
+    assert.ok(route.includes("'/test'"));
+    assert.ok(route.includes("'/connection-test'"));
+    assert.ok(escpos.includes('isPrivateIpv4'));
+    assert.ok(escpos.includes('192.168.1.165'));
+    assert.ok(escpos.includes('printWidthDots: 528'));
+    assert.ok(escpos.includes('leftMarginDots: 24'));
+    assert.ok(escpos.includes('feedLines: 6'));
+    assert.ok(service.includes('net.createConnection'));
+    assert.ok(service.includes('THERMAL_PRINTER_UNREACHABLE'));
+  }
+);
+
+test(
+  'CSS sigue ocultando la explicación duplicada y protege móvil',
+  async () => {
+    const css = await read('../css/v6-thermal-printer.css');
+
+    assert.match(
+      css,
+      /\[data-vigia-intelligence-panel="replenishment"\][\s\S]*display:\s*none\s*!important/
+    );
+    assert.match(css, /\.v6t-printer-settings/);
+    assert.match(css, /@media \(max-width: 760px\)/);
+  }
+);
