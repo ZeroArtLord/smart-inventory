@@ -13,14 +13,13 @@ export function renderPrintModal({ list, businessName }) {
   return `
     <div class="v6p-modal v6p-print-modal">
       <div class="v6p-modal-head">
-        <div><div class="v6p-eyebrow">PREVISUALIZACIÓN 80MM</div><h3>Así saldría de la impresora térmica</h3><p>Vista previa solamente; no necesitas tener la comandera conectada ahora.</p></div>
+        <div><div class="v6p-eyebrow">PREVISUALIZACIÓN 80MM</div><h3>Así saldría de la impresora térmica</h3><p>Nombre y calibración se administran en Configuración → Impresión 80mm.</p></div>
         <button class="v6p-ghost" data-v6p-action="close-print" type="button">Cerrar</button>
       </div>
       <div class="v6p-modal-body">
         <div class="v6p-print-toolbar">
-          <label>Nombre del negocio<input id="v6pBusinessName" value="${esc(businessName)}" maxlength="80"></label>
-          <button class="v6p-ghost" data-v6p-action="save-business-name" type="button">Guardar nombre</button>
-          <button class="v6p-primary" data-v6p-action="browser-print" type="button">🖨 Imprimir</button>
+          <div class="v6p-printer-hint">Se imprimirán todas las líneas activas de esta lista, incluidos los extras. Windows mostrará el selector de impresora.</div>
+          <button class="v6p-primary" data-v6p-action="browser-print" type="button">🖨 Imprimir ticket</button>
         </div>
         <div class="v6p-ticket-preview">
           ${copies.map(copy => ticket({ list, typeLabel, copy, groups, businessName })).join('')}
