@@ -1,7 +1,6 @@
 import net from 'node:net';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_THERMAL_CONFIG,
   normalizeThermalConfig,
@@ -9,12 +8,14 @@ import {
   buildProcurementJob
 } from './thermalEscPos.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DEFAULT_CONFIG_PATH = path.resolve(
-  __dirname,
-  '../../data/thermal-printer.json'
-);
+const DEFAULT_CONFIG_PATH =
+  process.platform === 'win32'
+    ? 'C:\\SmartInventory\\Config\\thermal-printer.json'
+    : path.resolve(
+        process.cwd(),
+        '.smart-inventory-runtime',
+        'thermal-printer.json'
+      );
 
 export function thermalPrinterConfigPath() {
   const override = String(
