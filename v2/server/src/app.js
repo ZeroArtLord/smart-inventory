@@ -13,6 +13,7 @@ import { adminRouter } from './routes/admin.js';
 import { auditRouter } from './routes/audit.js';
 import { sessionRouter } from './routes/session.js';
 import { authRouter } from './routes/auth.js';
+import { thermalPrinterRouter } from './routes/thermalPrinter.js';
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -158,6 +159,17 @@ app.use(
   }),
   authContext,
   sessionRouter
+);
+
+app.use(
+  '/api/v1/thermal-printer',
+  rateLimit({
+    windowMs: 60000,
+    max: 40,
+    namespace: 'thermal-printer'
+  }),
+  authContext,
+  thermalPrinterRouter
 );
 
 app.get('/vendor/xlsx.full.min.js', (_req, res) => {
