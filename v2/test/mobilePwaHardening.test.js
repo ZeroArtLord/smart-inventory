@@ -18,7 +18,7 @@ async function readBinary(relativePath) {
 test('PWA V6 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
-  assert.match(sw, /smart-inventory-v2-shell-44/);
+  assert.match(sw, /smart-inventory-v2-shell-45/);
 
   const requiredAssets = [
     './css/mobile-launch-hardening.css',
@@ -42,7 +42,9 @@ test('PWA V6 precachea shell operativo completo y assets mobile reales', async (
     './src/ui/procurementWorkspaceV6Render.js',
     './src/ui/procurementWorkspaceV6Print.js',
     './src/ui/thermalPrinterSettingsUi.js',
+    './src/ui/thermalDirectPrintUi.js',
     './src/ui/saintSupplyReportUi.js',
+    './src/printing/thermalPrinterClient.js',
     './src/catalog/saintBridge.js',
     './src/inventory/quickStockCorrectionService.js',
     './src/documents/countWorkflow.js',
@@ -167,6 +169,7 @@ test('index incluye hardening de iOS, workflow V6 final y configuración térmic
   assert.match(html, /v6-thermal-printer\.css/);
   assert.match(html, /procurementWorkspaceV6Ui\.js/);
   assert.match(html, /thermalPrinterSettingsUi\.js/);
+  assert.match(html, /thermalDirectPrintUi\.js/);
   assert.equal(
     html.includes('replenishmentWorkflowUi.js'),
     false,
