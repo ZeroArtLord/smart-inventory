@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-43';
+const CACHE_NAME = 'smart-inventory-v2-shell-44';
 
 const APP_SHELL = [
   './',
@@ -14,6 +14,7 @@ const APP_SHELL = [
   './css/v5-procurement.css',
   './css/v6-procurement.css',
   './css/v6-procurement-hardening.css',
+  './css/v6-thermal-printer.css',
   './css/v5-saint-report.css',
   './css/v5-reconciliation.css',
   './css/v5-live-supply.css',
@@ -33,6 +34,7 @@ const APP_SHELL = [
   './src/ui/procurementWorkspaceV6Ui.js',
   './src/ui/procurementWorkspaceV6Render.js',
   './src/ui/procurementWorkspaceV6Print.js',
+  './src/ui/thermalPrinterSettingsUi.js',
   './src/ui/saintSupplyReportUi.js',
   './src/auth/authProvider.js',
   './src/auth/firebaseClient.js',
