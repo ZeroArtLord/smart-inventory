@@ -18,13 +18,14 @@ async function readBinary(relativePath) {
 test('PWA V6 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
-  assert.match(sw, /smart-inventory-v2-shell-43/);
+  assert.match(sw, /smart-inventory-v2-shell-44/);
 
   const requiredAssets = [
     './css/mobile-launch-hardening.css',
     './css/v5-procurement.css',
     './css/v6-procurement.css',
     './css/v6-procurement-hardening.css',
+    './css/v6-thermal-printer.css',
     './css/v5-saint-report.css',
     './css/v5-reconciliation.css',
     './css/v5-live-supply.css',
@@ -40,6 +41,7 @@ test('PWA V6 precachea shell operativo completo y assets mobile reales', async (
     './src/ui/procurementWorkspaceV6Ui.js',
     './src/ui/procurementWorkspaceV6Render.js',
     './src/ui/procurementWorkspaceV6Print.js',
+    './src/ui/thermalPrinterSettingsUi.js',
     './src/ui/saintSupplyReportUi.js',
     './src/catalog/saintBridge.js',
     './src/inventory/quickStockCorrectionService.js',
@@ -149,7 +151,7 @@ test('manifest VIGÍA es instalable y declara iconos PNG + maskable', async () =
   );
 });
 
-test('index incluye hardening de iOS y workflow V6 final', async () => {
+test('index incluye hardening de iOS, workflow V6 final y configuración térmica', async () => {
   const html = await read('../index.html');
 
   assert.match(html, /viewport-fit=cover/);
@@ -162,7 +164,9 @@ test('index incluye hardening de iOS y workflow V6 final', async () => {
   assert.match(html, /v5-quick-stock\.css/);
   assert.match(html, /v6-procurement\.css/);
   assert.match(html, /v6-procurement-hardening\.css/);
+  assert.match(html, /v6-thermal-printer\.css/);
   assert.match(html, /procurementWorkspaceV6Ui\.js/);
+  assert.match(html, /thermalPrinterSettingsUi\.js/);
   assert.equal(
     html.includes('replenishmentWorkflowUi.js'),
     false,
