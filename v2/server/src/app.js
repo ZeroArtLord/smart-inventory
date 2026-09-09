@@ -16,6 +16,7 @@ import { authRouter } from './routes/auth.js';
 import { thermalPrinterRouter } from './routes/thermalPrinter.js';
 
 const app = express();
+app.set('trust proxy', 'loopback');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicRoot = path.resolve(__dirname, '../..');
