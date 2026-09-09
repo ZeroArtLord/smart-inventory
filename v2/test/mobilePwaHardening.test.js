@@ -15,14 +15,16 @@ async function readBinary(relativePath) {
   return readFile(resolve(relativePath));
 }
 
-test('PWA V5 precachea shell operativo completo y assets mobile reales', async () => {
+test('PWA V6 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
-  assert.match(sw, /smart-inventory-v2-shell-42/);
+  assert.match(sw, /smart-inventory-v2-shell-43/);
 
   const requiredAssets = [
     './css/mobile-launch-hardening.css',
     './css/v5-procurement.css',
+    './css/v6-procurement.css',
+    './css/v6-procurement-hardening.css',
     './css/v5-saint-report.css',
     './css/v5-reconciliation.css',
     './css/v5-live-supply.css',
@@ -35,7 +37,9 @@ test('PWA V5 precachea shell operativo completo y assets mobile reales', async (
     './src/ui/liveSupplyUi.js',
     './src/ui/quickStockCorrectionUi.js',
     './src/ui/quickStockCorrectionRefreshUi.js',
-    './src/ui/replenishmentWorkflowUi.js',
+    './src/ui/procurementWorkspaceV6Ui.js',
+    './src/ui/procurementWorkspaceV6Render.js',
+    './src/ui/procurementWorkspaceV6Print.js',
     './src/ui/saintSupplyReportUi.js',
     './src/catalog/saintBridge.js',
     './src/inventory/quickStockCorrectionService.js',
@@ -47,6 +51,7 @@ test('PWA V5 precachea shell operativo completo y assets mobile reales', async (
     './src/documents/liveSupplyService.js',
     './src/documents/supplyReportContextService.js',
     './src/replenishment/warehouseProcurementService.js',
+    './src/replenishment/procurementListService.js',
     './src/export/saintSupplyExport.js',
     './icons/vigia-apple-touch-icon.png',
     './icons/vigia-192.png',
@@ -59,6 +64,12 @@ test('PWA V5 precachea shell operativo completo y assets mobile reales', async (
     const bytes = await readBinary(`../${asset.slice(2)}`);
     assert.ok(bytes.length > 0, `Asset vacío o inexistente: ${asset}`);
   }
+
+  assert.equal(
+    sw.includes("'./src/ui/replenishmentWorkflowUi.js'"),
+    false,
+    'El shell V6 no debe seguir cargando la UI legacy de reposición'
+  );
 });
 
 test('recarga normal permite Firebase a través del service worker y revalida shell', async () => {
@@ -138,7 +149,7 @@ test('manifest VIGÍA es instalable y declara iconos PNG + maskable', async () =
   );
 });
 
-test('index incluye hardening de iOS, viewport seguro y CSS mobile final', async () => {
+test('index incluye hardening de iOS y workflow V6 final', async () => {
   const html = await read('../index.html');
 
   assert.match(html, /viewport-fit=cover/);
@@ -149,6 +160,14 @@ test('index incluye hardening de iOS, viewport seguro y CSS mobile final', async
   assert.match(html, /mobile-launch-hardening\.css/);
   assert.match(html, /v5-saint-bridge\.css/);
   assert.match(html, /v5-quick-stock\.css/);
+  assert.match(html, /v6-procurement\.css/);
+  assert.match(html, /v6-procurement-hardening\.css/);
+  assert.match(html, /procurementWorkspaceV6Ui\.js/);
+  assert.equal(
+    html.includes('replenishmentWorkflowUi.js'),
+    false,
+    'index no debe cargar la UI legacy de Comprar/Pedir'
+  );
   assert.match(html, /countReconciliationBulkUi\.js/);
   assert.match(html, /quickStockCorrectionUi\.js/);
   assert.match(html, /quickStockCorrectionRefreshUi\.js/);
@@ -178,4 +197,22 @@ test('hardening mobile protege safe areas, zoom iOS, touch targets y overflow', 
   assert.match(css, /\.v5-live-finalize-button/);
   assert.match(css, /\.v5-recon-line-actions button/);
   assert.match(css, /\.v5-count-actions button/);
+});
+
+test('hardening V6 mantiene tarjetas visibles, barra sobre navegación y ticket 80mm imprimible', async () => {
+  const css = await read('../css/v6-procurement-hardening.css');
+
+  assert.match(css, /left:\s*calc\(var\(--sidebar-width\)/);
+  assert.match(css, /top:\s*72px/);
+  assert.match(css, /top:\s*calc\(64px \+ env\(safe-area-inset-top\)\)/);
+  assert.match(css, /bottom:\s*calc\(72px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(css, /padding-bottom:\s*calc\(170px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(css, /#v6pPrintModal/);
+  assert.match(css, /width:\s*80mm !important/);
+  assert.match(css, /page-break-after:\s*always/);
+  assert.equal(
+    css.includes('body>*:not(.v6p-print-host)'),
+    false,
+    'La impresión no debe depender de un host inexistente'
+  );
 });
