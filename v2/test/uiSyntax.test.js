@@ -15,6 +15,8 @@ const files = [
   '../src/ui/procurementWorkspaceV6Render.js',
   '../src/ui/procurementWorkspaceV6Print.js',
   '../src/ui/thermalPrinterSettingsUi.js',
+  '../src/ui/thermalDirectPrintUi.js',
+  '../src/printing/thermalPrinterClient.js',
   '../src/replenishment/procurementListService.js',
   '../src/ui/saintSupplyReportUi.js',
   '../src/ui/vigiaIntelligenceUi.js',
