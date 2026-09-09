@@ -18,7 +18,7 @@ async function readBinary(relativePath) {
 test('PWA V6 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
-  assert.match(sw, /smart-inventory-v2-shell-45/);
+  assert.match(sw, /smart-inventory-v2-shell-46/);
 
   const requiredAssets = [
     './css/mobile-launch-hardening.css',
@@ -26,6 +26,7 @@ test('PWA V6 precachea shell operativo completo y assets mobile reales', async (
     './css/v6-procurement.css',
     './css/v6-procurement-hardening.css',
     './css/v6-thermal-printer.css',
+    './css/v6-catalog-category-filter.css',
     './css/v5-saint-report.css',
     './css/v5-reconciliation.css',
     './css/v5-live-supply.css',
@@ -43,6 +44,7 @@ test('PWA V6 precachea shell operativo completo y assets mobile reales', async (
     './src/ui/procurementWorkspaceV6Print.js',
     './src/ui/thermalPrinterSettingsUi.js',
     './src/ui/thermalDirectPrintUi.js',
+    './src/ui/catalogCategoryFilterUi.js',
     './src/ui/saintSupplyReportUi.js',
     './src/printing/thermalPrinterClient.js',
     './src/catalog/saintBridge.js',
@@ -153,7 +155,7 @@ test('manifest VIGÍA es instalable y declara iconos PNG + maskable', async () =
   );
 });
 
-test('index incluye hardening de iOS, workflow V6 final y configuración térmica', async () => {
+test('index incluye hardening, impresión térmica y filtro de catálogo por categoría', async () => {
   const html = await read('../index.html');
 
   assert.match(html, /viewport-fit=cover/);
@@ -167,9 +169,11 @@ test('index incluye hardening de iOS, workflow V6 final y configuración térmic
   assert.match(html, /v6-procurement\.css/);
   assert.match(html, /v6-procurement-hardening\.css/);
   assert.match(html, /v6-thermal-printer\.css/);
+  assert.match(html, /v6-catalog-category-filter\.css/);
   assert.match(html, /procurementWorkspaceV6Ui\.js/);
   assert.match(html, /thermalPrinterSettingsUi\.js/);
   assert.match(html, /thermalDirectPrintUi\.js/);
+  assert.match(html, /catalogCategoryFilterUi\.js/);
   assert.equal(
     html.includes('replenishmentWorkflowUi.js'),
     false,
