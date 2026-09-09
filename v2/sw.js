@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-42';
+const CACHE_NAME = 'smart-inventory-v2-shell-43';
 
 const APP_SHELL = [
   './',
@@ -12,6 +12,8 @@ const APP_SHELL = [
   './icons/vigia-512-maskable.png',
   './css/app.css',
   './css/v5-procurement.css',
+  './css/v6-procurement.css',
+  './css/v6-procurement-hardening.css',
   './css/v5-saint-report.css',
   './css/v5-reconciliation.css',
   './css/v5-live-supply.css',
@@ -28,7 +30,9 @@ const APP_SHELL = [
   './src/ui/liveSupplyUi.js',
   './src/ui/quickStockCorrectionUi.js',
   './src/ui/quickStockCorrectionRefreshUi.js',
-  './src/ui/replenishmentWorkflowUi.js',
+  './src/ui/procurementWorkspaceV6Ui.js',
+  './src/ui/procurementWorkspaceV6Render.js',
+  './src/ui/procurementWorkspaceV6Print.js',
   './src/ui/saintSupplyReportUi.js',
   './src/auth/authProvider.js',
   './src/auth/firebaseClient.js',
@@ -62,6 +66,7 @@ const APP_SHELL = [
   './src/intelligence/intelligenceExplanation.js',
   './src/replenishment/replenishmentService.js',
   './src/replenishment/warehouseProcurementService.js',
+  './src/replenishment/procurementListService.js',
   './src/scanner/barcodeScanner.js',
   './src/export/exportService.js',
   './src/export/saintSupplyExport.js',
