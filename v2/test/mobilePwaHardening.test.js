@@ -18,7 +18,7 @@ async function readBinary(relativePath) {
 test('PWA V6 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
-  assert.match(sw, /smart-inventory-v2-shell-48/);
+  assert.match(sw, /smart-inventory-v2-shell-49/);
 
   const requiredAssets = [
     './css/mobile-launch-hardening.css',
@@ -32,11 +32,16 @@ test('PWA V6 precachea shell operativo completo y assets mobile reales', async (
     './css/v5-live-supply.css',
     './css/v5-saint-bridge.css',
     './css/v5-quick-stock.css',
+    './css/v7-supply-areas.css',
+    './css/v8-reports.css',
     './src/ui/countWorkflowUi.js',
     './src/ui/saintBridgeUi.js',
     './src/ui/countReconciliationUi.js',
     './src/ui/countReconciliationBulkUi.js',
     './src/ui/liveSupplyUi.js',
+    './src/ui/supplyAreaUi.js',
+    './src/ui/areaWorkspaceUi.js',
+    './src/ui/reportBuilderV8Ui.js',
     './src/ui/quickStockCorrectionUi.js',
     './src/ui/quickStockCorrectionRefreshUi.js',
     './src/ui/procurementWorkspaceV6Ui.js',
@@ -155,7 +160,7 @@ test('manifest VIGÍA es instalable y declara iconos PNG + maskable', async () =
   );
 });
 
-test('index incluye hardening, impresión térmica y filtro de catálogo por categoría', async () => {
+test('index incluye hardening, impresión térmica, áreas y Reportes V8', async () => {
   const html = await read('../index.html');
 
   assert.match(html, /viewport-fit=cover/);
@@ -170,10 +175,13 @@ test('index incluye hardening, impresión térmica y filtro de catálogo por cat
   assert.match(html, /v6-procurement-hardening\.css/);
   assert.match(html, /v6-thermal-printer\.css/);
   assert.match(html, /v6-catalog-category-filter\.css/);
+  assert.match(html, /v7-supply-areas\.css/);
+  assert.match(html, /v8-reports\.css/);
   assert.match(html, /procurementWorkspaceV6Ui\.js/);
   assert.match(html, /thermalPrinterSettingsUi\.js/);
   assert.match(html, /thermalDirectPrintUi\.js/);
   assert.match(html, /catalogCategoryFilterUi\.js/);
+  assert.match(html, /reportBuilderV8Ui\.js/);
   assert.equal(
     html.includes('replenishmentWorkflowUi.js'),
     false,
@@ -193,6 +201,10 @@ test('index incluye hardening, impresión térmica y filtro de catálogo por cat
   assert.ok(
     html.indexOf('liveSupplyUi.js') < html.indexOf('quickStockCorrectionUi.js'),
     'La corrección rápida debe extender el surtido vivo después de cargarlo'
+  );
+  assert.ok(
+    html.indexOf('areaWorkspaceUi.js') < html.indexOf('reportBuilderV8Ui.js'),
+    'Reportes V8 debe cargar después del módulo V7 de áreas para reemplazar la vista legacy'
   );
 });
 
