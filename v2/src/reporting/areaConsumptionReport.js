@@ -1,9 +1,7 @@
-const LIVE_SUPPLY_DELIVERY_KIND = 'LIVE_SUPPLY_DELIVERY';
 const EPSILON = 0.000001;
 
 export function buildAreaConsumptionReport({
-  documents = [],
-  lines = [],
+  areaDeliveries = [],
   movements = [],
   lots = [],
   products = [],
@@ -22,109 +20,96 @@ export function buildAreaConsumptionReport({
       .map(movement => movement.reversedMovementId)
   );
 
-  const deliveryIds = new Set(
-    documents
-      .filter(document => document.type === 'SUPPLY')
-      .filter(document => document.status === 'CLOSED')
-      .filter(document => document.metadata?.kind === LIVE_SUPPLY_DELIVERY_KIND)
-      .filter(document => {
-        const time = new Date(document.closedAt || document.updatedAt || document.createdAt).getTime();
-        return Number.isFinite(time) && time >= fromTime && time <= toTime;
-      })
-      .map(document => document.id)
-  );
+  const records = areaDeliveries
+    .filter(record => record?.status === 'CLOSED')
+    .filter(record => {
+      const time = new Date(record.closedAt || record.updatedAt || record.createdAt).getTime();
+      return Number.isFinite(time) && time >= fromTime && time <= toTime;
+    });
 
-  const movementByLine = new Map();
+  const movementByDeliveryProduct = new Map();
   for (const movement of movements) {
     if (movement.type !== 'SUPPLY') continue;
-    if (reversedMovementIds.has(movement.id)) continue;
-    if (!deliveryIds.has(movement.documentId)) continue;
-    const lineId = movement.metadata?.lineId;
-    if (!lineId) continue;
-    const current = movementByLine.get(lineId) || [];
+    if (movement.voided === true || reversedMovementIds.has(movement.id)) continue;
+    const key = `${movement.documentId}::${movement.productId}`;
+    const current = movementByDeliveryProduct.get(key) || [];
     current.push(movement);
-    movementByLine.set(lineId, current);
+    movementByDeliveryProduct.set(key, current);
   }
 
   const areaRows = new Map();
   let trackedDeliveryLines = 0;
-  let unassignedDeliveryLines = 0;
   let allocatedQuantity = 0;
   let knownCost = 0;
   let costedQuantity = 0;
   let totalMovementQuantity = 0;
 
-  for (const line of lines) {
-    if (!deliveryIds.has(line.documentId)) continue;
+  for (const record of records) {
+    for (const row of record.rows || []) {
+      const lineQuantity = positiveNumber(row.quantity);
+      const allocations = normalizeAllocations(row.allocations, lineQuantity);
+      if (lineQuantity <= 0 || !allocations.length) continue;
 
-    const lineQuantity = positiveNumber(line.quantity);
-    if (lineQuantity <= 0) continue;
+      trackedDeliveryLines += 1;
+      allocatedQuantity += lineQuantity;
 
-    const allocations = normalizeAllocations(line.areaAllocations, lineQuantity);
-    if (!allocations.length) {
-      unassignedDeliveryLines += 1;
-      continue;
-    }
+      const lineMovements = movementByDeliveryProduct.get(
+        `${record.deliveryId}::${row.productId}`
+      ) || [];
+      let lineKnownCost = 0;
+      let lineCostedQuantity = 0;
+      let lineMovementQuantity = 0;
 
-    trackedDeliveryLines += 1;
-    allocatedQuantity += allocations.reduce((sum, item) => sum + item.quantity, 0);
+      for (const movement of lineMovements) {
+        const quantity = positiveNumber(movement.quantity);
+        if (quantity <= 0) continue;
+        lineMovementQuantity += quantity;
 
-    const lineMovements = movementByLine.get(line.id) || [];
-    let lineKnownCost = 0;
-    let lineCostedQuantity = 0;
-    let lineMovementQuantity = 0;
-
-    for (const movement of lineMovements) {
-      const quantity = positiveNumber(movement.quantity);
-      if (quantity <= 0) continue;
-      lineMovementQuantity += quantity;
-
-      const lot = movement.lotId ? lotById.get(movement.lotId) : null;
-      const unitCost = optionalCost(
-        movement.metadata?.unitCost ?? lot?.unitCost
-      );
-
-      if (unitCost !== null) {
-        lineKnownCost += quantity * unitCost;
-        lineCostedQuantity += quantity;
+        const lot = movement.lotId ? lotById.get(movement.lotId) : null;
+        const unitCost = optionalCost(
+          movement.metadata?.unitCost ?? lot?.unitCost
+        );
+        if (unitCost !== null) {
+          lineKnownCost += quantity * unitCost;
+          lineCostedQuantity += quantity;
+        }
       }
-    }
 
-    knownCost += lineKnownCost;
-    costedQuantity += lineCostedQuantity;
-    totalMovementQuantity += lineMovementQuantity;
+      knownCost += lineKnownCost;
+      costedQuantity += lineCostedQuantity;
+      totalMovementQuantity += lineMovementQuantity;
 
-    const product = productById.get(line.productId);
-    const costPerAllocatedUnit = lineQuantity > EPSILON
-      ? lineKnownCost / lineQuantity
-      : 0;
-    const costCoverage = lineMovementQuantity > EPSILON
-      ? Math.min(1, lineCostedQuantity / lineMovementQuantity)
-      : 0;
+      const product = productById.get(row.productId);
+      const costPerAllocatedUnit = lineQuantity > EPSILON
+        ? lineKnownCost / lineQuantity
+        : 0;
+      const costCoverage = lineMovementQuantity > EPSILON
+        ? Math.min(1, lineCostedQuantity / lineMovementQuantity)
+        : 0;
 
-    for (const allocation of allocations) {
-      const area = areaRows.get(allocation.areaId) || createAreaRow(
-        allocation,
-        areaById.get(allocation.areaId)
-      );
+      for (const allocation of allocations) {
+        const area = areaRows.get(allocation.areaId) || createAreaRow(
+          allocation,
+          areaById.get(allocation.areaId)
+        );
 
-      area.allocationCount += 1;
-      area.quantity += allocation.quantity;
-      area.knownCost += allocation.quantity * costPerAllocatedUnit;
-      area.costedQuantity += allocation.quantity * costCoverage;
-      area.products.set(
-        line.productId,
-        addProduct(area.products.get(line.productId), {
-          productId: line.productId,
-          productName: product?.name || line.productName || line.productId,
-          quantity: allocation.quantity,
-          knownCost: allocation.quantity * costPerAllocatedUnit,
-          costedQuantity: allocation.quantity * costCoverage
-        })
-      );
-
-      area.deliveryIds.add(line.documentId);
-      areaRows.set(allocation.areaId, area);
+        area.allocationCount += 1;
+        area.quantity += allocation.quantity;
+        area.knownCost += allocation.quantity * costPerAllocatedUnit;
+        area.costedQuantity += allocation.quantity * costCoverage;
+        area.deliveryIds.add(record.deliveryId);
+        area.products.set(
+          row.productId,
+          addProduct(area.products.get(row.productId), {
+            productId: row.productId,
+            productName: product?.name || row.productName || row.productId,
+            quantity: allocation.quantity,
+            knownCost: allocation.quantity * costPerAllocatedUnit,
+            costedQuantity: allocation.quantity * costCoverage
+          })
+        );
+        areaRows.set(allocation.areaId, area);
+      }
     }
   }
 
@@ -139,9 +124,9 @@ export function buildAreaConsumptionReport({
   return {
     rows,
     trackedDeliveryLines,
-    unassignedDeliveryLines,
+    deliveryCount: new Set(records.map(record => record.deliveryId)).size,
     allocatedQuantity,
-    knownCost,
+    knownCost: roundMoney(knownCost),
     costedQuantity,
     totalMovementQuantity,
     costCoveragePercent: totalMovementQuantity > EPSILON
@@ -168,6 +153,7 @@ function finalizeAreaRow(row) {
   const products = [...row.products.values()]
     .map(item => ({
       ...item,
+      knownCost: roundMoney(item.knownCost),
       costCoveragePercent: item.quantity > EPSILON
         ? Math.round((item.costedQuantity / item.quantity) * 1000) / 10
         : 0
@@ -194,8 +180,7 @@ function finalizeAreaRow(row) {
 }
 
 function normalizeAllocations(value, lineQuantity) {
-  if (!Array.isArray(value)) return [];
-
+  if (!Array.isArray(value) || lineQuantity <= 0) return [];
   const rows = value
     .map(item => ({
       areaId: String(item?.areaId || '').trim(),
@@ -203,7 +188,6 @@ function normalizeAllocations(value, lineQuantity) {
       quantity: positiveNumber(item?.quantity)
     }))
     .filter(item => item.areaId && item.quantity > 0);
-
   const total = rows.reduce((sum, item) => sum + item.quantity, 0);
   if (Math.abs(total - lineQuantity) > EPSILON) return [];
   return rows;
