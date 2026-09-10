@@ -6,6 +6,7 @@ import { requirePermission } from '../middleware/requirePermission.js';
 import { writeAuditEvent } from '../audit/auditService.js';
 
 export const areasRouter = Router();
+const EPSILON = 0.000001;
 
 areasRouter.get('/', async (req, res, next) => {
   try {
@@ -30,6 +31,110 @@ areasRouter.get('/', async (req, res, next) => {
     next(error);
   }
 });
+
+areasRouter.get('/deliveries', async (req, res, next) => {
+  try {
+    const from = req.query.from ? new Date(String(req.query.from)) : null;
+    if (from && !Number.isFinite(from.getTime())) {
+      return res.status(400).json({
+        ok: false,
+        code: 'AREA_DELIVERY_DATE_INVALID',
+        message: 'Fecha inicial inválida'
+      });
+    }
+
+    const result = await pool.query(
+      `SELECT delivery_token,delivery_id,parent_cart_id,payload,closed_at,
+              created_by,created_at,updated_at
+       FROM supply_area_deliveries
+       WHERE workspace_id = $1
+         AND ($2::timestamptz IS NULL OR closed_at >= $2::timestamptz)
+       ORDER BY closed_at DESC
+       LIMIT 5000`,
+      [req.auth.workspaceId, from ? from.toISOString() : null]
+    );
+
+    res.json({
+      ok: true,
+      deliveries: result.rows.map(mapDeliveryRow)
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+areasRouter.post(
+  '/deliveries',
+  requirePermission(PERMISSIONS.SUPPLY_WRITE),
+  async (req, res, next) => {
+    try {
+      const delivery = await normalizeDeliveryPayload(req.body, req.auth.workspaceId);
+
+      const saved = await withTransaction(async client => {
+        const current = await client.query(
+          `SELECT delivery_token,delivery_id,parent_cart_id,payload,closed_at,
+                  created_by,created_at,updated_at
+           FROM supply_area_deliveries
+           WHERE workspace_id = $1 AND delivery_token = $2
+           FOR UPDATE`,
+          [req.auth.workspaceId, delivery.deliveryToken]
+        );
+
+        if (current.rowCount === 1) {
+          const existing = mapDeliveryRow(current.rows[0]);
+          if (canonicalDelivery(existing) !== canonicalDelivery(delivery)) {
+            const error = new Error(
+              'Ese token de entrega ya tiene otra distribución por áreas'
+            );
+            error.code = 'AREA_DELIVERY_TOKEN_MISMATCH';
+            error.statusCode = 409;
+            throw error;
+          }
+          return existing;
+        }
+
+        const result = await client.query(
+          `INSERT INTO supply_area_deliveries (
+             workspace_id,delivery_token,delivery_id,parent_cart_id,payload,
+             closed_at,created_by
+           ) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7)
+           RETURNING delivery_token,delivery_id,parent_cart_id,payload,closed_at,
+                     created_by,created_at,updated_at`,
+          [
+            req.auth.workspaceId,
+            delivery.deliveryToken,
+            delivery.deliveryId,
+            delivery.parentCartId,
+            JSON.stringify({ rows: delivery.rows }),
+            delivery.closedAt,
+            req.auth.userId || null
+          ]
+        );
+
+        await writeAuditEvent(client, req.auth, {
+          action: 'SUPPLY_AREA_ALLOCATION_RECORDED',
+          entityType: 'supplyAreaDelivery',
+          entityId: delivery.deliveryToken,
+          metadata: {
+            deliveryId: delivery.deliveryId,
+            parentCartId: delivery.parentCartId,
+            rowCount: delivery.rows.length,
+            allocationCount: delivery.rows.reduce(
+              (sum, row) => sum + row.allocations.length,
+              0
+            )
+          }
+        });
+
+        return mapDeliveryRow(result.rows[0]);
+      });
+
+      res.status(201).json({ ok: true, delivery: saved });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 areasRouter.post(
   '/',
@@ -182,6 +287,129 @@ areasRouter.patch(
     }
   }
 );
+
+async function normalizeDeliveryPayload(body = {}, workspaceId) {
+  const deliveryToken = requiredText(body.deliveryToken, 'Token de entrega requerido', 220);
+  const deliveryId = requiredText(body.deliveryId, 'Entrega requerida', 220);
+  const parentCartId = requiredText(body.parentCartId, 'Carrito padre requerido', 220);
+  const closedAtDate = new Date(body.closedAt);
+  if (!Number.isFinite(closedAtDate.getTime())) {
+    throw badDelivery('Fecha de entrega inválida');
+  }
+
+  const rows = Array.isArray(body.rows) ? body.rows : [];
+  if (!rows.length || rows.length > 250) {
+    throw badDelivery('La distribución debe contener entre 1 y 250 productos');
+  }
+
+  const areaIds = new Set();
+  const normalizedRows = rows.map(row => {
+    const productId = requiredText(row?.productId, 'Producto requerido', 220);
+    const productName = requiredText(row?.productName || productId, 'Producto inválido', 240);
+    const quantity = positiveNumber(row?.quantity, 'Cantidad de producto inválida');
+    const allocations = Array.isArray(row?.allocations) ? row.allocations : [];
+    if (!allocations.length || allocations.length > 100) {
+      throw badDelivery(`Distribución inválida para ${productName}`);
+    }
+
+    const uniqueAreas = new Set();
+    const normalizedAllocations = allocations.map(item => {
+      const areaId = requiredText(item?.areaId, 'Área requerida', 220);
+      if (uniqueAreas.has(areaId)) {
+        throw badDelivery(`Área repetida en ${productName}`);
+      }
+      uniqueAreas.add(areaId);
+      areaIds.add(areaId);
+      return {
+        areaId,
+        areaName: '',
+        quantity: positiveNumber(item?.quantity, 'Cantidad de área inválida')
+      };
+    });
+
+    const total = normalizedAllocations.reduce((sum, item) => sum + item.quantity, 0);
+    if (Math.abs(total - quantity) > EPSILON) {
+      throw badDelivery(`Las áreas de ${productName} deben sumar ${quantity}`);
+    }
+
+    return { productId, productName, quantity, allocations: normalizedAllocations };
+  });
+
+  const areaResult = await pool.query(
+    `SELECT id,name,active
+     FROM areas
+     WHERE workspace_id = $1 AND id = ANY($2::text[])`,
+    [workspaceId, [...areaIds]]
+  );
+  const areaById = new Map(areaResult.rows.map(area => [area.id, area]));
+
+  for (const row of normalizedRows) {
+    for (const allocation of row.allocations) {
+      const area = areaById.get(allocation.areaId);
+      if (!area || area.active !== true) {
+        throw badDelivery(`El área ${allocation.areaId} no está activa en este workspace`);
+      }
+      allocation.areaName = area.name;
+    }
+  }
+
+  return {
+    deliveryToken,
+    deliveryId,
+    parentCartId,
+    closedAt: closedAtDate.toISOString(),
+    rows: normalizedRows
+  };
+}
+
+function mapDeliveryRow(row) {
+  return {
+    deliveryToken: row.delivery_token,
+    deliveryId: row.delivery_id,
+    parentCartId: row.parent_cart_id,
+    rows: Array.isArray(row.payload?.rows) ? row.payload.rows : [],
+    closedAt: row.closed_at,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function canonicalDelivery(delivery) {
+  const rows = (delivery.rows || [])
+    .map(row => ({
+      productId: row.productId,
+      quantity: Number(row.quantity),
+      allocations: (row.allocations || [])
+        .map(item => ({ areaId: item.areaId, quantity: Number(item.quantity) }))
+        .sort((a, b) => a.areaId.localeCompare(b.areaId))
+    }))
+    .sort((a, b) => a.productId.localeCompare(b.productId));
+  return JSON.stringify({
+    deliveryId: delivery.deliveryId,
+    parentCartId: delivery.parentCartId,
+    rows
+  });
+}
+
+function badDelivery(message) {
+  const error = new Error(message);
+  error.code = 'AREA_DELIVERY_INVALID';
+  error.statusCode = 400;
+  return error;
+}
+
+function requiredText(value, message, maxLength) {
+  const text = String(value ?? '').trim();
+  if (!text || text.length > maxLength) throw badDelivery(message);
+  return text;
+}
+
+function positiveNumber(value, message) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) throw badDelivery(message);
+  return number;
+}
 
 function mapAreaRow(row) {
   return {
