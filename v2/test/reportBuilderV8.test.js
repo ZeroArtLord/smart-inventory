@@ -57,6 +57,32 @@ test('Reportes V8 excluye surtidos reversados de la atribución por áreas', asy
   assert.match(ui, /Los surtidos anteriores a V7 no se inventan retroactivamente/);
 });
 
+test('Reportes V8.1 corrige presets invisibles, checkboxes gigantes y sidebar fuera del viewport', async () => {
+  const css = await read('../css/v8-reports.css');
+
+  assert.match(css, /\.v8-presets \.ghost-button\{/);
+  assert.match(css, /background:#f8fbff;color:#27405f/);
+  assert.match(css, /\.v8-block-checks input\[type="checkbox"\]\{/);
+  assert.match(css, /width:18px;height:18px/);
+  assert.match(css, /max-height:calc\(100vh - 104px\)/);
+  assert.match(css, /overflow-y:auto/);
+});
+
+test('Reportes V8.1 no pinta actividad falsa en buckets de tendencia con valor cero', async () => {
+  const css = await read('../css/v8-reports.css');
+
+  assert.match(css, /\.v8-trend-bar\[title\^="0 "\] i\{height:0!important;min-height:0!important\}/);
+  assert.match(css, /\.v8-trend-bar:not\(\[title\^="0 "\]\) i\{min-height:5px\}/);
+});
+
+test('Reportes V8.1 compacta únicamente la conciliación vacía y mejora el detalle', async () => {
+  const css = await read('../css/v8-reports.css');
+
+  assert.match(css, /#v5CountReconciliationPanel:has\(\.v5-recon-empty\)/);
+  assert.match(css, /\.v5-recon-empty\{display:none\}/);
+  assert.match(css, /\.v8-table-scroll\{max-height:500px;margin:0;border:1px solid #e7edf5/);
+});
+
 test('módulo Reportes V8 tiene sintaxis JavaScript válida', async () => {
   const file = resolve('../src/ui/reportBuilderV8Ui.js');
   const result = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
