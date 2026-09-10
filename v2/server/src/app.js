@@ -14,6 +14,7 @@ import { auditRouter } from './routes/audit.js';
 import { sessionRouter } from './routes/session.js';
 import { authRouter } from './routes/auth.js';
 import { thermalPrinterRouter } from './routes/thermalPrinter.js';
+import { areasRouter } from './routes/areas.js';
 
 const app = express();
 app.set('trust proxy', 'loopback');
@@ -138,6 +139,17 @@ app.use(
   }),
   authContext,
   adminRouter
+);
+
+app.use(
+  '/api/v1/areas',
+  rateLimit({
+    windowMs: 60000,
+    max: 120,
+    namespace: 'areas'
+  }),
+  authContext,
+  areasRouter
 );
 
 app.use(
