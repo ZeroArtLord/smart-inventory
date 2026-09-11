@@ -430,25 +430,6 @@ areasRouter.patch(
             }
           });
 
-          await client.query(
-            `UPDATE supply_area_drafts
-             SET allocations = COALESCE((
-               SELECT jsonb_agg(
-                 CASE
-                   WHEN allocation->>'areaId' = $2
-                   THEN jsonb_set(allocation, '{areaName}', to_jsonb($3::text), true)
-                   ELSE allocation
-                 END
-                 ORDER BY ordinality
-               )
-               FROM jsonb_array_elements(allocations) WITH ORDINALITY AS items(allocation, ordinality)
-             ), '[]'::jsonb),
-             updated_at = now()
-             WHERE workspace_id = $1
-               AND allocations @> jsonb_build_array(jsonb_build_object('areaId', $2))`,
-            [req.auth.workspaceId, areaId, name]
-          );
-
           return mapAreaRow(updated.rows[0]);
         } catch (error) {
           if (error?.code === '23505') {
