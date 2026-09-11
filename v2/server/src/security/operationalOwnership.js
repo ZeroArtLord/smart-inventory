@@ -70,6 +70,59 @@ export async function assertOperationalEventOwnership(client, auth, event) {
   }
 }
 
+export async function assertOperationalDocumentOwnership(
+  client,
+  auth,
+  documentId,
+  { expectedType = null } = {}
+) {
+  const id = String(documentId || '').trim();
+  if (!id) {
+    throw notFound('No se encontró el documento operativo.');
+  }
+
+  const result = await client.query(
+    `SELECT type, owner_id
+     FROM documents
+     WHERE workspace_id = $1
+       AND id = $2
+     LIMIT 1`,
+    [auth.workspaceId, id]
+  );
+
+  if (result.rowCount !== 1) {
+    throw notFound('No se encontró el documento operativo.');
+  }
+
+  const document = result.rows[0];
+  const type = normalizeType(document.type);
+  const requiredType = expectedType ? normalizeType(expectedType) : null;
+
+  if (requiredType && type !== requiredType) {
+    throw invalidType(`El documento debe ser de tipo ${requiredType}.`);
+  }
+
+  const roleCode = String(auth?.roleCode || '').toUpperCase();
+  const authMode = String(auth?.authMode || '').toLowerCase();
+
+  if (roleCode === 'GOD') return document;
+  if (roleCode === 'DEV_ADMIN' && authMode === 'dev') return document;
+
+  const actorOwnerId = operationalActorOwnerId(auth);
+  if (!actorOwnerId) {
+    throw forbidden('No se pudo resolver el propietario operativo del usuario.');
+  }
+
+  if (TEAM_OPERATIONAL_TYPES.has(type)) {
+    const ownerId = String(document.owner_id || '').trim();
+    if (!ownerId || ownerId !== actorOwnerId) {
+      throw forbidden('Este documento operativo pertenece a otro usuario.');
+    }
+  }
+
+  return document;
+}
+
 function resolveDocumentId(event) {
   if (event.entityType === 'document') {
     return String(event.entityId || event.payload?.id || '').trim();
@@ -86,5 +139,19 @@ function forbidden(message) {
   const error = new Error(message);
   error.code = 'OPERATIONAL_DOCUMENT_FORBIDDEN';
   error.statusCode = 403;
+  return error;
+}
+
+function notFound(message) {
+  const error = new Error(message);
+  error.code = 'OPERATIONAL_DOCUMENT_NOT_FOUND';
+  error.statusCode = 404;
+  return error;
+}
+
+function invalidType(message) {
+  const error = new Error(message);
+  error.code = 'OPERATIONAL_DOCUMENT_TYPE_INVALID';
+  error.statusCode = 400;
   return error;
 }
