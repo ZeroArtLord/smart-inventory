@@ -228,6 +228,34 @@ test(
   }
 );
 
+test(
+  'surtido térmico no trunca silenciosamente una lista completa',
+  () => {
+    const items = Array.from({ length: 251 }, (_, index) => ({
+      name: `PRODUCTO ${String(index + 1).padStart(3, '0')}`,
+      quantityText: '1 UND',
+      category: 'GENERAL'
+    }));
+
+    const job = buildSupplyJob(
+      DEFAULT_THERMAL_CONFIG,
+      {
+        id: 'sur-251',
+        code: 'SUR-0251',
+        items
+      }
+    );
+
+    const text = job.buffer.toString('latin1');
+    assert.equal(job.itemCount, 251);
+    assert.ok(text.includes('PRODUCTO 251'));
+    assert.equal(
+      countSequence(job.buffer, [0x1d, 0x56, 0x00]),
+      1
+    );
+  }
+);
+
 function hasSequence(buffer, sequence) {
   return countSequence(buffer, sequence) > 0;
 }
