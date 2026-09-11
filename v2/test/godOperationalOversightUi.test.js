@@ -30,16 +30,27 @@ test('la UI mantiene aislamiento WAREHOUSE y no convierte ADMIN en GOD', async (
   assert.doesNotMatch(ui, /roleCode\s*===\s*['"]ADMIN['"].*bypass/s);
 });
 
-test('los controles inyectados reutilizan el flujo normal de documentos', async () => {
+test('V8.3 abre un documento ajeno GOD mediante un puente explícito al flujo normal', async () => {
   const ui = await read(uiPath);
 
-  assert.match(ui, /data-action=["']open-document["']/);
-  assert.match(ui, /data-action=["']cancel-document["']/);
-  assert.match(ui, /data-id=/);
+  assert.match(ui, /data-v82-open-document/);
+  assert.match(ui, /forwardOpenToApp/);
+  assert.match(ui, /data-action.*open-document|dataset\.action\s*=\s*['"]open-document['"]/s);
+  assert.match(ui, /\.click\(\)/);
 });
 
-test('PWA V8.2 usa shell 50 y precachea los assets de supervisión', () => {
-  assert.match(sw, /smart-inventory-v2-shell-50/);
+test('V8.3 muestra nombres humanos y conserva el id técnico solo como detalle', async () => {
+  const ui = await read(uiPath);
+
+  assert.match(ui, /operationalDocumentLabel/);
+  assert.match(ui, /Surtido|Entrada/);
+  assert.match(ui, /ID t[eé]cnico/i);
+  assert.match(ui, /Usuario del equipo/);
+  assert.doesNotMatch(ui, /<strong>\$\{escapeHtml\(document\.id\)\}<\/strong>/);
+});
+
+test('PWA V8.3 usa shell 51 y precachea los assets de supervisión', () => {
+  assert.match(sw, /smart-inventory-v2-shell-51/);
   assert.match(sw, /v8-god-oversight\.css/);
   assert.match(sw, /godOperationalOversightUi\.js/);
 });

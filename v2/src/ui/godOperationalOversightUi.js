@@ -22,12 +22,29 @@ if (appRoot) {
   observer.observe(appRoot, { childList: true, subtree: true });
 
   // Segunda barrera del lado cliente: aunque alguien intente reinsertar un
-  // botón ajeno en el DOM, un WAREHOUSE no puede abrir/exportar/cancelar ni
-  // corregir un ENTRY/SUPPLY que no le pertenece. El servidor aplica además
-  // la misma regla al push para proteger contra clientes manipulados.
+  // control ajeno en el DOM, un WAREHOUSE no puede administrar un ENTRY/SUPPLY
+  // que no le pertenece. GOD conserva el bypass deliberado.
   appRoot.addEventListener('click', event => {
+    const godOpen = event.target.closest('[data-v82-open-document]');
+    if (godOpen) {
+      if (!currentActor) return;
+
+      const document = documentsById.get(String(godOpen.dataset.id || ''));
+      if (!document || !TEAM_TYPES.has(document.type)) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      if (!canActorAccessOperationalDocument(document, currentActor)) {
+        showToast('Ese documento pertenece a otro usuario.', 'danger');
+        return;
+      }
+
+      forwardOpenToApp(document.id, document.type);
+      return;
+    }
+
     const action = event.target.closest(
-      '[data-action="open-document"], ' +
       '[data-action="cancel-document"], ' +
       '[data-action="export-document"], ' +
       '[data-action="correct-document"]'
@@ -49,7 +66,7 @@ if (appRoot) {
 
 function scheduleEnhance() {
   queueMicrotask(() => enhanceOperationalWorkspace().catch(error => {
-    console.warn('VIGÍA V8.2: no se pudo aplicar supervisión operativa.', error);
+    console.warn('VIGÍA V8.3: no se pudo aplicar supervisión operativa.', error);
   }));
 }
 
@@ -132,7 +149,7 @@ async function getGodMembers() {
     memberCache = await listWorkspaceMembers();
     memberCacheAt = now;
   } catch (error) {
-    console.warn('VIGÍA V8.2: miembros no disponibles para etiquetas GOD.', error);
+    console.warn('VIGÍA V8.3: miembros no disponibles para etiquetas GOD.', error);
     memberCache = [];
     memberCacheAt = now;
   }
@@ -159,19 +176,20 @@ function renderDrafts(container, drafts, type, actor, memberIndex) {
         const owner = ownerLabel(document, actor, memberIndex);
         const godForeign = actor.roleCode === 'GOD' &&
           String(document.ownerId || '') !== actor.ownerId;
+        const label = operationalDocumentLabel(document);
 
         return `
           <div class="draft-row-v2 v82-operational-row ${godForeign ? 'v82-god-foreign' : ''}" data-v82-document-id="${escapeHtml(document.id)}">
             <div class="draft-icon-v2">${icon}</div>
             <div class="v82-document-copy">
-              <strong>${escapeHtml(document.id)}</strong>
-              <small>${formatDate(document.updatedAt)}</small>
+              <strong title="ID técnico: ${escapeHtml(document.id)}">${escapeHtml(label)}</strong>
+              <small>Borrador</small>
               <span class="v82-owner-line">${godForeign ? '👑 ' : ''}${escapeHtml(owner)}</span>
             </div>
             <div class="draft-actions-v2">
               <button
                 class="secondary"
-                data-action="open-document"
+                data-v82-open-document="1"
                 data-id="${escapeHtml(document.id)}"
                 data-type="${escapeHtml(type)}"
                 type="button"
@@ -202,14 +220,15 @@ function renderHistory(container, documents, type, actor, memberIndex) {
         const canCorrect = actor.roleCode === 'GOD' &&
           document.status === DOCUMENT_STATUS.CLOSED &&
           !document.metadata?.correctionDraftId;
+        const label = operationalDocumentLabel(document);
 
         return `
           <div class="closed-document-row v82-operational-row ${godForeign ? 'v82-god-foreign' : ''}" data-v82-document-id="${escapeHtml(document.id)}">
             <div class="history-doc-title">
               <div class="history-doc-icon">${icon}</div>
               <div class="v82-document-copy">
-                <strong>${escapeHtml(document.id)}</strong>
-                <small>${escapeHtml(document.status)} · ${formatDate(document.closedAt || document.updatedAt)}</small>
+                <strong title="ID técnico: ${escapeHtml(document.id)}">${escapeHtml(label)}</strong>
+                <small>${humanStatus(document.status)}</small>
                 <span class="v82-owner-line">${godForeign ? '👑 ' : ''}${escapeHtml(owner)}</span>
               </div>
             </div>
@@ -290,18 +309,53 @@ function decorateHeadings(type, actor, draftCount, historyCount) {
   }
 }
 
+function forwardOpenToApp(documentId, type) {
+  if (!appRoot) return;
+
+  // Puente explícito V8.3: el panel GOD no mantiene un segundo editor.
+  // Reenvía la intención al contrato normal data-action=open-document de app.js.
+  const bridge = document.createElement('button');
+  bridge.type = 'button';
+  bridge.hidden = true;
+  bridge.dataset.action = 'open-document';
+  bridge.dataset.id = String(documentId || '');
+  bridge.dataset.type = String(type || '');
+  appRoot.appendChild(bridge);
+
+  try {
+    bridge.click();
+  } finally {
+    bridge.remove();
+  }
+}
+
+function operationalDocumentLabel(document) {
+  const type = String(document?.type || '').toUpperCase();
+  const name = type === DOCUMENT_TYPES.ENTRY ? 'Entrada' : 'Surtido';
+  const when = document?.closedAt || document?.updatedAt || document?.createdAt;
+  return `${name} · ${formatOperationalDate(when)}`;
+}
+
+function humanStatus(status) {
+  const normalized = String(status || '').toUpperCase();
+  if (normalized === DOCUMENT_STATUS.CLOSED) return 'Cerrado';
+  if (normalized === DOCUMENT_STATUS.DRAFT) return 'Borrador';
+  if (normalized === DOCUMENT_STATUS.CANCELLED) return 'Cancelado';
+  return normalized || 'Sin estado';
+}
+
 function ownerLabel(document, actor, memberIndex) {
   const ownerId = String(document.ownerId || '').trim();
   if (ownerId && ownerId === actor.ownerId) return 'Responsable: tú';
 
   const member = memberIndex.get(ownerId);
   if (member) {
-    const label = member.displayName || member.email || member.externalAuthId || member.userId;
+    const label = member.displayName || member.email || 'Usuario del equipo';
     return `Responsable: ${label}`;
   }
 
-  if (!ownerId) return 'Responsable: propietario no identificado';
-  return `Responsable: ${shortId(ownerId)}`;
+  if (!ownerId) return 'Responsable: Sin identificar';
+  return 'Responsable: Usuario del equipo';
 }
 
 function sortNewest(a, b) {
@@ -309,19 +363,18 @@ function sortNewest(a, b) {
     .localeCompare(String(a.closedAt || a.updatedAt || a.createdAt || ''));
 }
 
-function formatDate(value) {
+function formatOperationalDate(value) {
   if (!value) return 'Sin fecha';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat('es-VE', {
-    dateStyle: 'short',
-    timeStyle: 'short'
-  }).format(date);
-}
+  if (Number.isNaN(date.getTime())) return 'Sin fecha';
 
-function shortId(value) {
-  const text = String(value || '');
-  return text.length > 14 ? `${text.slice(0, 8)}…${text.slice(-4)}` : text;
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+
+  return `${day}/${month}/${year} · ${hour}:${minute}`;
 }
 
 function showToast(message, tone = 'info') {
