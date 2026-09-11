@@ -16,9 +16,17 @@ export function operationalActorOwnerId(auth = {}) {
 export async function assertOperationalEventOwnership(client, auth, event) {
   if (!OWNERSHIP_GUARDED_ENTITIES.has(event?.entityType)) return;
 
+  const roleCode = String(auth?.roleCode || '').toUpperCase();
+  const authMode = String(auth?.authMode || '').toLowerCase();
+
   // DIOS puede supervisar cualquier ENTRY/SUPPLY del workspace. Este bypass
   // es deliberadamente por rol, no por wildcard de permisos.
-  if (String(auth?.roleCode || '').toUpperCase() === 'GOD') return;
+  if (roleCode === 'GOD') return;
+
+  // El bootstrap DEV crea un DEV_ADMIN para los smoke tests históricos. Su
+  // bypass existe únicamente en authMode=dev; jamás se extiende a Firebase
+  // ni convierte ADMIN/wildcard en GOD dentro de producción.
+  if (roleCode === 'DEV_ADMIN' && authMode === 'dev') return;
 
   const actorOwnerId = operationalActorOwnerId(auth);
   if (!actorOwnerId) {
