@@ -90,11 +90,11 @@ test('V8.6 conserva áreas previas y deja sin asignar una adición cuando no se 
 });
 
 test('V8.6 muestra todas las áreas como botones rápidos opcionales y conserva Enter', () => {
-  assert.match(quickUiSource, /data-action=\\"select-quick-supply-area\\"/);
+  assert.match(quickUiSource, /data-action="select-quick-supply-area"/);
   assert.match(quickUiSource, /data-quick-supply-area/);
   assert.match(quickUiSource, /selectedSupplyAreaId/);
   assert.match(quickUiSource, /selectedSupplyAreaId = null/);
-  assert.match(appSource, /event\.target\.id === 'operationQuantity'[\\s\\S]*addOperationLine/);
+  assert.match(appSource, /event\.target\.id === 'operationQuantity'[\s\S]*addOperationLine/);
   assert.match(cssSource, /v86-quick-area-grid/);
   assert.match(cssSource, /v86-quick-area-button/);
   assert.match(indexSource, /v8-6-quick-supply-area\.css/);
