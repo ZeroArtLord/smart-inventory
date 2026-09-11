@@ -71,11 +71,13 @@ test('reversed supply movement is excluded from area spend', () => {
   assert.equal(report.costCoveragePercent, 0);
 });
 
-test('IndexedDB v9 exposes area catalog and area-delivery stores', async () => {
-  const databaseModule = await import(`../src/storage/database.js?areas-v7=${Date.now()}`);
+test('IndexedDB v10 expone catálogo, entregas y borradores de áreas', async () => {
+  const databaseModule = await import(`../src/storage/database.js?areas-v85=${Date.now()}`);
   const db = await databaseModule.openDatabase();
+  assert.equal(db.version, 10);
   assert.equal(db.objectStoreNames.contains('areas'), true);
   assert.equal(db.objectStoreNames.contains('supplyAreaDeliveries'), true);
+  assert.equal(db.objectStoreNames.contains('supplyAreaDrafts'), true);
 });
 
 test('UI contract fixes sticky summary overlap and loads area modules', async () => {
@@ -92,7 +94,7 @@ test('UI contract fixes sticky summary overlap and loads area modules', async ()
   assert.match(index, /v7-supply-areas\.css/);
   assert.match(index, /supplyAreaUi\.js/);
   assert.match(index, /areaWorkspaceUi\.js/);
-  assert.match(sw, /smart-inventory-v2-shell-53/);
+  assert.match(sw, /smart-inventory-v2-shell-54/);
   assert.match(route, /SUPPLY_AREA_ALLOCATION_RECORDED/);
   assert.match(route, /PERMISSIONS\.SUPPLY_WRITE/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS supply_area_deliveries/);
