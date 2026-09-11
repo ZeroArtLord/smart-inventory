@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 const indexHtml = await fs.readFile(new URL('../index.html', import.meta.url), 'utf8');
 const sw = await fs.readFile(new URL('../sw.js', import.meta.url), 'utf8');
 const uiPath = new URL('../src/ui/godOperationalOversightUi.js', import.meta.url);
+const guardPath = new URL('../src/ui/operationalDomRenderGuard.js', import.meta.url);
 const cssPath = new URL('../css/v8-god-oversight.css', import.meta.url);
 
 async function read(path) {
@@ -49,8 +50,22 @@ test('V8.3 muestra nombres humanos y conserva el id técnico solo como detalle',
   assert.doesNotMatch(ui, /<strong>\$\{escapeHtml\(document\.id\)\}<\/strong>/);
 });
 
-test('PWA V8.3 usa shell 51 y precachea los assets de supervisión', () => {
-  assert.match(sw, /smart-inventory-v2-shell-51/);
+test('V8.3.1 evita que el MutationObserver reemplace botones cuando el DOM ya está actualizado', async () => {
+  const ui = await read(uiPath);
+  const guard = await read(guardPath);
+
+  assert.match(ui, /buildOperationalDomRenderKey/);
+  assert.match(ui, /shouldRefreshOperationalDom/);
+  assert.match(ui, /dataset\.v83RenderKey/);
+  assert.match(ui, /if \(!refreshDom\)/);
+  assert.match(guard, /shouldRefreshOperationalDom/);
+  assert.match(guard, /draftKey/);
+  assert.match(guard, /historyKey/);
+});
+
+test('PWA V8.3.1 usa shell 52 y precachea los assets de supervisión', () => {
+  assert.match(sw, /smart-inventory-v2-shell-52/);
   assert.match(sw, /v8-god-oversight\.css/);
   assert.match(sw, /godOperationalOversightUi\.js/);
+  assert.match(sw, /operationalDomRenderGuard\.js/);
 });

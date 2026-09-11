@@ -8,12 +8,17 @@ import {
   canActorAccessOperationalDocument,
   filterOperationalDocumentsForActor
 } from '../documents/documentAccessPolicy.js';
+import {
+  buildOperationalDomRenderKey,
+  shouldRefreshOperationalDom
+} from './operationalDomRenderGuard.js';
 
 const appRoot = document.getElementById('app');
 const TEAM_TYPES = new Set([DOCUMENT_TYPES.ENTRY, DOCUMENT_TYPES.SUPPLY]);
 const documentsById = new Map();
 let currentActor = null;
 let enhancing = false;
+let rerunRequested = false;
 let memberCache = [];
 let memberCacheAt = 0;
 
@@ -65,13 +70,22 @@ if (appRoot) {
 }
 
 function scheduleEnhance() {
+  if (enhancing) {
+    rerunRequested = true;
+    return;
+  }
+
   queueMicrotask(() => enhanceOperationalWorkspace().catch(error => {
-    console.warn('VIGÍA V8.3: no se pudo aplicar supervisión operativa.', error);
+    console.warn('VIGÍA V8.3.1: no se pudo aplicar supervisión operativa.', error);
   }));
 }
 
 async function enhanceOperationalWorkspace() {
-  if (!appRoot || enhancing) return;
+  if (!appRoot) return;
+  if (enhancing) {
+    rerunRequested = true;
+    return;
+  }
 
   const newButton = appRoot.querySelector('[data-action="new-document"][data-type]');
   const draftList = appRoot.querySelector('.draft-list-v2');
@@ -114,15 +128,49 @@ async function enhanceOperationalWorkspace() {
       ? await getGodMembers()
       : [];
     const memberIndex = buildMemberIndex(members);
+    const renderKey = buildOperationalDomRenderKey({
+      type,
+      actor: currentActor,
+      drafts,
+      history,
+      members
+    });
+
+    const refreshDom = shouldRefreshOperationalDom({
+      nextKey: renderKey,
+      draftKey: draftList.dataset.v83RenderKey,
+      historyKey: historyList?.dataset.v83RenderKey,
+      hasHistoryList: Boolean(historyList)
+    });
+
+    // V8.3.1: las mutaciones producidas por esta misma capa despiertan el
+    // MutationObserver. Si el estado y las marcas siguen iguales, no volvemos
+    // a reemplazar innerHTML; así los botones permanecen físicamente estables
+    // entre pointerdown y click. Si app.js reemplaza la vista, las marcas
+    // desaparecen y la decoración se ejecuta de nuevo normalmente.
+    if (!refreshDom) {
+      draftList.dataset.v82AccessReady = '1';
+      if (historyList) historyList.dataset.v82AccessReady = '1';
+      return;
+    }
 
     renderDrafts(draftList, drafts, type, currentActor, memberIndex);
     renderHistory(historyList, history, type, currentActor, memberIndex);
     decorateHeadings(type, currentActor, drafts.length, history.length);
 
+    draftList.dataset.v83RenderKey = renderKey;
     draftList.dataset.v82AccessReady = '1';
-    if (historyList) historyList.dataset.v82AccessReady = '1';
+    if (historyList) {
+      historyList.dataset.v83RenderKey = renderKey;
+      historyList.dataset.v82AccessReady = '1';
+    }
   } finally {
     enhancing = false;
+
+    if (rerunRequested) {
+      rerunRequested = false;
+      scheduleEnhance();
+    }
   }
 }
 
@@ -149,7 +197,7 @@ async function getGodMembers() {
     memberCache = await listWorkspaceMembers();
     memberCacheAt = now;
   } catch (error) {
-    console.warn('VIGÍA V8.3: miembros no disponibles para etiquetas GOD.', error);
+    console.warn('VIGÍA V8.3.1: miembros no disponibles para etiquetas GOD.', error);
     memberCache = [];
     memberCacheAt = now;
   }

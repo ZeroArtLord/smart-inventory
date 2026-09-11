@@ -15,10 +15,10 @@ async function readBinary(relativePath) {
   return readFile(resolve(relativePath));
 }
 
-test('PWA V8.3 precachea shell operativo completo y assets mobile reales', async () => {
+test('PWA V8.3.1 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
-  assert.match(sw, /smart-inventory-v2-shell-51/);
+  assert.match(sw, /smart-inventory-v2-shell-52/);
 
   const requiredAssets = [
     './css/mobile-launch-hardening.css',
@@ -36,6 +36,7 @@ test('PWA V8.3 precachea shell operativo completo y assets mobile reales', async
     './css/v8-reports.css',
     './css/v8-god-oversight.css',
     './src/ui/godOperationalOversightUi.js',
+    './src/ui/operationalDomRenderGuard.js',
     './src/ui/countWorkflowUi.js',
     './src/ui/saintBridgeUi.js',
     './src/ui/countReconciliationUi.js',
