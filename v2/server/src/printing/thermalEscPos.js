@@ -180,6 +180,41 @@ export function buildProcurementJob(configInput, listInput) {
   };
 }
 
+export function buildSupplyJob(configInput, supplyInput) {
+  const config = normalizeThermalConfig(configInput);
+  const supply = normalizeSupplyPrint(supplyInput);
+  const title = 'LISTA DE SURTIDO';
+  const writer = new EscPosWriter(config);
+
+  beginTicket(writer, config);
+  header(writer, config, { title, copyLabel: null });
+
+  writer.fontB();
+  writer.left();
+  writer.line(`Surtido: ${supply.code}`);
+  writer.line(`Fecha: ${supply.dateLabel || formatDateTime(new Date())}`);
+  writer.line(`Almacenista: ${supply.ownerLabel || 'Usuario VIGIA'}`);
+  writer.fontA();
+
+  rule(writer);
+  legend(writer, config);
+
+  for (const [category, items] of groupItems(supply.items)) {
+    renderCategory(writer, config, category, items);
+  }
+
+  footer(writer, config, { title, copyLabel: null });
+  finishTicket(writer, config);
+
+  return {
+    buffer: writer.buffer(),
+    copies: 1,
+    itemCount: supply.items.length,
+    documentId: supply.id,
+    code: supply.code
+  };
+}
+
 export function normalizePrintList(input = {}) {
   const kind = String(input.kind || '').trim().toUpperCase();
   if (!['PURCHASE', 'ORDER'].includes(kind)) {
@@ -200,6 +235,24 @@ export function normalizePrintList(input = {}) {
     id: cleanText(input.id || input.listId || 'lista', 100),
     code: cleanText(input.code || input.id || 'LISTA', 60),
     kind,
+    dateLabel: cleanText(input.dateLabel || '', 60),
+    ownerLabel: cleanText(input.ownerLabel || '', 80),
+    items
+  };
+}
+
+export function normalizeSupplyPrint(input = {}) {
+  const rawItems = Array.isArray(input.items) ? input.items : [];
+  const items = rawItems
+    .map((item, index) => normalizeItem(item, index));
+
+  if (!items.length) {
+    throw validationError('El surtido no tiene renglones imprimibles');
+  }
+
+  return {
+    id: cleanText(input.id || input.documentId || 'surtido', 100),
+    code: cleanText(input.code || input.id || 'SURTIDO', 60),
     dateLabel: cleanText(input.dateLabel || '', 60),
     ownerLabel: cleanText(input.ownerLabel || '', 80),
     items
@@ -320,8 +373,10 @@ function header(writer, config, { title, copyLabel }) {
 
   writer.line();
   writer.line(title);
-  writer.fontB();
-  writer.line(`[ ${copyLabel} ]`);
+  if (copyLabel) {
+    writer.fontB();
+    writer.line(`[ ${copyLabel} ]`);
+  }
   writer.bold(false);
   writer.line();
   writer.fontA();
@@ -411,7 +466,7 @@ function footer(writer, config, { title, copyLabel }) {
   writer.line();
   writer.fontB();
   writer.center();
-  writer.line(`${title} · ${copyLabel}`);
+  writer.line(copyLabel ? `${title} · ${copyLabel}` : title);
   writer.fontA();
   writer.left();
   writer.line('Firma: ____________________________');

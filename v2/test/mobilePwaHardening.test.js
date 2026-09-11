@@ -15,10 +15,10 @@ async function readBinary(relativePath) {
   return readFile(resolve(relativePath));
 }
 
-test('PWA V8.3.1 precachea shell operativo completo y assets mobile reales', async () => {
+test('PWA V8.4 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
-  assert.match(sw, /smart-inventory-v2-shell-52/);
+  assert.match(sw, /smart-inventory-v2-shell-53/);
 
   const requiredAssets = [
     './css/mobile-launch-hardening.css',
@@ -37,6 +37,7 @@ test('PWA V8.3.1 precachea shell operativo completo y assets mobile reales', asy
     './css/v8-god-oversight.css',
     './src/ui/godOperationalOversightUi.js',
     './src/ui/operationalDomRenderGuard.js',
+    './src/ui/supplyThermalPrintUi.js',
     './src/ui/countWorkflowUi.js',
     './src/ui/saintBridgeUi.js',
     './src/ui/countReconciliationUi.js',
@@ -55,6 +56,7 @@ test('PWA V8.3.1 precachea shell operativo completo y assets mobile reales', asy
     './src/ui/catalogCategoryFilterUi.js',
     './src/ui/saintSupplyReportUi.js',
     './src/printing/thermalPrinterClient.js',
+    './src/printing/supplyThermalPayload.js',
     './src/catalog/saintBridge.js',
     './src/inventory/quickStockCorrectionService.js',
     './src/documents/documentAccessPolicy.js',
@@ -183,6 +185,7 @@ test('index incluye hardening, impresión térmica, áreas, Reportes V8 y superv
   assert.match(html, /v8-reports\.css/);
   assert.match(html, /v8-god-oversight\.css/);
   assert.match(html, /godOperationalOversightUi\.js/);
+  assert.match(html, /supplyThermalPrintUi\.js/);
   assert.match(html, /procurementWorkspaceV6Ui\.js/);
   assert.match(html, /thermalPrinterSettingsUi\.js/);
   assert.match(html, /thermalDirectPrintUi\.js/);
@@ -199,6 +202,10 @@ test('index incluye hardening, impresión térmica, áreas, Reportes V8 y superv
   assert.ok(
     html.indexOf('app.js') < html.indexOf('godOperationalOversightUi.js'),
     'La supervisión GOD debe extender el núcleo después de app.js'
+  );
+  assert.ok(
+    html.indexOf('godOperationalOversightUi.js') < html.indexOf('supplyThermalPrintUi.js'),
+    'La impresión térmica de Surtidos debe decorar después de la supervisión GOD'
   );
   assert.ok(
     html.indexOf('saintBridgeUi.js') < html.indexOf('countReconciliationUi.js'),

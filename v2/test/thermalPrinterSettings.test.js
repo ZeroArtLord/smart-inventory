@@ -117,6 +117,24 @@ test(
 );
 
 test(
+  'surtidos térmicos usan endpoint propio protegido por supply.write y auditado',
+  async () => {
+    const route = await read('../server/src/routes/thermalPrinter.js');
+    const service = await read('../server/src/printing/thermalPrinterService.js');
+    const client = await read('../src/printing/thermalPrinterClient.js');
+
+    assert.ok(route.includes("'/supply-ticket'"));
+    assert.ok(route.includes('PERMISSIONS.SUPPLY_WRITE'));
+    assert.ok(route.includes('printSupplyReceipt'));
+    assert.ok(route.includes('SUPPLY_TICKET_PRINTED'));
+    assert.ok(service.includes('printSupplyReceipt'));
+    assert.ok(service.includes('buildSupplyJob'));
+    assert.ok(client.includes('printThermalSupplyDocument'));
+    assert.ok(client.includes('/api/v1/thermal-printer/supply-ticket'));
+  }
+);
+
+test(
   'CSS sigue ocultando la explicación duplicada y protege móvil',
   async () => {
     const css = await read('../css/v6-thermal-printer.css');

@@ -8,6 +8,7 @@ import {
   writeThermalPrinterConfig,
   printCalibrationReceipt,
   printProcurementReceipt,
+  printSupplyReceipt,
   testPrinterConnection
 } from '../printing/thermalPrinterService.js';
 
@@ -101,6 +102,36 @@ thermalPrinterRouter.post(
         metadata: {
           code: result.code,
           kind: result.kind,
+          itemCount: result.itemCount,
+          copies: result.copies,
+          printerName: result.printer.name,
+          printerHost: result.printer.host,
+          printerPort: result.printer.port
+        }
+      });
+
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+thermalPrinterRouter.post(
+  '/supply-ticket',
+  requirePermission(PERMISSIONS.SUPPLY_WRITE),
+  async (req, res, next) => {
+    try {
+      const result = await printSupplyReceipt(
+        req.body?.supply || req.body || {}
+      );
+
+      await safeAudit(req.auth, {
+        action: 'SUPPLY_TICKET_PRINTED',
+        entityType: 'document',
+        entityId: result.documentId || null,
+        metadata: {
+          code: result.code,
           itemCount: result.itemCount,
           copies: result.copies,
           printerName: result.printer.name,
