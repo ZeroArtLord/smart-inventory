@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-54';
+const CACHE_NAME = 'smart-inventory-v2-shell-55';
 
 const APP_SHELL = [
   './',
@@ -23,6 +23,7 @@ const APP_SHELL = [
   './css/v5-quick-stock.css',
   './css/mobile-launch-hardening.css',
   './css/v7-supply-areas.css',
+  './css/v8-6-quick-supply-area.css',
   './css/v8-reports.css',
   './css/v8-god-oversight.css',
   './vendor/xlsx.full.min.js',
@@ -37,6 +38,7 @@ const APP_SHELL = [
   './src/ui/countReconciliationBulkUi.js',
   './src/ui/liveSupplyUi.js',
   './src/ui/supplyAreaUi.js',
+  './src/ui/quickSupplyAreaUi.js',
   './src/ui/areaWorkspaceUi.js',
   './src/ui/reportBuilderV8Ui.js',
   './src/ui/quickStockCorrectionUi.js',
@@ -69,6 +71,7 @@ const APP_SHELL = [
   './src/storage/database.js',
   './src/areas/areaService.js',
   './src/areas/supplyAreaDeliveryService.js',
+  './src/areas/quickSupplyAreaService.js',
   './src/sync/localQueue.js',
   './src/sync/syncSettings.js',
   './src/sync/workspaceCache.js',
