@@ -99,6 +99,40 @@ test('GOD puede administrar ENTRY/SUPPLY de cualquier usuario', async () => {
   }));
 });
 
+test('DEV_ADMIN solo conserva bypass del harness cuando authMode es dev', async () => {
+  const client = fakeClient({
+    'entry-b': { type: 'ENTRY', ownerId: 'legacy-dev-owner' }
+  });
+  const devAdmin = {
+    workspaceId: 'ws-1',
+    userId: 'internal-dev-admin',
+    externalAuthId: null,
+    roleCode: 'DEV_ADMIN',
+    authMode: 'dev'
+  };
+
+  await assert.doesNotReject(() => assertOperationalEventOwnership(client, devAdmin, {
+    entityType: 'document',
+    operation: 'CREATE',
+    payload: { id: 'entry-dev', type: 'ENTRY', ownerId: 'legacy-dev-owner' }
+  }));
+
+  await assert.doesNotReject(() => assertOperationalEventOwnership(client, devAdmin, {
+    entityType: 'documentLine',
+    operation: 'UPDATE',
+    payload: { id: 'line-b', documentId: 'entry-b' }
+  }));
+
+  await assert.rejects(() => assertOperationalEventOwnership(client, {
+    ...devAdmin,
+    authMode: 'firebase'
+  }, {
+    entityType: 'documentLine',
+    operation: 'UPDATE',
+    payload: { id: 'line-b', documentId: 'entry-b' }
+  }), error => error?.code === 'OPERATIONAL_DOCUMENT_FORBIDDEN');
+});
+
 test('ADMIN no hereda el bypass GOD por tener wildcard', async () => {
   const client = fakeClient({
     'entry-b': { type: 'ENTRY', ownerId: 'firebase-b' }
