@@ -63,8 +63,8 @@ test('V8.3.1 evita que el MutationObserver reemplace botones cuando el DOM ya es
   assert.match(guard, /historyKey/);
 });
 
-test('PWA V8.6 usa shell 55 y conserva los assets de supervisión', () => {
-  assert.match(sw, /smart-inventory-v2-shell-55/);
+test('PWA V8.6.1 usa shell 56 y conserva los assets de supervisión', () => {
+  assert.match(sw, /smart-inventory-v2-shell-56/);
   assert.match(sw, /v8-god-oversight\.css/);
   assert.match(sw, /godOperationalOversightUi\.js/);
   assert.match(sw, /operationalDomRenderGuard\.js/);
