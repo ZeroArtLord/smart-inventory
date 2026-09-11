@@ -244,7 +244,6 @@ export function normalizePrintList(input = {}) {
 export function normalizeSupplyPrint(input = {}) {
   const rawItems = Array.isArray(input.items) ? input.items : [];
   const items = rawItems
-    .slice(0, 250)
     .map((item, index) => normalizeItem(item, index));
 
   if (!items.length) {
