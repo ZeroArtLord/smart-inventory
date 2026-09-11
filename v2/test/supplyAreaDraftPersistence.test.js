@@ -14,6 +14,35 @@ test('V8.5 IndexedDB conserva borradores de reparto entre recargas', async () =>
   assert.equal(db.objectStoreNames.contains('supplyAreaDrafts'), true);
 });
 
+test('V8.5 guarda y vuelve a leer un reparto pendiente desde IndexedDB', async () => {
+  const {
+    saveAreaAllocationDraft,
+    loadAreaAllocationDrafts
+  } = await import('../src/areas/supplyAreaDeliveryService.js');
+
+  const parentCartId = `supply-local-${Date.now()}`;
+  await saveAreaAllocationDraft({
+    parentCartId,
+    productId: 'bags-60',
+    productName: 'BOLSAS DE 60 LT',
+    quantity: 4,
+    allocations: [
+      { areaId: 'cafeteria', areaName: 'Cafetería', quantity: 2 },
+      { areaId: 'mantenimiento', areaName: 'Mantenimiento', quantity: 2 }
+    ]
+  }, { sync: false });
+
+  const restored = await loadAreaAllocationDrafts(parentCartId, { refresh: false });
+  assert.equal(restored.length, 1);
+  assert.equal(restored[0].productId, 'bags-60');
+  assert.equal(restored[0].quantity, 4);
+  assert.deepEqual(restored[0].allocations, [
+    { areaId: 'cafeteria', areaName: 'Cafetería', quantity: 2 },
+    { areaId: 'mantenimiento', areaName: 'Mantenimiento', quantity: 2 }
+  ]);
+  assert.equal(restored[0].syncStatus, 'PENDING');
+});
+
 test('V8.5 servidor persiste borradores de reparto por surtido y producto', async () => {
   const [route, migrations] = await Promise.all([
     fs.readFile(new URL('../server/src/routes/areas.js', import.meta.url), 'utf8'),
@@ -28,6 +57,13 @@ test('V8.5 servidor persiste borradores de reparto por surtido y producto', asyn
   assert.match(route, /SUPPLY_AREA_DRAFT_SAVED/);
   assert.match(route, /SUPPLY_AREA_DRAFT_DELETED/);
   assert.match(route, /PERMISSIONS\.SUPPLY_WRITE/);
+
+  const ownershipCalls = route.match(/assertOperationalDocumentOwnership/g) || [];
+  assert.ok(
+    ownershipCalls.length >= 4,
+    'GET/PUT/DELETE de borradores deben pasar por ownership operativo'
+  );
+  assert.match(route, /expectedType:\s*['"]SUPPLY['"]/);
 });
 
 test('V8.5 cliente autoguarda y restaura reparto desde servidor con copia local', async () => {
