@@ -5,10 +5,13 @@ import assert from 'node:assert/strict';
 const {
   createDocument,
   listDraftDocuments,
-  cancelDocument,
+  cancelDocument
+} = await import('../src/documents/documentService.js');
+
+const {
   canActorAccessOperationalDocument,
   filterOperationalDocumentsForActor
-} = await import('../src/documents/documentService.js');
+} = await import('../src/documents/documentAccessPolicy.js');
 
 const {
   DOCUMENT_TYPES,
