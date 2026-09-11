@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { pool, withTransaction } from '../db.js';
 import { PERMISSIONS } from '../security/permissions.js';
+import { assertOperationalDocumentOwnership } from '../security/operationalOwnership.js';
 import { requirePermission } from '../middleware/requirePermission.js';
 import { writeAuditEvent } from '../audit/auditService.js';
 
@@ -146,6 +147,11 @@ areasRouter.get(
         'Surtido requerido para consultar distribuciones pendientes',
         220
       );
+
+      await assertOperationalDocumentOwnership(pool, req.auth, parentCartId, {
+        expectedType: 'SUPPLY'
+      });
+
       const result = await pool.query(
         `SELECT parent_cart_id,product_id,product_name,quantity,allocations,
                 updated_by,created_at,updated_at
@@ -170,10 +176,20 @@ areasRouter.put(
   requirePermission(PERMISSIONS.SUPPLY_WRITE),
   async (req, res, next) => {
     try {
+      const parentCartId = requiredText(
+        req.params.parentCartId,
+        'Surtido requerido para guardar distribución',
+        220
+      );
+
+      await assertOperationalDocumentOwnership(pool, req.auth, parentCartId, {
+        expectedType: 'SUPPLY'
+      });
+
       const draft = await normalizeAreaDraftPayload(
         {
           ...req.body,
-          parentCartId: req.params.parentCartId,
+          parentCartId,
           productId: req.params.productId
         },
         req.auth.workspaceId
@@ -237,6 +253,11 @@ areasRouter.delete(
         'Surtido requerido para limpiar distribuciones pendientes',
         220
       );
+
+      await assertOperationalDocumentOwnership(pool, req.auth, parentCartId, {
+        expectedType: 'SUPPLY'
+      });
+
       const productIds = [...new Set(
         (Array.isArray(req.body?.productIds) ? req.body.productIds : [])
           .map(value => requiredText(value, 'Producto inválido', 220))
@@ -408,6 +429,25 @@ areasRouter.patch(
               after: { name, active, sortOrder }
             }
           });
+
+          await client.query(
+            `UPDATE supply_area_drafts
+             SET allocations = COALESCE((
+               SELECT jsonb_agg(
+                 CASE
+                   WHEN allocation->>'areaId' = $2
+                   THEN jsonb_set(allocation, '{areaName}', to_jsonb($3::text), true)
+                   ELSE allocation
+                 END
+                 ORDER BY ordinality
+               )
+               FROM jsonb_array_elements(allocations) WITH ORDINALITY AS items(allocation, ordinality)
+             ), '[]'::jsonb),
+             updated_at = now()
+             WHERE workspace_id = $1
+               AND allocations @> jsonb_build_array(jsonb_build_object('areaId', $2))`,
+            [req.auth.workspaceId, areaId, name]
+          );
 
           return mapAreaRow(updated.rows[0]);
         } catch (error) {
