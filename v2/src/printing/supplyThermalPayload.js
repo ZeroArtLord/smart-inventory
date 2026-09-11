@@ -2,8 +2,8 @@ const UNIT_CODE_BY_ID = Object.freeze({
   unit_und: 'UND',
   unit_kg: 'KG',
   unit_lt: 'LT',
-  unit_box: 'CAJA',
-  unit_bulto: 'BULTO'
+  unit_box: 'CJ',
+  unit_bulto: 'BUL'
 });
 
 export function buildSupplyThermalPayload({
