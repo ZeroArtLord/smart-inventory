@@ -92,7 +92,7 @@ test('UI contract fixes sticky summary overlap and loads area modules', async ()
   assert.match(index, /v7-supply-areas\.css/);
   assert.match(index, /supplyAreaUi\.js/);
   assert.match(index, /areaWorkspaceUi\.js/);
-  assert.match(sw, /smart-inventory-v2-shell-49/);
+  assert.match(sw, /smart-inventory-v2-shell-50/);
   assert.match(route, /SUPPLY_AREA_ALLOCATION_RECORDED/);
   assert.match(route, /PERMISSIONS\.SUPPLY_WRITE/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS supply_area_deliveries/);

@@ -5,6 +5,7 @@ import {
   writeAuditEvent,
   buildSyncAuditMetadata
 } from '../audit/auditService.js';
+import { assertOperationalEventOwnership } from '../security/operationalOwnership.js';
 
 export const syncRouter = Router();
 
@@ -32,6 +33,12 @@ syncRouter.post('/push', async (req, res, next) => {
         if (!event?.id) {
           throw new Error('Evento sin ID');
         }
+
+        // V8.2: los almacenistas conservan aislamiento operativo en Entradas
+        // y Surtidos. Solo GOD puede administrar documentos de otro usuario.
+        // Se valida antes de registrar el evento para no dejar un intento
+        // rechazado como cambio aplicado.
+        await assertOperationalEventOwnership(client, req.auth, event);
 
         const inserted = await client.query(
           `INSERT INTO sync_events (

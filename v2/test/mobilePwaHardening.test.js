@@ -15,10 +15,10 @@ async function readBinary(relativePath) {
   return readFile(resolve(relativePath));
 }
 
-test('PWA V6 precachea shell operativo completo y assets mobile reales', async () => {
+test('PWA V8.2 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
-  assert.match(sw, /smart-inventory-v2-shell-49/);
+  assert.match(sw, /smart-inventory-v2-shell-50/);
 
   const requiredAssets = [
     './css/mobile-launch-hardening.css',
@@ -34,6 +34,8 @@ test('PWA V6 precachea shell operativo completo y assets mobile reales', async (
     './css/v5-quick-stock.css',
     './css/v7-supply-areas.css',
     './css/v8-reports.css',
+    './css/v8-god-oversight.css',
+    './src/ui/godOperationalOversightUi.js',
     './src/ui/countWorkflowUi.js',
     './src/ui/saintBridgeUi.js',
     './src/ui/countReconciliationUi.js',
@@ -54,6 +56,7 @@ test('PWA V6 precachea shell operativo completo y assets mobile reales', async (
     './src/printing/thermalPrinterClient.js',
     './src/catalog/saintBridge.js',
     './src/inventory/quickStockCorrectionService.js',
+    './src/documents/documentAccessPolicy.js',
     './src/documents/countWorkflow.js',
     './src/documents/countWorkflowService.js',
     './src/documents/countReconciliationService.js',
@@ -160,7 +163,7 @@ test('manifest VIGÍA es instalable y declara iconos PNG + maskable', async () =
   );
 });
 
-test('index incluye hardening, impresión térmica, áreas y Reportes V8', async () => {
+test('index incluye hardening, impresión térmica, áreas, Reportes V8 y supervisión GOD', async () => {
   const html = await read('../index.html');
 
   assert.match(html, /viewport-fit=cover/);
@@ -177,6 +180,8 @@ test('index incluye hardening, impresión térmica, áreas y Reportes V8', async
   assert.match(html, /v6-catalog-category-filter\.css/);
   assert.match(html, /v7-supply-areas\.css/);
   assert.match(html, /v8-reports\.css/);
+  assert.match(html, /v8-god-oversight\.css/);
+  assert.match(html, /godOperationalOversightUi\.js/);
   assert.match(html, /procurementWorkspaceV6Ui\.js/);
   assert.match(html, /thermalPrinterSettingsUi\.js/);
   assert.match(html, /thermalDirectPrintUi\.js/);
@@ -190,6 +195,10 @@ test('index incluye hardening, impresión térmica, áreas y Reportes V8', async
   assert.match(html, /countReconciliationBulkUi\.js/);
   assert.match(html, /quickStockCorrectionUi\.js/);
   assert.match(html, /quickStockCorrectionRefreshUi\.js/);
+  assert.ok(
+    html.indexOf('app.js') < html.indexOf('godOperationalOversightUi.js'),
+    'La supervisión GOD debe extender el núcleo después de app.js'
+  );
   assert.ok(
     html.indexOf('saintBridgeUi.js') < html.indexOf('countReconciliationUi.js'),
     'El guard del puente SAINT debe cargar antes de la conciliación legacy'

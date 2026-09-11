@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-49';
+const CACHE_NAME = 'smart-inventory-v2-shell-50';
 
 const APP_SHELL = [
   './',
@@ -24,8 +24,10 @@ const APP_SHELL = [
   './css/mobile-launch-hardening.css',
   './css/v7-supply-areas.css',
   './css/v8-reports.css',
+  './css/v8-god-oversight.css',
   './vendor/xlsx.full.min.js',
   './src/ui/app.js',
+  './src/ui/godOperationalOversightUi.js',
   './src/ui/vigiaIntelligenceUi.js',
   './src/ui/countWorkflowUi.js',
   './src/ui/saintBridgeUi.js',
@@ -90,6 +92,7 @@ const APP_SHELL = [
   './src/audit/auditClient.js',
   './src/documents/documentTypes.js',
   './src/documents/documentService.js',
+  './src/documents/documentAccessPolicy.js',
   './src/documents/countWorkflow.js',
   './src/documents/countWorkflowService.js',
   './src/documents/countReconciliationService.js',
