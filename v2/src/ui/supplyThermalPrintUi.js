@@ -130,14 +130,15 @@ function isSupplyView() {
 }
 
 async function resolveOwnerLabel(document, session) {
+  const safe = session || {};
   const ownerId = String(document?.ownerId || '').trim();
-  const actorId = sessionActorId(session);
+  const actorId = sessionActorId(safe);
 
   if (ownerId && ownerId === actorId) {
-    return sessionLabel(session);
+    return sessionLabel(safe);
   }
 
-  if (String(session?.roleCode || '').trim().toUpperCase() === 'GOD') {
+  if (String(safe.roleCode || '').trim().toUpperCase() === 'GOD') {
     try {
       const members = await listWorkspaceMembers();
       const member = (Array.isArray(members) ? members : []).find(item =>
@@ -162,19 +163,21 @@ async function resolveOwnerLabel(document, session) {
 }
 
 function sessionActorId(session = {}) {
-  const firebase = String(session.authMode || '').toLowerCase() === 'firebase';
+  const safe = session || {};
+  const firebase = String(safe.authMode || '').toLowerCase() === 'firebase';
   return String(
     firebase
-      ? session.externalAuthId || session.userId || ''
-      : session.userId || ''
+      ? safe.externalAuthId || safe.userId || ''
+      : safe.userId || ''
   ).trim();
 }
 
 function sessionLabel(session = {}) {
-  const direct = String(session.displayName || '').trim();
+  const safe = session || {};
+  const direct = String(safe.displayName || '').trim();
   if (direct) return direct;
 
-  const email = String(session.email || '').trim();
+  const email = String(safe.email || '').trim();
   if (email) return email.split('@')[0];
 
   return 'Usuario VIGÍA';
