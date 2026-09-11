@@ -73,6 +73,40 @@ test('payload de surtido usa cantidad real de documentLine y unidad base', () =>
   assert.equal(payload.items[1].category, 'VÍVERES');
 });
 
+test('payload térmico abrevia CAJA y BULTO como el ticket de Compras/Pedidos', () => {
+  const payload = buildSupplyThermalPayload({
+    document,
+    lines: [
+      {
+        productId: 'cajas',
+        productName: 'REFRESCO EN CAJA',
+        quantity: 3
+      },
+      {
+        productId: 'bultos',
+        productName: 'ARROZ EN BULTO',
+        quantity: 2
+      }
+    ],
+    products: [
+      {
+        id: 'cajas',
+        categoryId: 'bebidas',
+        inventoryUnitId: 'unit_box'
+      },
+      {
+        id: 'bultos',
+        categoryId: 'viveres',
+        inventoryUnitId: 'unit_bulto'
+      }
+    ],
+    categories
+  });
+
+  assert.equal(payload.items[0].quantityText, '3 CJ');
+  assert.equal(payload.items[1].quantityText, '2 BUL');
+});
+
 test('payload térmico solo acepta SUPPLY cerrado y con renglones reales', () => {
   assert.throws(
     () => buildSupplyThermalPayload({
