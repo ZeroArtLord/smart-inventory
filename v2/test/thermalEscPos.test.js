@@ -7,6 +7,7 @@ const {
   normalizePrintList,
   buildCalibrationJob,
   buildProcurementJob,
+  buildSupplyJob,
   encodeCp437
 } = await import('../server/src/printing/thermalEscPos.js');
 
@@ -179,6 +180,50 @@ test(
         [0x1d, 0x56, 0x00]
       ),
       2
+    );
+  }
+);
+
+test(
+  'surtido térmico imprime una sola lista completa y un solo corte',
+  () => {
+    const job = buildSupplyJob(
+      DEFAULT_THERMAL_CONFIG,
+      {
+        id: 'sur-closed-1',
+        code: 'SUR-0001',
+        dateLabel: '11/09/2026 11:30',
+        ownerLabel: 'Deposito',
+        items: [
+          {
+            name: 'COCA COLA ZERO 355ML',
+            quantityText: '24 UND',
+            category: 'BEBIDAS'
+          },
+          {
+            name: 'MAYONESA KRAFT',
+            quantityText: '2 CJ',
+            category: 'VIVERES',
+            note: 'cantidad real surtida'
+          }
+        ]
+      }
+    );
+
+    const text = job.buffer.toString('latin1');
+    assert.equal(job.copies, 1);
+    assert.equal(job.itemCount, 2);
+    assert.equal(job.documentId, 'sur-closed-1');
+    assert.ok(text.includes('LISTA DE SURTIDO'));
+    assert.ok(text.includes('COCA COLA ZERO 355ML'));
+    assert.ok(text.includes('24 UND'));
+    assert.ok(text.includes('VIVERES'));
+    assert.ok(text.includes('cantidad real surtida'));
+    assert.equal(text.includes('COPIA CHOFER'), false);
+    assert.equal(text.includes('COPIA DEPOSITO'), false);
+    assert.equal(
+      countSequence(job.buffer, [0x1d, 0x56, 0x00]),
+      1
     );
   }
 );
