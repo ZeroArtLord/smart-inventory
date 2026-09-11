@@ -3,10 +3,13 @@ import {
   STORES,
   get,
   getAll,
-  put
+  getAllByIndex,
+  put,
+  remove
 } from '../storage/database.js';
 
 const EPSILON = 0.000001;
+const draftSyncChains = new Map();
 
 export async function createAreaDeliveryIntent({
   deliveryToken,
@@ -90,7 +93,7 @@ export async function listAreaDeliveries({
   from = null,
   refresh = false
 } = {}) {
-  if (refresh && navigator.onLine) {
+  if (refresh && isOnline()) {
     try {
       await refreshAreaDeliveries({ from });
     } catch (error) {
@@ -123,7 +126,7 @@ export async function refreshAreaDeliveries({ from = null } = {}) {
 }
 
 export async function syncPendingAreaDeliveries() {
-  if (!navigator.onLine) return { synced: 0, pending: 0 };
+  if (!isOnline()) return { synced: 0, pending: 0 };
 
   const records = (await getAll(STORES.SUPPLY_AREA_DELIVERIES))
     .filter(record => record.status === 'CLOSED')
@@ -182,8 +185,278 @@ export async function getLastAreaPattern(productId) {
   return [];
 }
 
+export async function loadAreaAllocationDrafts(
+  parentCartId,
+  { refresh = true } = {}
+) {
+  const cartId = clean(parentCartId);
+  if (!cartId) return [];
+
+  if (refresh && isOnline()) {
+    await syncPendingAreaDrafts(cartId).catch(() => null);
+
+    try {
+      const data = await apiRequest(
+        `/api/v1/areas/drafts?parentCartId=${encodeURIComponent(cartId)}`
+      );
+      const serverDrafts = Array.isArray(data.drafts) ? data.drafts : [];
+      const localDrafts = await getAllByIndex(
+        STORES.SUPPLY_AREA_DRAFTS,
+        'parentCartId',
+        cartId
+      );
+      const localById = new Map(localDrafts.map(item => [item.id, item]));
+      const serverIds = new Set();
+
+      for (const source of serverDrafts) {
+        const remote = normalizeServerDraft(source);
+        serverIds.add(remote.id);
+        const local = localById.get(remote.id);
+        const localPending = local && local.syncStatus !== 'SYNCED';
+        const localIsNewer = localPending &&
+          String(local.updatedAt || '') > String(remote.updatedAt || '');
+
+        if (!localIsNewer) {
+          await put(STORES.SUPPLY_AREA_DRAFTS, remote);
+        }
+      }
+
+      for (const local of localDrafts) {
+        if (
+          local.syncStatus === 'SYNCED' &&
+          !serverIds.has(local.id)
+        ) {
+          await remove(STORES.SUPPLY_AREA_DRAFTS, local.id);
+        }
+      }
+    } catch (error) {
+      console.warn('No se pudieron refrescar borradores de áreas; se usa copia local.', error);
+    }
+  }
+
+  return (await getAllByIndex(
+    STORES.SUPPLY_AREA_DRAFTS,
+    'parentCartId',
+    cartId
+  ))
+    .filter(record => record.deleted !== true)
+    .sort((a, b) => String(a.productId).localeCompare(String(b.productId)));
+}
+
+export async function saveAreaAllocationDraft(
+  draft,
+  { sync = true } = {}
+) {
+  const normalized = normalizeDraft(draft);
+  const now = new Date().toISOString();
+  const record = {
+    ...normalized,
+    id: draftKey(normalized.parentCartId, normalized.productId),
+    syncStatus: 'PENDING',
+    updatedAt: now,
+    syncedAt: null,
+    syncError: null,
+    deleted: false
+  };
+
+  await put(STORES.SUPPLY_AREA_DRAFTS, record);
+
+  if (!sync || !isOnline()) return record;
+  return syncOneAreaDraft(record);
+}
+
+export async function syncPendingAreaDrafts(parentCartId = null) {
+  if (!isOnline()) return { synced: 0, pending: 0 };
+
+  const cartId = clean(parentCartId);
+  const records = (await getAll(STORES.SUPPLY_AREA_DRAFTS))
+    .filter(record => !cartId || record.parentCartId === cartId)
+    .filter(record => record.syncStatus !== 'SYNCED');
+
+  let synced = 0;
+  const deleteGroups = new Map();
+
+  for (const record of records) {
+    if (record.syncStatus === 'PENDING_DELETE' || record.deleted === true) {
+      if (!deleteGroups.has(record.parentCartId)) {
+        deleteGroups.set(record.parentCartId, []);
+      }
+      deleteGroups.get(record.parentCartId).push(record.productId);
+      continue;
+    }
+
+    const result = await syncOneAreaDraft(record);
+    if (result?.syncStatus === 'SYNCED') synced += 1;
+  }
+
+  for (const [targetCartId, productIds] of deleteGroups) {
+    try {
+      await deleteRemoteDrafts(targetCartId, productIds);
+      for (const productId of productIds) {
+        await remove(
+          STORES.SUPPLY_AREA_DRAFTS,
+          draftKey(targetCartId, productId)
+        );
+        synced += 1;
+      }
+    } catch {
+      // Se conservan las lápidas para reintentar cuando vuelva la conectividad.
+    }
+  }
+
+  return {
+    synced,
+    pending: Math.max(0, records.length - synced)
+  };
+}
+
+export async function deleteAreaAllocationDrafts({
+  parentCartId,
+  productIds = []
+} = {}) {
+  const cartId = clean(parentCartId);
+  const ids = [...new Set((Array.isArray(productIds) ? productIds : [])
+    .map(clean)
+    .filter(Boolean))];
+
+  if (!cartId || !ids.length) {
+    return { deleted: 0, pending: 0 };
+  }
+
+  const now = new Date().toISOString();
+  for (const productId of ids) {
+    const id = draftKey(cartId, productId);
+    const current = await get(STORES.SUPPLY_AREA_DRAFTS, id);
+    await put(STORES.SUPPLY_AREA_DRAFTS, {
+      ...(current || {
+        id,
+        parentCartId: cartId,
+        productId,
+        productName: productId,
+        quantity: 1,
+        allocations: []
+      }),
+      deleted: true,
+      syncStatus: 'PENDING_DELETE',
+      updatedAt: now,
+      syncError: null
+    });
+  }
+
+  if (!isOnline()) {
+    return { deleted: 0, pending: ids.length };
+  }
+
+  try {
+    await deleteRemoteDrafts(cartId, ids);
+    for (const productId of ids) {
+      await remove(
+        STORES.SUPPLY_AREA_DRAFTS,
+        draftKey(cartId, productId)
+      );
+    }
+    return { deleted: ids.length, pending: 0 };
+  } catch (error) {
+    for (const productId of ids) {
+      const id = draftKey(cartId, productId);
+      const current = await get(STORES.SUPPLY_AREA_DRAFTS, id);
+      if (current) {
+        await put(STORES.SUPPLY_AREA_DRAFTS, {
+          ...current,
+          syncError: clean(error?.message || error)
+        });
+      }
+    }
+    return { deleted: 0, pending: ids.length };
+  }
+}
+
+async function syncOneAreaDraft(record) {
+  const key = record.id;
+  return enqueueDraftSync(key, async () => {
+    const currentBefore = await get(STORES.SUPPLY_AREA_DRAFTS, key);
+    if (!currentBefore || currentBefore.deleted === true) {
+      return currentBefore;
+    }
+
+    const source = currentBefore.updatedAt === record.updatedAt
+      ? record
+      : currentBefore;
+
+    try {
+      const data = await apiRequest(
+        `/api/v1/areas/drafts/${encodeURIComponent(source.parentCartId)}/${encodeURIComponent(source.productId)}`,
+        {
+          method: 'PUT',
+          body: {
+            productName: source.productName,
+            quantity: source.quantity,
+            allocations: source.allocations
+          }
+        }
+      );
+      const remote = normalizeServerDraft(data.draft || {});
+      const latest = await get(STORES.SUPPLY_AREA_DRAFTS, key);
+
+      if (
+        latest &&
+        latest.deleted !== true &&
+        latest.updatedAt === source.updatedAt
+      ) {
+        const synced = {
+          ...remote,
+          syncStatus: 'SYNCED',
+          syncedAt: new Date().toISOString(),
+          syncError: null,
+          deleted: false
+        };
+        await put(STORES.SUPPLY_AREA_DRAFTS, synced);
+        return synced;
+      }
+
+      return latest;
+    } catch (error) {
+      const latest = await get(STORES.SUPPLY_AREA_DRAFTS, key);
+      if (latest && latest.updatedAt === source.updatedAt) {
+        const pending = {
+          ...latest,
+          syncStatus: 'PENDING',
+          syncError: clean(error?.message || error)
+        };
+        await put(STORES.SUPPLY_AREA_DRAFTS, pending);
+        return pending;
+      }
+      return latest;
+    }
+  });
+}
+
+function enqueueDraftSync(key, operation) {
+  const previous = draftSyncChains.get(key) || Promise.resolve();
+  const next = previous
+    .catch(() => null)
+    .then(operation)
+    .finally(() => {
+      if (draftSyncChains.get(key) === next) {
+        draftSyncChains.delete(key);
+      }
+    });
+  draftSyncChains.set(key, next);
+  return next;
+}
+
+async function deleteRemoteDrafts(parentCartId, productIds) {
+  return apiRequest('/api/v1/areas/drafts', {
+    method: 'DELETE',
+    body: {
+      parentCartId,
+      productIds
+    }
+  });
+}
+
 async function trySyncAreaDelivery(record) {
-  if (!navigator.onLine || record.status !== 'CLOSED') return false;
+  if (!isOnline() || record.status !== 'CLOSED') return false;
 
   try {
     await apiRequest('/api/v1/areas/deliveries', {
@@ -214,6 +487,52 @@ async function trySyncAreaDelivery(record) {
     });
     return false;
   }
+}
+
+function normalizeDraft(draft = {}) {
+  const parentCartId = clean(draft.parentCartId);
+  const productId = clean(draft.productId);
+  const productName = clean(draft.productName || productId);
+  const quantity = positive(draft.quantity, 'Cantidad de surtido inválida');
+  const allocations = Array.isArray(draft.allocations)
+    ? draft.allocations.map(item => ({
+        areaId: clean(item?.areaId),
+        areaName: clean(item?.areaName),
+        quantity: positive(item?.quantity, 'Cantidad de área inválida')
+      }))
+    : [];
+
+  if (!parentCartId) throw new Error('Surtido requerido para guardar distribución');
+  if (!productId) throw new Error('Producto requerido para guardar distribución');
+  if (!productName) throw new Error('Nombre de producto requerido');
+
+  const unique = new Set(allocations.map(item => item.areaId));
+  if (unique.size !== allocations.length || unique.has('')) {
+    throw new Error('La distribución contiene áreas inválidas o repetidas');
+  }
+
+  return {
+    parentCartId,
+    productId,
+    productName,
+    quantity,
+    allocations
+  };
+}
+
+function normalizeServerDraft(record = {}) {
+  const normalized = normalizeDraft(record);
+  return {
+    ...normalized,
+    id: draftKey(normalized.parentCartId, normalized.productId),
+    syncStatus: 'SYNCED',
+    updatedBy: record.updatedBy || null,
+    createdAt: record.createdAt || record.updatedAt || new Date().toISOString(),
+    updatedAt: record.updatedAt || new Date().toISOString(),
+    syncedAt: new Date().toISOString(),
+    syncError: null,
+    deleted: false
+  };
 }
 
 function normalizeRows(rows) {
@@ -286,6 +605,14 @@ function canonicalRows(rows) {
       }))
       .sort((a, b) => a.productId.localeCompare(b.productId))
   );
+}
+
+function draftKey(parentCartId, productId) {
+  return `${clean(parentCartId)}::${clean(productId)}`;
+}
+
+function isOnline() {
+  return typeof navigator === 'undefined' || navigator.onLine !== false;
 }
 
 function positive(value, message) {
