@@ -151,7 +151,16 @@ function paintQuickAreaSelection() {
   const area = activeAreas.find(item => item.id === selectedSupplyAreaId);
   const state = panel.querySelector('[data-quick-area-state]');
   if (state) {
-    state.textContent = area ? `✓ ${area.name}` : 'Sin área';
+    const nextStateText = area ? `✓ ${area.name}` : 'Sin área';
+
+    // V8.6.1: este módulo escucha childList con MutationObserver. Asignar
+    // textContent aunque el texto no cambie reemplaza el nodo de texto y
+    // vuelve a despertar el observer. Solo escribimos cuando hay un cambio
+    // real para cortar la realimentación y mantener estable el hilo principal.
+    if (state.textContent !== nextStateText) {
+      state.textContent = nextStateText;
+    }
+
     state.classList.toggle('selected', Boolean(area));
   }
 }
