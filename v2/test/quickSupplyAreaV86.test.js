@@ -99,7 +99,7 @@ test('V8.6 muestra todas las áreas como botones rápidos opcionales y conserva 
   assert.match(cssSource, /v86-quick-area-button/);
   assert.match(indexSource, /v8-6-quick-supply-area\.css/);
   assert.match(indexSource, /quickSupplyAreaUi\.js/);
-  assert.match(swSource, /smart-inventory-v2-shell-55/);
+  assert.match(swSource, /smart-inventory-v2-shell-56/);
   assert.match(swSource, /quickSupplyAreaService\.js/);
   assert.match(swSource, /quickSupplyAreaUi\.js/);
 });
