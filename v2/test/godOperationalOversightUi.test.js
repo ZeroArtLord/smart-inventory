@@ -4,7 +4,6 @@ import fs from 'node:fs/promises';
 
 const indexHtml = await fs.readFile(new URL('../index.html', import.meta.url), 'utf8');
 const sw = await fs.readFile(new URL('../sw.js', import.meta.url), 'utf8');
-const appUiPath = new URL('../src/ui/app.js', import.meta.url);
 const uiPath = new URL('../src/ui/godOperationalOversightUi.js', import.meta.url);
 const cssPath = new URL('../css/v8-god-oversight.css', import.meta.url);
 
@@ -31,17 +30,13 @@ test('la UI mantiene aislamiento WAREHOUSE y no convierte ADMIN en GOD', async (
   assert.doesNotMatch(ui, /roleCode\s*===\s*['"]ADMIN['"].*bypass/s);
 });
 
-test('V8.3 abre un documento ajeno GOD mediante un puente explícito al editor real', async () => {
-  const [ui, appUi] = await Promise.all([
-    read(uiPath),
-    read(appUiPath)
-  ]);
+test('V8.3 abre un documento ajeno GOD mediante un puente explícito al flujo normal', async () => {
+  const ui = await read(uiPath);
 
   assert.match(ui, /data-v82-open-document/);
-  assert.match(ui, /vigia:open-operational-document/);
-  assert.match(appUi, /vigia:open-operational-document/);
-  assert.match(appUi, /activeDocumentId/);
-  assert.match(appUi, /activeDocumentType/);
+  assert.match(ui, /forwardOpenToApp/);
+  assert.match(ui, /data-action.*open-document|dataset\.action\s*=\s*['"]open-document['"]/s);
+  assert.match(ui, /\.click\(\)/);
 });
 
 test('V8.3 muestra nombres humanos y conserva el id técnico solo como detalle', async () => {
