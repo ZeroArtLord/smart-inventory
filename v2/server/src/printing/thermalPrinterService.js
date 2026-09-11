@@ -5,7 +5,8 @@ import {
   DEFAULT_THERMAL_CONFIG,
   normalizeThermalConfig,
   buildCalibrationJob,
-  buildProcurementJob
+  buildProcurementJob,
+  buildSupplyJob
 } from './thermalEscPos.js';
 
 const DEFAULT_CONFIG_PATH =
@@ -88,6 +89,22 @@ export async function printProcurementReceipt(list) {
     itemCount: job.itemCount,
     kind: job.kind,
     listId: job.listId,
+    code: job.code
+  };
+}
+
+export async function printSupplyReceipt(supply) {
+  const config = await readThermalPrinterConfig();
+  const job = buildSupplyJob(config, supply);
+  await sendRaw(config, job.buffer);
+
+  return {
+    ok: true,
+    printer: printerSummary(config),
+    bytes: job.buffer.length,
+    copies: job.copies,
+    itemCount: job.itemCount,
+    documentId: job.documentId,
     code: job.code
   };
 }
