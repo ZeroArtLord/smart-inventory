@@ -1,0 +1,83 @@
+.v5-saint-context {
+  margin: 12px 0 16px;
+  padding: 13px;
+  border: 1px solid rgba(31, 78, 120, .24);
+  border-radius: 14px;
+  background: rgba(31, 78, 120, .055);
+}
+
+.v5-saint-context-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.v5-saint-context-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.v5-saint-context-head small {
+  color: var(--muted);
+}
+
+.v5-saint-context-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.v5-saint-context-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted);
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.v5-saint-context-grid input {
+  width: 100%;
+  color: var(--text);
+}
+
+.v5-saint-context-wide {
+  grid-column: 1 / -1;
+}
+
+.v5-saint-separator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(31, 78, 120, .1);
+  color: #1f4e78;
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .06em;
+}
+
+.v5-saint-export-button {
+  white-space: nowrap;
+}
+
+@media (max-width: 680px) {
+  .v5-saint-context-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .v5-saint-context-wide {
+    grid-column: auto;
+  }
+
+  .document-export-actions .v5-saint-separator {
+    flex-basis: 100%;
+    width: fit-content;
+  }
+}

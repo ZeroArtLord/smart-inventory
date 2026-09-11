@@ -5,6 +5,7 @@ import {
   writeAuditEvent,
   buildSyncAuditMetadata
 } from '../audit/auditService.js';
+import { assertOperationalEventOwnership } from '../security/operationalOwnership.js';
 
 export const syncRouter = Router();
 
@@ -33,6 +34,12 @@ syncRouter.post('/push', async (req, res, next) => {
           throw new Error('Evento sin ID');
         }
 
+        // V8.2: los almacenistas conservan aislamiento operativo en Entradas
+        // y Surtidos. Solo GOD puede administrar documentos de otro usuario.
+        // Se valida antes de registrar el evento para no dejar un intento
+        // rechazado como cambio aplicado.
+        await assertOperationalEventOwnership(client, req.auth, event);
+
         const inserted = await client.query(
           `INSERT INTO sync_events (
             workspace_id,client_event_id,entity_type,entity_id,operation,payload,user_id
@@ -55,7 +62,25 @@ syncRouter.post('/push', async (req, res, next) => {
           continue;
         }
 
+        // Antes del upsert protegemos la configuración del puente. Así una
+        // edición normal de catálogo no puede reactivar el producto fuente ni
+        // cambiar el código externo que recibirá SAINT.
+        await canonicalizeProtectedProductBridgeFields(
+          client,
+          req.auth.workspaceId,
+          event,
+          { beforeApply: true }
+        );
+
         await applyEvent(client, req.auth, event);
+
+        // Después del upsert volvemos a leer PostgreSQL para que el evento que
+        // descargan otros dispositivos contenga los valores canónicos.
+        await canonicalizeProtectedProductBridgeFields(
+          client,
+          req.auth.workspaceId,
+          event
+        );
 
         await writeAuditEvent(client, req.auth, {
           action: `SYNC_${event.operation}`,
@@ -135,3 +160,44 @@ syncRouter.get('/pull', async (req, res, next) => {
     next(error);
   }
 });
+
+async function canonicalizeProtectedProductBridgeFields(
+  client,
+  workspaceId,
+  event,
+  { beforeApply = false } = {}
+) {
+  if (event?.entityType !== 'product' || !event?.entityId) return;
+
+  const result = await client.query(
+    `SELECT
+       active,
+       saint_bridge_source,
+       saint_bridge_source_product_id,
+       saint_bridge_code,
+       saint_bridge_name
+     FROM products
+     WHERE workspace_id = $1
+       AND id = $2`,
+    [workspaceId, event.entityId]
+  );
+
+  // En CREATE todavía no existe una fila canónica y applyEvent mantiene el
+  // comportamiento normal. Los puentes se crean exclusivamente por el
+  // bootstrap de servidor auditado.
+  if (result.rowCount !== 1) return;
+  const row = result.rows[0];
+
+  event.payload = {
+    ...(event.payload || {}),
+    saintBridgeSource: row.saint_bridge_source === true,
+    saintBridgeSourceProductId: row.saint_bridge_source_product_id || null,
+    saintBridgeCode: row.saint_bridge_code || '',
+    saintBridgeName: row.saint_bridge_name || '',
+    ...(row.saint_bridge_source === true ? { active: false } : {})
+  };
+
+  if (beforeApply && row.saint_bridge_source === true) {
+    event.payload.active = false;
+  }
+}
