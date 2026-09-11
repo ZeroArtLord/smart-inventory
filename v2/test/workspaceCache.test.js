@@ -24,6 +24,7 @@ const {
 const {
   WORKSPACE_OPERATIONAL_STORES,
   getWorkspaceCacheBinding,
+  listWorkspaceSwitchBlockers,
   ensureWorkspaceCache,
   switchWorkspaceCacheAndConfig
 } = await import('../src/sync/workspaceCache.js');
@@ -85,6 +86,17 @@ test('cambiar de workspace limpia cache operacional y reinicia cursor', async ()
     name: 'Producto A2'
   });
 
+  await put(STORES.SUPPLY_AREA_DRAFTS, {
+    id: 'supply-a::product-a',
+    parentCartId: 'supply-a',
+    productId: 'product-a',
+    productName: 'Producto A',
+    quantity: 4,
+    allocations: [{ areaId: 'area-a', areaName: 'Barra', quantity: 4 }],
+    syncStatus: 'SYNCED',
+    updatedAt: new Date().toISOString()
+  });
+
   await put(STORES.SYNC_QUEUE, {
     id: 'sync-synced',
     entityType: 'product',
@@ -112,6 +124,11 @@ test('cambiar de workspace limpia cache operacional y reinicia cursor', async ()
 
   assert.equal(
     (await getAll(STORES.PRODUCTS)).length,
+    0
+  );
+
+  assert.equal(
+    (await getAll(STORES.SUPPLY_AREA_DRAFTS)).length,
     0
   );
 
@@ -193,6 +210,38 @@ test('bloquea cambio de workspace si existen operaciones sin sincronizar', async
   );
 });
 
+test('V8.5 bloquea cambio de workspace mientras un reparto de áreas no esté sincronizado', async () => {
+  await resetLocalState();
+
+  await switchWorkspaceCacheAndConfig('workspace-a', { authMode: 'firebase' });
+
+  await put(STORES.SUPPLY_AREA_DRAFTS, {
+    id: 'supply-a::product-pending',
+    parentCartId: 'supply-a',
+    productId: 'product-pending',
+    productName: 'Producto pendiente',
+    quantity: 4,
+    allocations: [{ areaId: 'area-a', areaName: 'Barra', quantity: 4 }],
+    syncStatus: 'PENDING',
+    updatedAt: new Date().toISOString()
+  });
+
+  const blockers = await listWorkspaceSwitchBlockers();
+  assert.equal(blockers.length, 1);
+  assert.equal(blockers[0].entityType, 'supplyAreaDraft');
+  assert.equal(blockers[0].status, 'PENDING');
+
+  await assert.rejects(
+    switchWorkspaceCacheAndConfig('workspace-b', { authMode: 'firebase' }),
+    error =>
+      error.code === 'WORKSPACE_SWITCH_BLOCKED' &&
+      error.details.blockers === 1 &&
+      error.details.statuses.PENDING === 1
+  );
+
+  assert.ok(await get(STORES.SUPPLY_AREA_DRAFTS, 'supply-a::product-pending'));
+});
+
 test('ensureWorkspaceCache falla cerrado si el cache pertenece a otro workspace', async () => {
   await resetLocalState();
 
@@ -213,9 +262,18 @@ test('ensureWorkspaceCache falla cerrado si el cache pertenece a otro workspace'
   );
 });
 
+test('V8.5 incluye datos por áreas entre los stores ligados al workspace', () => {
+  assert.ok(WORKSPACE_OPERATIONAL_STORES.includes(STORES.AREAS));
+  assert.ok(WORKSPACE_OPERATIONAL_STORES.includes(STORES.SUPPLY_AREA_DELIVERIES));
+  assert.ok(WORKSPACE_OPERATIONAL_STORES.includes(STORES.SUPPLY_AREA_DRAFTS));
+});
+
 async function resetLocalState() {
   await clearStores([
     ...WORKSPACE_OPERATIONAL_STORES,
+    STORES.AREAS,
+    STORES.SUPPLY_AREA_DELIVERIES,
+    STORES.SUPPLY_AREA_DRAFTS,
     STORES.SETTINGS
   ]);
 }

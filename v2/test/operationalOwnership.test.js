@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const {
   assertOperationalEventOwnership,
+  assertOperationalDocumentOwnership,
   operationalActorOwnerId
 } = await import('../server/src/security/operationalOwnership.js');
 
@@ -158,4 +159,42 @@ test('entidades fuera de ENTRY/SUPPLY conservan su flujo existente', async () =>
     operation: 'UPDATE',
     payload: { id: 'count-line', documentId: 'count-b' }
   }));
+});
+
+test('V8.5 protege el acceso directo a borradores de un SUPPLY por propietario', async () => {
+  const client = fakeClient({
+    'supply-a': { type: 'SUPPLY', ownerId: 'firebase-a' },
+    'supply-b': { type: 'SUPPLY', ownerId: 'firebase-b' },
+    'entry-a': { type: 'ENTRY', ownerId: 'firebase-a' }
+  });
+
+  await assert.doesNotReject(() =>
+    assertOperationalDocumentOwnership(client, firebaseWarehouse, 'supply-a', {
+      expectedType: 'SUPPLY'
+    })
+  );
+
+  await assert.rejects(() =>
+    assertOperationalDocumentOwnership(client, firebaseWarehouse, 'supply-b', {
+      expectedType: 'SUPPLY'
+    }),
+  error => error?.code === 'OPERATIONAL_DOCUMENT_FORBIDDEN');
+
+  await assert.doesNotReject(() =>
+    assertOperationalDocumentOwnership(client, god, 'supply-b', {
+      expectedType: 'SUPPLY'
+    })
+  );
+
+  await assert.rejects(() =>
+    assertOperationalDocumentOwnership(client, firebaseWarehouse, 'missing', {
+      expectedType: 'SUPPLY'
+    }),
+  error => error?.code === 'OPERATIONAL_DOCUMENT_NOT_FOUND');
+
+  await assert.rejects(() =>
+    assertOperationalDocumentOwnership(client, firebaseWarehouse, 'entry-a', {
+      expectedType: 'SUPPLY'
+    }),
+  error => error?.code === 'OPERATIONAL_DOCUMENT_TYPE_INVALID');
 });

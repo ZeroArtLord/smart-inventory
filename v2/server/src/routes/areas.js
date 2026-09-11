@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { pool, withTransaction } from '../db.js';
 import { PERMISSIONS } from '../security/permissions.js';
+import { assertOperationalDocumentOwnership } from '../security/operationalOwnership.js';
 import { requirePermission } from '../middleware/requirePermission.js';
 import { writeAuditEvent } from '../audit/auditService.js';
 
@@ -130,6 +131,169 @@ areasRouter.post(
       });
 
       res.status(201).json({ ok: true, delivery: saved });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+areasRouter.get(
+  '/drafts',
+  requirePermission(PERMISSIONS.SUPPLY_WRITE),
+  async (req, res, next) => {
+    try {
+      const parentCartId = requiredText(
+        req.query.parentCartId,
+        'Surtido requerido para consultar distribuciones pendientes',
+        220
+      );
+
+      await assertOperationalDocumentOwnership(pool, req.auth, parentCartId, {
+        expectedType: 'SUPPLY'
+      });
+
+      const result = await pool.query(
+        `SELECT parent_cart_id,product_id,product_name,quantity,allocations,
+                updated_by,created_at,updated_at
+         FROM supply_area_drafts
+         WHERE workspace_id = $1 AND parent_cart_id = $2
+         ORDER BY updated_at ASC, product_id ASC`,
+        [req.auth.workspaceId, parentCartId]
+      );
+
+      res.json({
+        ok: true,
+        drafts: result.rows.map(mapDraftRow)
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+areasRouter.put(
+  '/drafts/:parentCartId/:productId',
+  requirePermission(PERMISSIONS.SUPPLY_WRITE),
+  async (req, res, next) => {
+    try {
+      const parentCartId = requiredText(
+        req.params.parentCartId,
+        'Surtido requerido para guardar distribución',
+        220
+      );
+
+      await assertOperationalDocumentOwnership(pool, req.auth, parentCartId, {
+        expectedType: 'SUPPLY'
+      });
+
+      const draft = await normalizeAreaDraftPayload(
+        {
+          ...req.body,
+          parentCartId,
+          productId: req.params.productId
+        },
+        req.auth.workspaceId
+      );
+
+      const saved = await withTransaction(async client => {
+        const result = await client.query(
+          `INSERT INTO supply_area_drafts (
+             workspace_id,parent_cart_id,product_id,product_name,quantity,
+             allocations,updated_by
+           ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)
+           ON CONFLICT (workspace_id,parent_cart_id,product_id)
+           DO UPDATE SET
+             product_name = EXCLUDED.product_name,
+             quantity = EXCLUDED.quantity,
+             allocations = EXCLUDED.allocations,
+             updated_by = EXCLUDED.updated_by,
+             updated_at = now()
+           RETURNING parent_cart_id,product_id,product_name,quantity,allocations,
+                     updated_by,created_at,updated_at`,
+          [
+            req.auth.workspaceId,
+            draft.parentCartId,
+            draft.productId,
+            draft.productName,
+            draft.quantity,
+            JSON.stringify(draft.allocations),
+            req.auth.userId || null
+          ]
+        );
+
+        await writeAuditEvent(client, req.auth, {
+          action: 'SUPPLY_AREA_DRAFT_SAVED',
+          entityType: 'supplyAreaDraft',
+          entityId: `${draft.parentCartId}:${draft.productId}`,
+          metadata: {
+            parentCartId: draft.parentCartId,
+            productId: draft.productId,
+            quantity: draft.quantity,
+            allocationCount: draft.allocations.length
+          }
+        });
+
+        return mapDraftRow(result.rows[0]);
+      });
+
+      res.json({ ok: true, draft: saved });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+areasRouter.delete(
+  '/drafts',
+  requirePermission(PERMISSIONS.SUPPLY_WRITE),
+  async (req, res, next) => {
+    try {
+      const parentCartId = requiredText(
+        req.body?.parentCartId,
+        'Surtido requerido para limpiar distribuciones pendientes',
+        220
+      );
+
+      await assertOperationalDocumentOwnership(pool, req.auth, parentCartId, {
+        expectedType: 'SUPPLY'
+      });
+
+      const productIds = [...new Set(
+        (Array.isArray(req.body?.productIds) ? req.body.productIds : [])
+          .map(value => requiredText(value, 'Producto inválido', 220))
+      )];
+
+      if (!productIds.length || productIds.length > 250) {
+        throw badDelivery('Indica entre 1 y 250 productos para limpiar');
+      }
+
+      const deleted = await withTransaction(async client => {
+        const result = await client.query(
+          `DELETE FROM supply_area_drafts
+           WHERE workspace_id = $1
+             AND parent_cart_id = $2
+             AND product_id = ANY($3::text[])
+           RETURNING product_id`,
+          [req.auth.workspaceId, parentCartId, productIds]
+        );
+
+        if (result.rowCount > 0) {
+          await writeAuditEvent(client, req.auth, {
+            action: 'SUPPLY_AREA_DRAFT_DELETED',
+            entityType: 'supplyAreaDraft',
+            entityId: parentCartId,
+            metadata: {
+              parentCartId,
+              productIds: result.rows.map(row => row.product_id),
+              deletedCount: result.rowCount
+            }
+          });
+        }
+
+        return result.rowCount;
+      });
+
+      res.json({ ok: true, deleted });
     } catch (error) {
       next(error);
     }
@@ -362,6 +526,65 @@ async function normalizeDeliveryPayload(body = {}, workspaceId) {
   };
 }
 
+async function normalizeAreaDraftPayload(body = {}, workspaceId) {
+  const parentCartId = requiredText(
+    body.parentCartId,
+    'Surtido requerido para guardar distribución',
+    220
+  );
+  const productId = requiredText(body.productId, 'Producto requerido', 220);
+  const productName = requiredText(
+    body.productName || productId,
+    'Nombre de producto inválido',
+    240
+  );
+  const quantity = positiveNumber(body.quantity, 'Cantidad de surtido inválida');
+  const sourceAllocations = Array.isArray(body.allocations) ? body.allocations : [];
+  if (sourceAllocations.length > 100) {
+    throw badDelivery(`Demasiadas áreas para ${productName}`);
+  }
+
+  const areaIds = new Set();
+  const allocations = sourceAllocations.map(item => {
+    const areaId = requiredText(item?.areaId, 'Área requerida', 220);
+    if (areaIds.has(areaId)) {
+      throw badDelivery(`Área repetida en ${productName}`);
+    }
+    areaIds.add(areaId);
+    return {
+      areaId,
+      areaName: '',
+      quantity: positiveNumber(item?.quantity, 'Cantidad de área inválida')
+    };
+  });
+
+  if (areaIds.size) {
+    const areaResult = await pool.query(
+      `SELECT id,name,active
+       FROM areas
+       WHERE workspace_id = $1 AND id = ANY($2::text[])`,
+      [workspaceId, [...areaIds]]
+    );
+    const areaById = new Map(areaResult.rows.map(area => [area.id, area]));
+
+    for (const allocation of allocations) {
+      const area = areaById.get(allocation.areaId);
+      if (!area || area.active !== true) {
+        throw badDelivery(`El área ${allocation.areaId} no está activa en este workspace`);
+      }
+      allocation.areaName = area.name;
+    }
+  }
+
+  return {
+    parentCartId,
+    productId,
+    productName,
+    quantity,
+    allocations
+  };
+}
+
 function mapDeliveryRow(row) {
   return {
     deliveryToken: row.delivery_token,
@@ -370,6 +593,19 @@ function mapDeliveryRow(row) {
     rows: Array.isArray(row.payload?.rows) ? row.payload.rows : [],
     closedAt: row.closed_at,
     createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapDraftRow(row) {
+  return {
+    parentCartId: row.parent_cart_id,
+    productId: row.product_id,
+    productName: row.product_name,
+    quantity: Number(row.quantity),
+    allocations: Array.isArray(row.allocations) ? row.allocations : [],
+    updatedBy: row.updated_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

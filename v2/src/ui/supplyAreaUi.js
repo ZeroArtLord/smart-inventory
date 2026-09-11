@@ -6,7 +6,11 @@ import {
   failAreaDeliveryIntent,
   getLastAreaPattern,
   reconcilePendingAreaDeliveries,
-  syncPendingAreaDeliveries
+  syncPendingAreaDeliveries,
+  loadAreaAllocationDrafts,
+  saveAreaAllocationDraft,
+  syncPendingAreaDrafts,
+  deleteAreaAllocationDrafts
 } from '../areas/supplyAreaDeliveryService.js';
 import {
   createLiveSupplyDeliveryToken,
@@ -16,6 +20,8 @@ import {
 const appRoot = document.getElementById('app');
 const EPSILON = 0.000001;
 const drafts = new Map();
+const draftSaveTimers = new Map();
+const loadedDraftDocuments = new Set();
 let activeAreas = [];
 let lastAreaRefreshAt = 0;
 let enhancing = false;
@@ -28,8 +34,9 @@ if (appRoot) {
   appRoot.addEventListener('input', event => {
     const input = event.target.closest('[data-area-allocation-input]');
     if (!input) return;
-    persistPanelDraft(input.closest('.v7-area-panel'));
-    updatePanelState(input.closest('.v7-area-panel'));
+    const panel = input.closest('.v7-area-panel');
+    persistPanelDraft(panel);
+    updatePanelState(panel);
   });
 
   appRoot.addEventListener('change', event => {
@@ -37,7 +44,10 @@ if (appRoot) {
     if (!input) return;
     const row = input.closest('.v5-live-row');
     const panel = row?.querySelector('.v7-area-panel');
-    if (panel) updatePanelState(panel);
+    if (panel) {
+      persistPanelDraft(panel);
+      updatePanelState(panel);
+    }
   });
 
   appRoot.addEventListener('click', event => {
@@ -61,6 +71,7 @@ if (appRoot) {
 
   window.addEventListener('online', () => {
     syncPendingAreaDeliveries().catch(() => null);
+    syncPendingAreaDrafts().catch(() => null);
     scheduleEnhance(true);
   });
 
@@ -95,11 +106,36 @@ async function enhanceSupplyAreas(forceRefresh = false) {
 
     if (!activeAreas.length) return;
 
+    const documentId = String(panel.dataset.liveDocumentId || '').trim();
+    if (
+      documentId &&
+      (forceRefresh || !loadedDraftDocuments.has(documentId))
+    ) {
+      await hydrateDurableDrafts(documentId, { refresh });
+      loadedDraftDocuments.add(documentId);
+    }
+
     panel.querySelectorAll('.v5-live-row').forEach(row => {
       decorateRow(panel, row);
     });
   } finally {
     enhancing = false;
+  }
+}
+
+async function hydrateDurableDrafts(documentId, { refresh = true } = {}) {
+  const records = await loadAreaAllocationDrafts(documentId, { refresh });
+  const prefix = `${documentId}::`;
+
+  for (const key of [...drafts.keys()]) {
+    if (key.startsWith(prefix)) drafts.delete(key);
+  }
+
+  for (const record of records) {
+    drafts.set(
+      draftKey(record.parentCartId, record.productId),
+      record
+    );
   }
 }
 
@@ -197,6 +233,7 @@ function renderAllocationPanel(row) {
 
     <div class="v7-area-panel-foot">
       <span class="v7-area-status" data-area-status>Distribuye toda la cantidad antes de entregar.</span>
+      <small data-area-save-status>Sin cambios pendientes</small>
       <small>Las áreas no crean movimientos extra.</small>
     </div>
   `;
@@ -315,9 +352,20 @@ async function deliverWithAreas(button) {
       closedAt: result.document?.closedAt || new Date().toISOString()
     });
 
-    for (const row of payloadRows) {
-      drafts.delete(draftKey(documentId, row.productId));
+    const productIds = payloadRows.map(row => row.productId);
+    for (const productId of productIds) {
+      const key = draftKey(documentId, productId);
+      clearTimeout(draftSaveTimers.get(key));
+      draftSaveTimers.delete(key);
+      drafts.delete(key);
     }
+
+    await deleteAreaAllocationDrafts({
+      parentCartId: documentId,
+      productIds
+    }).catch(error => {
+      console.warn('La entrega cerró, pero la limpieza remota del borrador queda pendiente.', error);
+    });
 
     showAreaToast(
       `Entrega registrada · ${payloadRows.length} producto(s) · consumo por áreas guardado.`,
@@ -401,15 +449,84 @@ function updatePanelState(panel) {
 
 function persistPanelDraft(panel) {
   if (!panel) return;
-  drafts.set(
-    draftKey(panel.dataset.documentId, panel.dataset.productId),
-    readAllocations(panel)
-  );
+  const row = panel.closest('.v5-live-row');
+  const parentCartId = String(panel.dataset.documentId || '').trim();
+  const productId = String(panel.dataset.productId || '').trim();
+  const productName = row?.querySelector('.v5-live-product strong')?.textContent?.trim() || productId;
+  const quantity = deliveryQuantity(panel);
+  if (!parentCartId || !productId || !(quantity > 0)) return;
+
+  const snapshot = {
+    parentCartId,
+    productId,
+    productName,
+    quantity,
+    allocations: readAllocations(panel)
+  };
+  const key = draftKey(parentCartId, productId);
+
+  drafts.set(key, {
+    ...snapshot,
+    syncStatus: 'PENDING'
+  });
+  setDraftSaveStatus(panel, 'Guardando…', 'saving');
+
+  saveAreaAllocationDraft(snapshot, { sync: false })
+    .then(() => scheduleRemoteDraftSave(key, snapshot))
+    .catch(error => {
+      console.warn('No se pudo guardar copia local del reparto.', error);
+      setDraftSaveStatus(panel, '⚠ Pendiente de sincronizar', 'pending');
+    });
+}
+
+function scheduleRemoteDraftSave(key, snapshot) {
+  clearTimeout(draftSaveTimers.get(key));
+  const timer = setTimeout(async () => {
+    draftSaveTimers.delete(key);
+    try {
+      const saved = await saveAreaAllocationDraft(snapshot, { sync: true });
+      if (saved) drafts.set(key, saved);
+      setDraftSaveStatusByKey(
+        key,
+        saved?.syncStatus === 'SYNCED'
+          ? '✓ Guardado'
+          : '⚠ Pendiente de sincronizar',
+        saved?.syncStatus === 'SYNCED' ? 'saved' : 'pending'
+      );
+    } catch (error) {
+      console.warn('No se pudo sincronizar reparto por áreas.', error);
+      setDraftSaveStatusByKey(key, '⚠ Pendiente de sincronizar', 'pending');
+    }
+  }, 400);
+  draftSaveTimers.set(key, timer);
 }
 
 function restorePanelDraft(panel) {
-  const stored = drafts.get(draftKey(panel.dataset.documentId, panel.dataset.productId));
-  if (stored?.length) setAllocations(panel, stored, { persist: false });
+  const key = draftKey(panel.dataset.documentId, panel.dataset.productId);
+  const stored = drafts.get(key);
+  if (!stored) return;
+
+  setAllocations(panel, stored.allocations || [], { persist: false });
+  if (stored.syncStatus === 'SYNCED') {
+    setDraftSaveStatus(panel, '✓ Guardado', 'saved');
+  } else {
+    setDraftSaveStatus(panel, '⚠ Pendiente de sincronizar', 'pending');
+  }
+}
+
+function setDraftSaveStatus(panel, text, tone = '') {
+  const node = panel?.querySelector('[data-area-save-status]');
+  if (!node) return;
+  node.textContent = text;
+  node.dataset.state = tone;
+}
+
+function setDraftSaveStatusByKey(key, text, tone) {
+  appRoot?.querySelectorAll('.v7-area-panel').forEach(panel => {
+    if (draftKey(panel.dataset.documentId, panel.dataset.productId) === key) {
+      setDraftSaveStatus(panel, text, tone);
+    }
+  });
 }
 
 function setAllocations(panel, values, { persist = true } = {}) {
