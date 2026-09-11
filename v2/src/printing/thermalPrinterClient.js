@@ -40,6 +40,13 @@ export async function printThermalProcurementList(list) {
   });
 }
 
+export async function printThermalSupplyDocument(supply) {
+  return apiRequest('/api/v1/thermal-printer/supply-ticket', {
+    method: 'POST',
+    body: { supply }
+  });
+}
+
 export function buildThermalPrintPayload(list = {}) {
   const items = (Array.isArray(list.items) ? list.items : [])
     .filter(
