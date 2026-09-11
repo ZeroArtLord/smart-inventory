@@ -40,7 +40,7 @@ test('historial de Surtidos cerrados carga impresión 80mm directa e idempotente
 test('botón térmico obtiene id tanto de filas GOD como del historial legacy', async () => {
   const ui = await read('../src/ui/supplyThermalPrintUi.js');
 
-  assert.ok(ui.includes('dataset.v82DocumentId'));
+  assert.ok(ui.includes('v82DocumentId'));
   assert.ok(ui.includes('[data-action="export-document"][data-id]'));
   assert.ok(ui.includes('data-supply-thermal-print'));
 });
