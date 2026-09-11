@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-51';
+const CACHE_NAME = 'smart-inventory-v2-shell-52';
 
 const APP_SHELL = [
   './',
@@ -28,6 +28,7 @@ const APP_SHELL = [
   './vendor/xlsx.full.min.js',
   './src/ui/app.js',
   './src/ui/godOperationalOversightUi.js',
+  './src/ui/operationalDomRenderGuard.js',
   './src/ui/vigiaIntelligenceUi.js',
   './src/ui/countWorkflowUi.js',
   './src/ui/saintBridgeUi.js',
