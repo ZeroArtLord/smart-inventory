@@ -49,6 +49,29 @@ export function operationalDateToEffectiveAt(value) {
   return `${date}T12:00:00.000Z`;
 }
 
+export function resolveDocumentEffectiveAt(
+  document = {},
+  fallbackNow = new Date()
+) {
+  const explicit = String(
+    document?.metadata?.operationalDate ?? ''
+  ).trim();
+
+  if (explicit) {
+    return operationalDateToEffectiveAt(explicit);
+  }
+
+  const fallback = fallbackNow instanceof Date
+    ? fallbackNow
+    : new Date(fallbackNow);
+
+  if (Number.isNaN(fallback.getTime())) {
+    throw new Error('Instante fallback inválido');
+  }
+
+  return fallback.toISOString();
+}
+
 export function resolveDocumentOperationalDate(document = {}) {
   const explicit = String(
     document?.metadata?.operationalDate ?? ''
