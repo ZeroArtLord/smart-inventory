@@ -154,13 +154,9 @@ async function enhanceSupplyView() {
     }
 
     const session = await safeSession();
-    let liveDocument = documentRecord;
-
-    if (documentRecord.metadata?.kind !== LIVE_SUPPLY_CART_KIND) {
-      liveDocument = await enableLiveSupplyCart(documentId, {
-        userId: session?.userId || documentRecord.ownerId || null
-      });
-    }
+    const liveDocument = await enableLiveSupplyCart(documentId, {
+      userId: session?.userId || documentRecord.ownerId || null
+    });
 
     const summary = await getLiveSupplyCartSummary(liveDocument.id);
     renderLivePanel(workspace, summary);
