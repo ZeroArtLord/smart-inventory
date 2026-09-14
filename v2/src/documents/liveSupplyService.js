@@ -53,13 +53,28 @@ export async function enableLiveSupplyCart(
       const current = await requestToPromise(documentStore.get(id));
       assertDraftSupply(current);
 
-      if (current.metadata?.kind === LIVE_SUPPLY_CART_KIND) {
+      const instant = validInstant(now);
+      const today = todayOperationalDate(instant);
+      const existingOperationalDate = clean(
+        current.metadata?.operationalDate
+      );
+
+      if (
+        current.metadata?.kind === LIVE_SUPPLY_CART_KIND &&
+        existingOperationalDate
+      ) {
+        normalizeOperationalDate(existingOperationalDate, { today });
         return current;
       }
 
-      const instant = validInstant(now);
       const nowIso = instant.toISOString();
-      const operationalDate = todayOperationalDate(instant);
+      const operationalDate = existingOperationalDate
+        ? normalizeOperationalDate(existingOperationalDate, { today })
+        : today;
+      const hasEnabledBy = Object.prototype.hasOwnProperty.call(
+        current.metadata || {},
+        'liveSupplyEnabledBy'
+      );
       const updated = {
         ...current,
         version: nextEntityVersion(current),
@@ -68,8 +83,11 @@ export async function enableLiveSupplyCart(
           ...(current.metadata || {}),
           kind: LIVE_SUPPLY_CART_KIND,
           operationalDate,
-          liveSupplyEnabledAt: nowIso,
-          liveSupplyEnabledBy: userId
+          liveSupplyEnabledAt:
+            current.metadata?.liveSupplyEnabledAt || nowIso,
+          liveSupplyEnabledBy: hasEnabledBy
+            ? current.metadata.liveSupplyEnabledBy
+            : userId
         }
       };
 
