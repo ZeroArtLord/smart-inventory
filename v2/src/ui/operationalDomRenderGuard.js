@@ -11,7 +11,42 @@ function documentFingerprint(document = {}) {
     normalize(document.createdAt),
     normalize(document.updatedAt),
     normalize(document.closedAt),
+    normalize(document.metadata?.operationalDate),
     normalize(document.metadata?.correctionDraftId)
+  ].join('~');
+}
+
+function deliveryFingerprint(delivery = {}) {
+  const document = delivery?.document || delivery;
+  return [
+    documentFingerprint(document),
+    normalize(delivery?.operationalDate),
+    normalize(delivery?.deliveredTotal)
+  ].join('^');
+}
+
+function historyFingerprint(item = {}) {
+  if (!item?.document || !item?.summary) {
+    return documentFingerprint(item);
+  }
+
+  const summary = item.summary || {};
+  const deliveries = (Array.isArray(item.deliveries) ? item.deliveries : [])
+    .map(deliveryFingerprint)
+    .join('>');
+
+  return [
+    'group',
+    normalize(item.kind),
+    documentFingerprint(item.document),
+    normalize(item.operationalDate),
+    normalize(summary.deliveryCount),
+    normalize(summary.deliveredTotal),
+    normalize(summary.plannedTotal),
+    normalize(summary.pendingTotal),
+    normalize(summary.cancelledTotal),
+    normalize(summary.status),
+    deliveries
   ].join('~');
 }
 
@@ -43,7 +78,7 @@ export function buildOperationalDomRenderKey({
     .join('|');
 
   const historyKey = (Array.isArray(history) ? history : [])
-    .map(documentFingerprint)
+    .map(historyFingerprint)
     .join('|');
 
   const memberKey = (Array.isArray(members) ? members : [])
@@ -52,7 +87,7 @@ export function buildOperationalDomRenderKey({
     .join('|');
 
   return [
-    'v83.1',
+    'v87',
     normalize(type).toUpperCase(),
     actorKey,
     draftKey,

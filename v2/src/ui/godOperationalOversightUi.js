@@ -8,6 +8,7 @@ import {
   canActorAccessOperationalDocument,
   filterOperationalDocumentsForActor
 } from '../documents/documentAccessPolicy.js';
+import { buildSupplyHistoryGroups } from '../documents/supplyHistoryGrouping.js';
 import {
   buildOperationalDomRenderKey,
   shouldRefreshOperationalDom
@@ -15,6 +16,7 @@ import {
 
 const appRoot = document.getElementById('app');
 const TEAM_TYPES = new Set([DOCUMENT_TYPES.ENTRY, DOCUMENT_TYPES.SUPPLY]);
+const LIVE_SUPPLY_DELIVERY_KIND = 'LIVE_SUPPLY_DELIVERY';
 const documentsById = new Map();
 let currentActor = null;
 let enhancing = false;
@@ -40,7 +42,7 @@ if (appRoot) {
       event.preventDefault();
       event.stopImmediatePropagation();
 
-      if (!canActorAccessOperationalDocument(document, currentActor)) {
+      if (!canCurrentActorAccessDocument(document)) {
         showToast('Ese documento pertenece a otro usuario.', 'danger');
         return;
       }
@@ -59,7 +61,7 @@ if (appRoot) {
     const document = documentsById.get(String(action.dataset.id || ''));
     if (!document || !TEAM_TYPES.has(document.type)) return;
 
-    if (!canActorAccessOperationalDocument(document, currentActor)) {
+    if (!canCurrentActorAccessDocument(document)) {
       event.preventDefault();
       event.stopImmediatePropagation();
       showToast('Ese documento pertenece a otro usuario.', 'danger');
@@ -76,7 +78,7 @@ function scheduleEnhance() {
   }
 
   queueMicrotask(() => enhanceOperationalWorkspace().catch(error => {
-    console.warn('VIGÍA V8.3.1: no se pudo aplicar supervisión operativa.', error);
+    console.warn('VIGÍA V8.7: no se pudo aplicar supervisión operativa.', error);
   }));
 }
 
@@ -116,13 +118,22 @@ async function enhanceOperationalWorkspace() {
     const drafts = visible
       .filter(document => document.status === DOCUMENT_STATUS.DRAFT)
       .sort(sortNewest);
-    const history = visible
+    const historyDocuments = visible
       .filter(document =>
         document.status !== DOCUMENT_STATUS.DRAFT &&
         document.status !== DOCUMENT_STATUS.CANCELLED
-      )
-      .sort(sortNewest)
-      .slice(0, 10);
+      );
+    const movements = type === DOCUMENT_TYPES.SUPPLY
+      ? await getAll(STORES.MOVEMENTS)
+      : [];
+    const history = type === DOCUMENT_TYPES.SUPPLY
+      ? buildSupplyHistoryGroups({
+          documents: historyDocuments,
+          movements
+        }).slice(0, 10)
+      : historyDocuments
+          .sort(sortNewest)
+          .slice(0, 10);
 
     const members = currentActor.roleCode === 'GOD'
       ? await getGodMembers()
@@ -187,6 +198,16 @@ function actorFromSession(session = {}) {
   };
 }
 
+function canCurrentActorAccessDocument(document) {
+  const parentDocument = document?.metadata?.kind === LIVE_SUPPLY_DELIVERY_KIND
+    ? documentsById.get(String(document.metadata?.parentCartId || '').trim()) || null
+    : null;
+
+  return canActorAccessOperationalDocument(document, currentActor, {
+    parentDocument
+  });
+}
+
 async function getGodMembers() {
   const now = Date.now();
   if (memberCache.length && now - memberCacheAt < 60000) {
@@ -197,7 +218,7 @@ async function getGodMembers() {
     memberCache = await listWorkspaceMembers();
     memberCacheAt = now;
   } catch (error) {
-    console.warn('VIGÍA V8.3.1: miembros no disponibles para etiquetas GOD.', error);
+    console.warn('VIGÍA V8.7: miembros no disponibles para etiquetas GOD.', error);
     memberCache = [];
     memberCacheAt = now;
   }
@@ -256,53 +277,193 @@ function renderDrafts(container, drafts, type, actor, memberIndex) {
     : '<div class="empty compact-empty">No hay borradores pendientes.</div>';
 }
 
-function renderHistory(container, documents, type, actor, memberIndex) {
+function renderHistory(container, history, type, actor, memberIndex) {
   if (!container) return;
-  const icon = type === DOCUMENT_TYPES.ENTRY ? '↓' : '↑';
 
-  container.innerHTML = documents.length
-    ? documents.map(document => {
-        const owner = ownerLabel(document, actor, memberIndex);
+  if (type === DOCUMENT_TYPES.SUPPLY) {
+    renderSupplyHistory(container, history, actor, memberIndex);
+    return;
+  }
+
+  container.innerHTML = history.length
+    ? history.map(document =>
+        renderFlatHistoryRow(document, type, actor, memberIndex)
+      ).join('')
+    : '<div class="empty compact-empty">No hay documentos cerrados visibles.</div>';
+}
+
+function renderSupplyHistory(container, groups, actor, memberIndex) {
+  container.innerHTML = groups.length
+    ? groups.map(group => {
+        if (group.kind !== 'LIVE_CART') {
+          return renderSupplyDeliveryRow(
+            group.document,
+            actor,
+            memberIndex,
+            {
+              deliveredTotal: group.summary?.deliveredTotal,
+              fallbackKind: group.kind
+            }
+          );
+        }
+
+        const parent = group.document;
+        const owner = ownerLabel(parent, actor, memberIndex);
         const godForeign = actor.roleCode === 'GOD' &&
-          String(document.ownerId || '') !== actor.ownerId;
-        const canCorrect = actor.roleCode === 'GOD' &&
-          document.status === DOCUMENT_STATUS.CLOSED &&
-          !document.metadata?.correctionDraftId;
-        const label = operationalDocumentLabel(document);
+          String(parent.ownerId || '') !== actor.ownerId;
+        const operationalDate = formatOperationalDay(group.operationalDate);
+        const summary = group.summary || {};
 
         return `
-          <div class="closed-document-row v82-operational-row ${godForeign ? 'v82-god-foreign' : ''}" data-v82-document-id="${escapeHtml(document.id)}">
+          <article
+            class="closed-document-row v82-operational-row v87-supply-history-parent ${godForeign ? 'v82-god-foreign' : ''}"
+            data-v87-supply-history-parent="1"
+            data-v82-document-id="${escapeHtml(parent.id)}"
+          >
             <div class="history-doc-title">
-              <div class="history-doc-icon">${icon}</div>
+              <div class="history-doc-icon">↑</div>
               <div class="v82-document-copy">
-                <strong title="ID técnico: ${escapeHtml(document.id)}">${escapeHtml(label)}</strong>
-                <small>${humanStatus(document.status)}</small>
+                <strong title="ID técnico: ${escapeHtml(parent.id)}">Surtido · ${escapeHtml(operationalDate)}</strong>
+                <small>Fecha operativa: ${escapeHtml(operationalDate)}</small>
                 <span class="v82-owner-line">${godForeign ? '👑 ' : ''}${escapeHtml(owner)}</span>
               </div>
             </div>
 
-            <div class="document-export-actions">
-              <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="csv" type="button">CSV</button>
-              <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="xlsx" type="button">Excel</button>
-              <button class="primary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="print" type="button">Imprimir / PDF</button>
-              ${canCorrect ? `
-                <button
-                  class="danger"
-                  data-action="correct-document"
-                  data-id="${escapeHtml(document.id)}"
-                  data-type="${escapeHtml(type)}"
-                  type="button"
-                  title="Crea reversos y un nuevo borrador; no reescribe el original"
-                >Corregir</button>
-              ` : ''}
-              ${document.metadata?.correctionDraftId
-                ? '<span class="badge status-warning">Con corrección</span>'
-                : ''}
+            <div class="v87-history-parent-actions">
+              <details data-v87-history-summary>
+                <summary>Resumen</summary>
+                <div class="v87-history-summary-grid">
+                  <span><b>Planificado:</b> ${formatSummaryQuantity(summary.plannedTotal)}</span>
+                  <span><b>Entregado:</b> ${formatSummaryQuantity(summary.deliveredTotal)}</span>
+                  <span><b>Pendiente:</b> ${formatSummaryQuantity(summary.pendingTotal)}</span>
+                  <span><b>Cancelado:</b> ${formatSummaryQuantity(summary.cancelledTotal)}</span>
+                  <span><b>Estado:</b> ${escapeHtml(humanStatus(summary.status))}</span>
+                </div>
+              </details>
+
+              <details data-v87-history-toggle>
+                <summary>Ver entregas (${group.summary.deliveryCount})</summary>
+                <div data-v87-delivery-list>
+                  ${group.deliveries.length
+                    ? group.deliveries.map(delivery =>
+                        renderSupplyDeliveryRow(
+                          delivery.document,
+                          actor,
+                          memberIndex,
+                          {
+                            parentDocument: parent,
+                            deliveredTotal: delivery.deliveredTotal
+                          }
+                        )
+                      ).join('')
+                    : '<div class="empty compact-empty">No hay entregas físicas cerradas.</div>'}
+                </div>
+              </details>
             </div>
-          </div>
+          </article>
         `;
       }).join('')
     : '<div class="empty compact-empty">No hay documentos cerrados visibles.</div>';
+}
+
+function renderSupplyDeliveryRow(
+  document,
+  actor,
+  memberIndex,
+  {
+    parentDocument = null,
+    deliveredTotal = null,
+    fallbackKind = ''
+  } = {}
+) {
+  const ownershipDocument = parentDocument || document;
+  const owner = ownerLabel(ownershipDocument, actor, memberIndex);
+  const godForeign = actor.roleCode === 'GOD' &&
+    String(ownershipDocument.ownerId || '') !== actor.ownerId;
+  const canCorrect = actor.roleCode === 'GOD' &&
+    document.status === DOCUMENT_STATUS.CLOSED &&
+    !document.metadata?.correctionDraftId;
+  const technicalWhen = document.closedAt || document.updatedAt || document.createdAt;
+  const fallbackLabel = fallbackKind === 'ORPHAN_DELIVERY'
+    ? 'Entrega huérfana'
+    : fallbackKind === 'LEGACY_SUPPLY'
+      ? 'Surtido legacy'
+      : 'Entrega física';
+
+  return `
+    <div class="closed-document-row v82-operational-row v87-supply-delivery-row ${godForeign ? 'v82-god-foreign' : ''}" data-v82-document-id="${escapeHtml(document.id)}">
+      <div class="history-doc-title">
+        <div class="history-doc-icon">↳</div>
+        <div class="v82-document-copy">
+          <strong title="ID técnico: ${escapeHtml(document.id)}">${escapeHtml(fallbackLabel)} · ${escapeHtml(formatOperationalDate(technicalWhen))}</strong>
+          <small>${escapeHtml(humanStatus(document.status))}${deliveredTotal === null || deliveredTotal === undefined ? '' : ` · Entregado: ${formatSummaryQuantity(deliveredTotal)}`}</small>
+          <span class="v82-owner-line">${godForeign ? '👑 ' : ''}${escapeHtml(owner)}</span>
+        </div>
+      </div>
+
+      <div class="document-export-actions">
+        <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="csv" type="button">CSV</button>
+        <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="xlsx" type="button">Excel</button>
+        <button class="primary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="print" type="button">Imprimir / PDF</button>
+        ${canCorrect ? `
+          <button
+            class="danger"
+            data-action="correct-document"
+            data-id="${escapeHtml(document.id)}"
+            data-type="${escapeHtml(DOCUMENT_TYPES.SUPPLY)}"
+            type="button"
+            title="Crea reversos y un nuevo borrador; no reescribe el original"
+          >Corregir</button>
+        ` : ''}
+        ${document.metadata?.correctionDraftId
+          ? '<span class="badge status-warning">Con corrección</span>'
+          : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderFlatHistoryRow(document, type, actor, memberIndex) {
+  const icon = type === DOCUMENT_TYPES.ENTRY ? '↓' : '↑';
+  const owner = ownerLabel(document, actor, memberIndex);
+  const godForeign = actor.roleCode === 'GOD' &&
+    String(document.ownerId || '') !== actor.ownerId;
+  const canCorrect = actor.roleCode === 'GOD' &&
+    document.status === DOCUMENT_STATUS.CLOSED &&
+    !document.metadata?.correctionDraftId;
+  const label = operationalDocumentLabel(document);
+
+  return `
+    <div class="closed-document-row v82-operational-row ${godForeign ? 'v82-god-foreign' : ''}" data-v82-document-id="${escapeHtml(document.id)}">
+      <div class="history-doc-title">
+        <div class="history-doc-icon">${icon}</div>
+        <div class="v82-document-copy">
+          <strong title="ID técnico: ${escapeHtml(document.id)}">${escapeHtml(label)}</strong>
+          <small>${humanStatus(document.status)}</small>
+          <span class="v82-owner-line">${godForeign ? '👑 ' : ''}${escapeHtml(owner)}</span>
+        </div>
+      </div>
+
+      <div class="document-export-actions">
+        <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="csv" type="button">CSV</button>
+        <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="xlsx" type="button">Excel</button>
+        <button class="primary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="print" type="button">Imprimir / PDF</button>
+        ${canCorrect ? `
+          <button
+            class="danger"
+            data-action="correct-document"
+            data-id="${escapeHtml(document.id)}"
+            data-type="${escapeHtml(type)}"
+            type="button"
+            title="Crea reversos y un nuevo borrador; no reescribe el original"
+          >Corregir</button>
+        ` : ''}
+        ${document.metadata?.correctionDraftId
+          ? '<span class="badge status-warning">Con corrección</span>'
+          : ''}
+      </div>
+    </div>
+  `;
 }
 
 function decorateHeadings(type, actor, draftCount, historyCount) {
@@ -409,6 +570,21 @@ function ownerLabel(document, actor, memberIndex) {
 function sortNewest(a, b) {
   return String(b.closedAt || b.updatedAt || b.createdAt || '')
     .localeCompare(String(a.closedAt || a.updatedAt || a.createdAt || ''));
+}
+
+function formatOperationalDay(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!match) return 'Sin fecha';
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+function formatSummaryQuantity(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  return escapeHtml(new Intl.NumberFormat('es-VE', {
+    maximumFractionDigits: 6
+  }).format(number));
 }
 
 function formatOperationalDate(value) {
