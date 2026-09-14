@@ -15,6 +15,14 @@ test('V8.7 historial UI consume agrupador puro y movimientos reales', () => {
   assert.match(ui, /renderSupplyHistory/);
 });
 
+test('V8.7 conserva el padre LIVE DRAFT en el conjunto de agrupación si ya existen entregas', () => {
+  assert.match(
+    ui,
+    /const historyDocuments = type === DOCUMENT_TYPES\.SUPPLY[\s\S]*visible\.filter\(document => document\.status !== DOCUMENT_STATUS\.CANCELLED\)/
+  );
+  assert.match(ui, /group\.summary\.deliveryCount\s*>\s*0/);
+});
+
 test('V8.7 padre muestra fecha operativa y solo acciones Resumen + Ver entregas', () => {
   assert.match(ui, /data-v87-supply-history-parent/);
   assert.match(ui, /Fecha operativa/);
