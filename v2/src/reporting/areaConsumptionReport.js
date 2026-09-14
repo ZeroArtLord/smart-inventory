@@ -1,3 +1,5 @@
+import { operationalDateToEffectiveAt } from '../documents/operationalDate.js';
+
 const EPSILON = 0.000001;
 
 export function buildAreaConsumptionReport({
@@ -23,7 +25,7 @@ export function buildAreaConsumptionReport({
   const records = areaDeliveries
     .filter(record => record?.status === 'CLOSED')
     .filter(record => {
-      const time = new Date(record.closedAt || record.updatedAt || record.createdAt).getTime();
+      const time = deliveryReportTime(record);
       return Number.isFinite(time) && time >= fromTime && time <= toTime;
     });
 
@@ -133,6 +135,21 @@ export function buildAreaConsumptionReport({
       ? Math.round((costedQuantity / totalMovementQuantity) * 1000) / 10
       : 0
   };
+}
+
+function deliveryReportTime(record = {}) {
+  const operationalDate = String(record.operationalDate || '').trim();
+  if (operationalDate) {
+    try {
+      return new Date(operationalDateToEffectiveAt(operationalDate)).getTime();
+    } catch {
+      return Number.NaN;
+    }
+  }
+
+  return new Date(
+    record.closedAt || record.updatedAt || record.createdAt
+  ).getTime();
 }
 
 function createAreaRow(allocation, currentArea) {
