@@ -118,11 +118,12 @@ async function enhanceOperationalWorkspace() {
     const drafts = visible
       .filter(document => document.status === DOCUMENT_STATUS.DRAFT)
       .sort(sortNewest);
-    const historyDocuments = visible
-      .filter(document =>
-        document.status !== DOCUMENT_STATUS.DRAFT &&
-        document.status !== DOCUMENT_STATUS.CANCELLED
-      );
+    const historyDocuments = type === DOCUMENT_TYPES.SUPPLY
+      ? visible.filter(document => document.status !== DOCUMENT_STATUS.CANCELLED)
+      : visible.filter(document =>
+          document.status !== DOCUMENT_STATUS.DRAFT &&
+          document.status !== DOCUMENT_STATUS.CANCELLED
+        );
     const movements = type === DOCUMENT_TYPES.SUPPLY
       ? await getAll(STORES.MOVEMENTS)
       : [];
@@ -130,7 +131,15 @@ async function enhanceOperationalWorkspace() {
       ? buildSupplyHistoryGroups({
           documents: historyDocuments,
           movements
-        }).slice(0, 10)
+        })
+          .filter(group =>
+            group.document?.status !== DOCUMENT_STATUS.DRAFT ||
+            (
+              group.kind === 'LIVE_CART' &&
+              group.summary?.deliveryCount > 0
+            )
+          )
+          .slice(0, 10)
       : historyDocuments
           .sort(sortNewest)
           .slice(0, 10);
@@ -500,9 +509,13 @@ function decorateHeadings(type, actor, draftCount, historyCount) {
         : 'Mi historial reciente';
     }
     if (description) {
-      description.textContent = actor.roleCode === 'GOD'
-        ? 'Los cerrados permanecen inmutables; Corregir crea reversos trazables y un nuevo borrador.'
-        : 'Solo aparecen tus Entradas o Surtidos cerrados.';
+      description.textContent = type === DOCUMENT_TYPES.SUPPLY
+        ? actor.roleCode === 'GOD'
+          ? 'Surtidos cerrados o con entregas físicas; los hijos permanecen trazables dentro de su carrito.'
+          : 'Tus Surtidos cerrados o con entregas físicas, agrupados por carrito.'
+        : actor.roleCode === 'GOD'
+          ? 'Los cerrados permanecen inmutables; Corregir crea reversos trazables y un nuevo borrador.'
+          : 'Solo aparecen tus Entradas cerradas.';
     }
     if (badge) badge.textContent = String(historyCount);
   }
