@@ -30,7 +30,7 @@ import {
   assertDocumentType,
   assertDocumentIsDraft
 } from './documentTypes.js';
-import { operationalDateToEffectiveAt } from './operationalDate.js';
+import { resolveDocumentEffectiveAt } from './operationalDate.js';
 
 export async function createDocument(data = {}) {
   const type = assertDocumentType(data.type);
@@ -568,11 +568,9 @@ async function closeInventoryDocument(documentId, userId) {
       }
 
       const now = new Date().toISOString();
-      const supplyEffectiveAt =
-        document.type === DOCUMENT_TYPES.SUPPLY &&
-        document.metadata?.operationalDate
-          ? operationalDateToEffectiveAt(document.metadata.operationalDate)
-          : now;
+      const supplyEffectiveAt = document.type === DOCUMENT_TYPES.SUPPLY
+        ? resolveDocumentEffectiveAt(document, new Date(now))
+        : now;
       const movements = [];
       const lots = [];
 
