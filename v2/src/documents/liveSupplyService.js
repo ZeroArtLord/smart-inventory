@@ -21,6 +21,10 @@ import {
   DOCUMENT_STATUS,
   DOCUMENT_TYPES
 } from './documentTypes.js';
+import {
+  normalizeOperationalDate,
+  todayOperationalDate
+} from './operationalDate.js';
 
 export const LIVE_SUPPLY_CART_KIND = 'LIVE_SUPPLY_CART';
 export const LIVE_SUPPLY_DELIVERY_KIND = 'LIVE_SUPPLY_DELIVERY';
@@ -37,7 +41,7 @@ export function createLiveSupplyDeliveryToken() {
  */
 export async function enableLiveSupplyCart(
   documentId,
-  { userId = null } = {}
+  { userId = null, now = new Date() } = {}
 ) {
   const id = clean(documentId);
   if (!id) throw new Error('Surtido no identificado');
@@ -53,16 +57,86 @@ export async function enableLiveSupplyCart(
         return current;
       }
 
-      const now = new Date().toISOString();
+      const instant = validInstant(now);
+      const nowIso = instant.toISOString();
+      const operationalDate = todayOperationalDate(instant);
       const updated = {
         ...current,
         version: nextEntityVersion(current),
-        updatedAt: now,
+        updatedAt: nowIso,
         metadata: {
           ...(current.metadata || {}),
           kind: LIVE_SUPPLY_CART_KIND,
-          liveSupplyEnabledAt: now,
+          operationalDate,
+          liveSupplyEnabledAt: nowIso,
           liveSupplyEnabledBy: userId
+        }
+      };
+
+      await requestToPromise(documentStore.put(updated));
+      await requestToPromise(
+        queueStore.add(
+          createSyncItem('document', updated.id, 'UPDATE', updated)
+        )
+      );
+
+      return updated;
+    }
+  );
+}
+
+/**
+ * Cambia el día operativo solo mientras no exista ninguna entrega física cerrada.
+ * No modifica líneas, movimientos ni stock.
+ */
+export async function setLiveSupplyOperationalDate(
+  documentId,
+  value,
+  { userId = null, now = new Date() } = {}
+) {
+  const id = clean(documentId);
+  if (!id) throw new Error('Surtido no identificado');
+
+  const instant = validInstant(now);
+  const operationalDate = normalizeOperationalDate(value, {
+    today: todayOperationalDate(instant)
+  });
+
+  return runTransaction(
+    [STORES.DOCUMENTS, STORES.SYNC_QUEUE],
+    'readwrite',
+    async (documentStore, queueStore) => {
+      const current = await requestToPromise(documentStore.get(id));
+      assertLiveSupply(current);
+
+      const documents = await requestToPromise(documentStore.getAll());
+      const hasClosedDelivery = documents.some(document =>
+        document?.type === DOCUMENT_TYPES.SUPPLY &&
+        document?.status === DOCUMENT_STATUS.CLOSED &&
+        document?.metadata?.kind === LIVE_SUPPLY_DELIVERY_KIND &&
+        document?.metadata?.parentCartId === id
+      );
+
+      if (hasClosedDelivery) {
+        throw new Error(
+          'La fecha operativa está bloqueada porque ya existe una entrega física'
+        );
+      }
+
+      if (current.metadata?.operationalDate === operationalDate) {
+        return current;
+      }
+
+      const nowIso = instant.toISOString();
+      const updated = {
+        ...current,
+        version: nextEntityVersion(current),
+        updatedAt: nowIso,
+        metadata: {
+          ...(current.metadata || {}),
+          operationalDate,
+          operationalDateUpdatedAt: nowIso,
+          operationalDateUpdatedBy: userId
         }
       };
 
@@ -549,6 +623,7 @@ async function createDeliveryDraftAtomic(
           deliveryToken: token,
           physicalHandoff: true,
           createdBy: userId,
+          operationalDate: parent.metadata?.operationalDate || null,
           destinationName: parent.metadata?.destinationName || null,
           responsibleName: parent.metadata?.responsibleName || null,
           saintNotes: parent.metadata?.saintNotes || null
@@ -802,6 +877,14 @@ function formatQuantity(value) {
 
 function clean(value) {
   return String(value ?? '').trim();
+}
+
+function validInstant(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error('Fecha actual inválida');
+  }
+  return date;
 }
 
 function createSyncItem(entityType, entityId, operation, payload) {
