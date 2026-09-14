@@ -13,7 +13,7 @@ const {
   getCurrentStock
 } = await import('../src/inventory/movementService.js');
 const { MOVEMENT_TYPES } = await import('../src/core/movementTypes.js');
-const { STORES, get } = await import('../src/storage/database.js');
+const { STORES, get, put } = await import('../src/storage/database.js');
 const {
   enableLiveSupplyCart,
   setLiveSupplyOperationalDate,
@@ -71,6 +71,29 @@ test('V8.7 un carrito nuevo fija hoy por defecto y permite cambiar a pasado', as
   );
 
   assert.equal(changed.metadata.operationalDate, '2026-09-12');
+  assert.equal(await getCurrentStock(product.id), 20);
+});
+
+test('V8.7 reabre un carrito V5-E legacy sin fecha y fija hoy sin tocar líneas ni stock', async () => {
+  const cart = await seed();
+  const enabled = await enableLiveSupplyCart(cart.id, {
+    userId: 'warehouse-v87',
+    now: new Date(2026, 8, 13, 9, 30)
+  });
+  const legacy = {
+    ...enabled,
+    metadata: { ...enabled.metadata }
+  };
+  delete legacy.metadata.operationalDate;
+  await put(STORES.DOCUMENTS, legacy);
+
+  const reopened = await enableLiveSupplyCart(cart.id, {
+    userId: 'warehouse-v87',
+    now: new Date(2026, 8, 14, 9, 30)
+  });
+
+  assert.equal(reopened.metadata.operationalDate, '2026-09-14');
+  assert.equal(reopened.metadata.liveSupplyEnabledAt, enabled.metadata.liveSupplyEnabledAt);
   assert.equal(await getCurrentStock(product.id), 20);
 });
 

@@ -17,6 +17,11 @@ test('V8.7 muestra fecha operativa como input date, con hoy como máximo y sin h
   assert.doesNotMatch(ui, /type=["'](?:datetime-local|time)["']/);
 });
 
+test('V8.7 normaliza también carritos V5-E existentes al abrirlos', () => {
+  assert.match(ui, /const liveDocument = await enableLiveSupplyCart\(/);
+  assert.doesNotMatch(ui, /metadata\?\.kind !== LIVE_SUPPLY_CART_KIND/);
+});
+
 test('V8.7 bloquea la fecha después de la primera entrega física', () => {
   assert.match(ui, /closedDeliveryCount/);
   assert.match(

@@ -5,7 +5,8 @@ import {
   todayOperationalDate,
   normalizeOperationalDate,
   operationalDateToEffectiveAt,
-  resolveDocumentOperationalDate
+  resolveDocumentOperationalDate,
+  resolveDocumentEffectiveAt
 } from '../src/documents/operationalDate.js';
 
 test('V8.7 obtiene hoy como fecha operativa local YYYY-MM-DD', () => {
@@ -43,6 +44,20 @@ test('V8.7 convierte el día operativo a mediodía UTC estable', () => {
   assert.equal(
     operationalDateToEffectiveAt('2026-09-12'),
     '2026-09-12T12:00:00.000Z'
+  );
+});
+
+test('V8.7 resuelve effectiveAt operativo y conserva el instante fallback cuando no hay fecha', () => {
+  assert.equal(
+    resolveDocumentEffectiveAt({
+      metadata: { operationalDate: '2026-09-12' }
+    }, new Date('2026-09-14T18:00:00.000Z')),
+    '2026-09-12T12:00:00.000Z'
+  );
+
+  assert.equal(
+    resolveDocumentEffectiveAt({}, new Date('2026-09-14T18:00:00.000Z')),
+    '2026-09-14T18:00:00.000Z'
   );
 });
 
