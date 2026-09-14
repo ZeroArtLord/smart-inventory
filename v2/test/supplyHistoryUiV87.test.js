@@ -20,7 +20,7 @@ test('V8.7 conserva el padre LIVE DRAFT en el conjunto de agrupación si ya exis
     ui,
     /const historyDocuments = type === DOCUMENT_TYPES\.SUPPLY[\s\S]*visible\.filter\(document => document\.status !== DOCUMENT_STATUS\.CANCELLED\)/
   );
-  assert.match(ui, /group\.summary\.deliveryCount\s*>\s*0/);
+  assert.match(ui, /group\.summary\?\.deliveryCount\s*>\s*0/);
 });
 
 test('V8.7 padre muestra fecha operativa y solo acciones Resumen + Ver entregas', () => {
