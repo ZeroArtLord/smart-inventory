@@ -334,13 +334,14 @@ function renderSupplyHistory(container, groups, actor, memberIndex) {
             memberIndex,
             {
               deliveredTotal: group.summary?.deliveredTotal,
-              fallbackKind: group.kind
+              fallbackKind: group.kind,
+              operationalDate: group.operationalDate
             }
           );
         }
 
         const parent = group.document;
-        const owner = ownerLabel(parent, actor, memberIndex);
+        const owner = ownerName(parent, actor, memberIndex);
         const godForeign = actor.roleCode === 'GOD' &&
           String(parent.ownerId || '') !== actor.ownerId;
         const operationalDate = formatOperationalDay(group.operationalDate);
@@ -356,16 +357,17 @@ function renderSupplyHistory(container, groups, actor, memberIndex) {
             data-v82-document-id="${escapeHtml(parent.id)}"
           >
             <div class="v871-history-parent-main">
-              <div class="history-doc-title">
-                <div class="history-doc-icon">↑</div>
-                <div class="v82-document-copy">
-                  <strong title="ID técnico: ${escapeHtml(parent.id)}">Surtido · ${escapeHtml(operationalDate)}</strong>
-                  <span class="v82-owner-line">${godForeign ? '👑 ' : ''}${escapeHtml(owner)}</span>
-                  <div class="v871-history-parent-meta">
-                    <span class="v871-history-chip">${formatSummaryQuantity(summary.deliveredTotal)} uds</span>
-                    <span class="v871-history-chip">${Number(summary.deliveryCount || 0)} entrega(s)</span>
-                    <span class="v871-history-chip">${escapeHtml(humanStatus(summary.status))}</span>
-                  </div>
+              <div class="v871-history-icon ${godForeign ? 'v871-history-icon-god' : ''}">↑</div>
+
+              <div class="v871-history-copy">
+                <strong title="ID técnico: ${escapeHtml(parent.id)}">Surtido · ${escapeHtml(operationalDate)}</strong>
+                <small>Fecha operativa: ${escapeHtml(operationalDate)} · Responsable: ${escapeHtml(owner)}</small>
+                <div class="v871-history-parent-meta">
+                  ${godForeign
+                    ? '<span class="v871-history-badge v871-history-badge-purple">Supervisado por GOD</span>'
+                    : `<span class="v871-history-badge v871-history-badge-status">${escapeHtml(humanStatus(summary.status))}</span>`}
+                  <span class="v871-history-badge v871-history-badge-green">${Number(summary.deliveryCount || 0)} entrega${Number(summary.deliveryCount || 0) === 1 ? '' : 's'}</span>
+                  <span class="v871-history-badge">${formatSummaryQuantity(summary.deliveredTotal)} entregado</span>
                 </div>
               </div>
 
@@ -376,17 +378,18 @@ function renderSupplyHistory(container, groups, actor, memberIndex) {
                   type="button"
                   aria-haspopup="menu"
                   aria-expanded="false"
-                  title="Más opciones"
+                  aria-label="Opciones del surtido"
+                  title="Opciones del surtido"
                 >⋯</button>
                 <button
-                  class="secondary v871-history-control"
+                  class="v871-history-control v871-history-summary-button"
                   data-v871-summary-toggle="1"
                   aria-controls="${summaryId}"
                   aria-expanded="false"
                   type="button"
                 >Resumen</button>
                 <button
-                  class="secondary v871-history-control"
+                  class="v871-history-control"
                   data-v871-deliveries-toggle="1"
                   aria-controls="${deliveriesId}"
                   aria-expanded="false"
@@ -397,24 +400,25 @@ function renderSupplyHistory(container, groups, actor, memberIndex) {
 
             <div id="${summaryId}" class="v871-history-summary" hidden>
               <div class="v871-history-summary-grid">
-                <span><b>Planificado:</b> ${formatSummaryQuantity(summary.plannedTotal)}</span>
-                <span><b>Entregado:</b> ${formatSummaryQuantity(summary.deliveredTotal)}</span>
-                <span><b>Pendiente:</b> ${formatSummaryQuantity(summary.pendingTotal)}</span>
-                <span><b>Cancelado:</b> ${formatSummaryQuantity(summary.cancelledTotal)}</span>
-                <span><b>Estado:</b> ${escapeHtml(humanStatus(summary.status))}</span>
+                <div class="v871-history-summary-box"><span>Planificado</span><strong>${formatSummaryQuantity(summary.plannedTotal)}</strong></div>
+                <div class="v871-history-summary-box"><span>Entregado</span><strong>${formatSummaryQuantity(summary.deliveredTotal)}</strong></div>
+                <div class="v871-history-summary-box"><span>Pendiente</span><strong>${formatSummaryQuantity(summary.pendingTotal)}</strong></div>
+                <div class="v871-history-summary-box"><span>Estado</span><strong>${escapeHtml(humanStatus(summary.status))}</strong></div>
               </div>
             </div>
 
             <div id="${deliveriesId}" class="v871-history-deliveries" hidden>
               ${group.deliveries.length
-                ? group.deliveries.map(delivery =>
+                ? group.deliveries.map((delivery, index) =>
                     renderSupplyDeliveryRow(
                       delivery.document,
                       actor,
                       memberIndex,
                       {
                         parentDocument: parent,
-                        deliveredTotal: delivery.deliveredTotal
+                        deliveredTotal: delivery.deliveredTotal,
+                        deliveryNumber: index + 1,
+                        operationalDate: delivery.operationalDate || group.operationalDate
                       }
                     )
                   ).join('')
@@ -433,11 +437,13 @@ function renderSupplyDeliveryRow(
   {
     parentDocument = null,
     deliveredTotal = null,
-    fallbackKind = ''
+    fallbackKind = '',
+    deliveryNumber = null,
+    operationalDate = null
   } = {}
 ) {
   const ownershipDocument = parentDocument || document;
-  const owner = ownerLabel(ownershipDocument, actor, memberIndex);
+  const owner = ownerName(ownershipDocument, actor, memberIndex);
   const godForeign = actor.roleCode === 'GOD' &&
     String(ownershipDocument.ownerId || '') !== actor.ownerId;
   const canCorrect = actor.roleCode === 'GOD' &&
@@ -449,30 +455,38 @@ function renderSupplyDeliveryRow(
     : fallbackKind === 'LEGACY_SUPPLY'
       ? 'Surtido legacy'
       : 'Entrega física';
-  const displayWhen = parentDocument
-    ? formatOperationalTime(technicalWhen)
-    : formatOperationalDate(technicalWhen);
+  const groupedDelivery = parentDocument && Number(deliveryNumber) > 0;
+  const deliveryTitle = groupedDelivery
+    ? `Entrega ${Number(deliveryNumber)} · ${formatOperationalDay(operationalDate)} · ${formatOperationalTime(technicalWhen)}`
+    : `${fallbackLabel} · ${formatOperationalDate(technicalWhen)}`;
+  const orphanClass = fallbackKind === 'ORPHAN_DELIVERY'
+    ? 'v871-history-orphan'
+    : '';
 
   return `
-    <div class="closed-document-row v82-operational-row v871-history-delivery ${godForeign ? 'v82-god-foreign' : ''}" data-v82-document-id="${escapeHtml(document.id)}">
-      <div class="history-doc-title">
-        <div class="history-doc-icon">↳</div>
-        <div class="v82-document-copy">
-          <strong title="ID técnico: ${escapeHtml(document.id)}">${escapeHtml(fallbackLabel)} · ${escapeHtml(displayWhen)}</strong>
-          <small>${escapeHtml(humanStatus(document.status))}${deliveredTotal === null || deliveredTotal === undefined ? '' : ` · Entregado: ${formatSummaryQuantity(deliveredTotal)}`}</small>
-          <span class="v82-owner-line">${godForeign ? '👑 ' : ''}${escapeHtml(owner)}</span>
-        </div>
+    <div
+      class="closed-document-row v82-operational-row v871-history-delivery ${orphanClass} ${godForeign ? 'v82-god-foreign' : ''}"
+      data-v82-document-id="${escapeHtml(document.id)}"
+      ${groupedDelivery ? `data-v871-delivery-number="${Number(deliveryNumber)}"` : ''}
+    >
+      <div class="v871-history-delivery-dot">↳</div>
+
+      <div class="v871-history-delivery-copy">
+        <strong title="ID técnico: ${escapeHtml(document.id)}">${escapeHtml(deliveryTitle)}</strong>
+        <small>${escapeHtml(humanStatus(document.status))}${deliveredTotal === null || deliveredTotal === undefined ? '' : ` · Entregado ${formatSummaryQuantity(deliveredTotal)}`} · Responsable: ${escapeHtml(owner)}</small>
       </div>
 
-      <button
-        class="v871-history-more"
-        data-v871-supply-actions-trigger="delivery"
-        data-v871-delivery-actions-trigger="1"
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        title="Acciones de esta entrega"
-      >⋯</button>
+      <div class="v871-history-delivery-actions">
+        <button
+          class="v871-history-menu-button"
+          data-v871-supply-actions-trigger="delivery"
+          data-v871-delivery-actions-trigger="1"
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          title="Acciones de esta entrega"
+        >Acciones ▾</button>
+      </div>
 
       <div class="document-export-actions v871-history-action-staging" aria-hidden="true">
         <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="csv" type="button">CSV</button>
@@ -526,8 +540,16 @@ function ensureSupplyHistoryActionPortal() {
     closeSupplyHistoryActionPortal();
   }, true);
 
-  window.addEventListener('resize', closeSupplyHistoryActionPortal);
-  window.addEventListener('scroll', closeSupplyHistoryActionPortal, true);
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeSupplyHistoryActionPortal();
+  });
+
+  const reposition = () => {
+    if (portal.hidden || !portal._v871Trigger) return;
+    positionSupplyHistoryActionPortal(portal, portal._v871Trigger);
+  };
+  window.addEventListener('resize', reposition);
+  window.addEventListener('scroll', reposition, true);
   return portal;
 }
 
@@ -540,24 +562,26 @@ function openSupplyHistoryActionPortal(trigger) {
   portal.dataset.sourceDocumentId = String(row.dataset.v82DocumentId || '');
 
   if (trigger.dataset.v871DeliveryActionsTrigger === '1') {
-    const staging = row.querySelector('.v871-history-action-staging');
-    if (!staging) return;
+    const actionMarkup = buildSupplyHistoryDeliveryActionMenu(row);
+    if (!actionMarkup) return;
 
     portal.innerHTML = `
-      <div class="v871-history-action-title">Acciones de la entrega</div>
-      <div class="v871-history-action-grid">${staging.innerHTML}</div>
+      <div class="v871-history-action-grid">${actionMarkup}</div>
     `;
   } else {
     const parent = trigger.closest('[data-v871-supply-history-parent]');
-    const summary = parent?.querySelector('[data-v871-summary-toggle]');
-    const deliveries = parent?.querySelector('[data-v871-deliveries-toggle]');
-    if (!parent || !summary || !deliveries) return;
+    if (!parent) return;
 
     portal.innerHTML = `
-      <div class="v871-history-action-title">Surtido</div>
       <div class="v871-history-action-grid">
-        <button class="secondary" data-v871-portal-toggle="summary" type="button">Resumen</button>
-        <button class="secondary" data-v871-portal-toggle="deliveries" type="button">${escapeHtml(deliveries.textContent || 'Ver entregas')}</button>
+        <button data-v871-parent-action="csv" type="button">CSV</button>
+        <button data-v871-parent-action="xlsx" type="button">Excel</button>
+        <button data-v871-parent-action="print" type="button">Imprimir / PDF</button>
+        <button data-v871-parent-action="thermal" type="button">80mm</button>
+        <div class="v871-history-menu-section">SAINT</div>
+        <button data-v871-parent-action="saint-xlsx" type="button">SAINT Excel</button>
+        <button data-v871-parent-action="saint-print" type="button">SAINT PDF</button>
+        <button class="v871-history-menu-danger" data-v871-parent-action="correct" type="button">Corregir</button>
       </div>
     `;
   }
@@ -568,23 +592,59 @@ function openSupplyHistoryActionPortal(trigger) {
   requestAnimationFrame(() => positionSupplyHistoryActionPortal(portal, trigger));
 }
 
+function buildSupplyHistoryDeliveryActionMenu(row) {
+  const parts = [];
+  const add = selector => {
+    const node = row.querySelector(selector);
+    if (node) parts.push(node.outerHTML);
+  };
+
+  add('[data-action="export-document"][data-format="csv"]');
+  add('[data-action="export-document"][data-format="xlsx"]');
+  add('[data-action="export-document"][data-format="print"]');
+  add('[data-supply-thermal-print]');
+
+  const saintXlsx = row.querySelector('[data-v5-saint-action="export-xlsx"]');
+  const saintPrint = row.querySelector('[data-v5-saint-action="export-print"]');
+  if (saintXlsx || saintPrint) {
+    parts.push('<div class="v871-history-menu-section">SAINT</div>');
+    if (saintXlsx) parts.push(saintXlsx.outerHTML);
+    if (saintPrint) parts.push(saintPrint.outerHTML);
+  }
+
+  add('[data-action="correct-document"]');
+  const correctionBadge = row.querySelector('.v871-history-action-staging .status-warning');
+  if (correctionBadge) parts.push(correctionBadge.outerHTML);
+  return parts.join('');
+}
+
 function positionSupplyHistoryActionPortal(portal, trigger) {
   if (!portal || !trigger || portal.hidden) return;
 
   const triggerRect = trigger.getBoundingClientRect();
-  const margin = 12;
-  const width = Math.min(330, Math.max(220, window.innerWidth - margin * 2));
-  const measuredHeight = Math.max(portal.offsetHeight, 80);
-  const left = Math.min(
-    Math.max(margin, triggerRect.right - width),
-    Math.max(margin, window.innerWidth - width - margin)
+  const margin = 10;
+  const width = Math.min(220, Math.max(180, window.innerWidth - margin * 2));
+  const measuredHeight = Math.min(
+    Math.max(portal.getBoundingClientRect().height || portal.offsetHeight || 80, 80),
+    430
+  );
+  const left = Math.max(
+    margin,
+    Math.min(triggerRect.right - width, window.innerWidth - width - margin)
   );
   const roomBelow = window.innerHeight - triggerRect.bottom - margin;
-  const top = roomBelow >= measuredHeight
-    ? triggerRect.bottom + 8
-    : Math.max(margin, triggerRect.top - measuredHeight - 8);
+  const roomAbove = triggerRect.top - margin;
+  let top = triggerRect.bottom + 8;
 
-  portal.style.width = `${width}px`;
+  if (roomBelow < measuredHeight && roomAbove > roomBelow) {
+    top = triggerRect.top - measuredHeight - 8;
+  }
+  top = Math.max(
+    margin,
+    Math.min(top, window.innerHeight - measuredHeight - margin)
+  );
+
+  portal.style.width = `${Math.round(width)}px`;
   portal.style.left = `${Math.round(left)}px`;
   portal.style.top = `${Math.round(top)}px`;
 }
@@ -594,18 +654,66 @@ function handleSupplyHistoryPortalClick(event) {
   const button = event.target.closest('button');
   if (!button) return;
 
-  const portalToggle = button.dataset.v871PortalToggle;
-  if (portalToggle) {
+  const parentAction = String(button.dataset.v871ParentAction || '').trim();
+  if (parentAction) {
     event.preventDefault();
-    const parentId = String(portal.dataset.sourceDocumentId || '');
-    const parent = appRoot?.querySelector(
-      `[data-v871-supply-history-parent][data-v82-document-id="${cssEscape(parentId)}"]`
-    );
-    const selector = portalToggle === 'summary'
-      ? '[data-v871-summary-toggle]'
-      : '[data-v871-deliveries-toggle]';
-    const trigger = parent?.querySelector(selector);
-    if (trigger) toggleSupplyHistoryPanel(trigger);
+    const parent = findSupplyHistoryParent(portal.dataset.sourceDocumentId);
+    if (!parent) {
+      closeSupplyHistoryActionPortal();
+      return;
+    }
+
+    const candidates = resolveParentSupplyAction(parent, parentAction);
+    if (!candidates.length) {
+      showToast('No hay una entrega física disponible para esa acción.', 'danger');
+      closeSupplyHistoryActionPortal();
+      return;
+    }
+
+    if (candidates.length === 1) {
+      activateSupplyHistoryAction(candidates[0].button);
+      closeSupplyHistoryActionPortal();
+      return;
+    }
+
+    portal.innerHTML = `
+      <div class="v871-history-action-title">${escapeHtml(supplyHistoryActionLabel(parentAction))} · elegir entrega</div>
+      <div class="v871-history-action-grid">
+        ${candidates.map(({ row }, index) => {
+          const documentId = String(row.dataset.v82DocumentId || '');
+          const deliveryNumber = Number(row.dataset.v871DeliveryNumber || index + 1);
+          return `
+            <button
+              data-v871-parent-delivery-choice="${escapeHtml(documentId)}"
+              data-v871-parent-action-choice="${escapeHtml(parentAction)}"
+              type="button"
+            >Entrega ${deliveryNumber}</button>
+          `;
+        }).join('')}
+      </div>
+    `;
+    requestAnimationFrame(() => positionSupplyHistoryActionPortal(portal, portal._v871Trigger));
+    return;
+  }
+
+  const actionChoice = String(button.dataset.v871ParentActionChoice || '').trim();
+  const deliveryChoice = String(button.dataset.v871ParentDeliveryChoice || '').trim();
+  if (actionChoice && deliveryChoice) {
+    event.preventDefault();
+    const parent = findSupplyHistoryParent(portal.dataset.sourceDocumentId);
+    const row = parent
+      ? [...parent.querySelectorAll('.v871-history-delivery[data-v82-document-id]')]
+          .find(item => String(item.dataset.v82DocumentId || '') === deliveryChoice)
+      : null;
+    const actionButton = row
+      ? findSupplyHistoryDeliveryAction(row, actionChoice)
+      : null;
+
+    if (actionButton) {
+      activateSupplyHistoryAction(actionButton);
+    } else {
+      showToast('La acción ya no está disponible para esa entrega.', 'danger');
+    }
     closeSupplyHistoryActionPortal();
     return;
   }
@@ -622,6 +730,58 @@ function handleSupplyHistoryPortalClick(event) {
   if (button.matches('[data-v5-saint-action], [data-supply-thermal-print]')) {
     setTimeout(closeSupplyHistoryActionPortal, 0);
   }
+}
+
+function findSupplyHistoryParent(parentId) {
+  const id = String(parentId || '');
+  return appRoot?.querySelector(
+    `[data-v871-supply-history-parent][data-v82-document-id="${cssEscape(id)}"]`
+  ) || null;
+}
+
+function resolveParentSupplyAction(parent, actionKey) {
+  if (!parent) return [];
+
+  return [...parent.querySelectorAll('.v871-history-delivery[data-v82-document-id]')]
+    .map(row => ({
+      row,
+      button: findSupplyHistoryDeliveryAction(row, actionKey)
+    }))
+    .filter(item => Boolean(item.button));
+}
+
+function findSupplyHistoryDeliveryAction(deliveryRow, actionKey) {
+  if (!deliveryRow) return null;
+
+  const selectors = {
+    csv: '[data-action="export-document"][data-format="csv"]',
+    xlsx: '[data-action="export-document"][data-format="xlsx"]',
+    print: '[data-action="export-document"][data-format="print"]',
+    thermal: '[data-supply-thermal-print]',
+    'saint-xlsx': '[data-v5-saint-action="export-xlsx"]',
+    'saint-print': '[data-v5-saint-action="export-print"]',
+    correct: '[data-action="correct-document"]'
+  };
+  const selector = selectors[actionKey];
+  return selector ? deliveryRow.querySelector(selector) : null;
+}
+
+function supplyHistoryActionLabel(actionKey) {
+  const labels = {
+    csv: 'CSV',
+    xlsx: 'Excel',
+    print: 'Imprimir / PDF',
+    thermal: '80mm',
+    'saint-xlsx': 'SAINT Excel',
+    'saint-print': 'SAINT PDF',
+    correct: 'Corregir'
+  };
+  return labels[actionKey] || 'Acción';
+}
+
+function activateSupplyHistoryAction(actionButton) {
+  if (!actionButton) return;
+  actionButton.click();
 }
 
 function forwardOperationalActionToApp(sourceButton) {
@@ -736,8 +896,8 @@ function decorateHeadings(type, actor, draftCount, historyCount) {
     if (description) {
       description.textContent = type === DOCUMENT_TYPES.SUPPLY
         ? actor.roleCode === 'GOD'
-          ? 'Surtidos cerrados o con entregas físicas; los hijos permanecen trazables dentro de su carrito.'
-          : 'Tus Surtidos cerrados o con entregas físicas, agrupados por carrito.'
+          ? 'Surtidos cerrados o con entregas físicas; las entregas permanecen trazables dentro de su surtido.'
+          : 'Tus Surtidos cerrados o con entregas físicas, agrupados por surtido.'
         : actor.roleCode === 'GOD'
           ? 'Los cerrados permanecen inmutables; Corregir crea reversos trazables y un nuevo borrador.'
           : 'Solo aparecen tus Entradas cerradas.';
@@ -791,18 +951,21 @@ function humanStatus(status) {
   return normalized || 'Sin estado';
 }
 
-function ownerLabel(document, actor, memberIndex) {
+function ownerName(document, actor, memberIndex) {
   const ownerId = String(document.ownerId || '').trim();
-  if (ownerId && ownerId === actor.ownerId) return 'Responsable: tú';
+  if (ownerId && ownerId === actor.ownerId) return 'tú';
 
   const member = memberIndex.get(ownerId);
   if (member) {
-    const label = member.displayName || member.email || 'Usuario del equipo';
-    return `Responsable: ${label}`;
+    return member.displayName || member.email || 'Usuario del equipo';
   }
 
-  if (!ownerId) return 'Responsable: Sin identificar';
-  return 'Responsable: Usuario del equipo';
+  if (!ownerId) return 'Sin identificar';
+  return 'Usuario del equipo';
+}
+
+function ownerLabel(document, actor, memberIndex) {
+  return `Responsable: ${ownerName(document, actor, memberIndex)}`;
 }
 
 function sortNewest(a, b) {
