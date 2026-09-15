@@ -7,6 +7,10 @@ import {
   put,
   remove
 } from '../storage/database.js';
+import {
+  normalizeOperationalDate,
+  operationalDateToEffectiveAt
+} from '../documents/operationalDate.js';
 
 const EPSILON = 0.000001;
 const draftSyncChains = new Map();
@@ -14,18 +18,33 @@ const draftSyncChains = new Map();
 export async function createAreaDeliveryIntent({
   deliveryToken,
   parentCartId,
+  operationalDate = null,
   rows,
   userId = null
 }) {
   const id = clean(deliveryToken);
   if (!id) throw new Error('Token de distribución requerido');
 
+  const cartId = clean(parentCartId);
+  const parent = cartId
+    ? await get(STORES.DOCUMENTS, cartId)
+    : null;
+  const sourceOperationalDate =
+    clean(operationalDate) ||
+    clean(parent?.metadata?.operationalDate) ||
+    null;
+  const normalizedOperationalDate = sourceOperationalDate
+    ? normalizeOperationalDate(sourceOperationalDate)
+    : null;
   const normalizedRows = normalizeRows(rows);
   const now = new Date().toISOString();
   const existing = await get(STORES.SUPPLY_AREA_DELIVERIES, id);
 
   if (existing) {
-    if (canonicalRows(existing.rows) !== canonicalRows(normalizedRows)) {
+    if (
+      canonicalRows(existing.rows) !== canonicalRows(normalizedRows) ||
+      clean(existing.operationalDate) !== clean(normalizedOperationalDate)
+    ) {
       throw new Error('Ese token ya pertenece a otra distribución por áreas');
     }
     return existing;
@@ -35,7 +54,8 @@ export async function createAreaDeliveryIntent({
     id,
     deliveryToken: id,
     deliveryId: null,
-    parentCartId: clean(parentCartId),
+    parentCartId: cartId,
+    operationalDate: normalizedOperationalDate,
     rows: normalizedRows,
     status: 'PENDING',
     syncStatus: 'LOCAL_ONLY',
@@ -101,10 +121,17 @@ export async function listAreaDeliveries({
     }
   }
 
+  const fromTime = from ? new Date(from).getTime() : null;
+
   return (await getAll(STORES.SUPPLY_AREA_DELIVERIES))
     .filter(record => record.status === 'CLOSED')
-    .filter(record => !from || new Date(record.closedAt || 0) >= new Date(from))
-    .sort((a, b) => String(b.closedAt || '').localeCompare(String(a.closedAt || '')));
+    .filter(record =>
+      fromTime === null || deliveryTime(record) >= fromTime
+    )
+    .sort((a, b) =>
+      deliveryTime(b) - deliveryTime(a) ||
+      String(b.closedAt || '').localeCompare(String(a.closedAt || ''))
+    );
 }
 
 export async function refreshAreaDeliveries({ from = null } = {}) {
@@ -171,7 +198,7 @@ export async function getLastAreaPattern(productId) {
 
   const records = (await getAll(STORES.SUPPLY_AREA_DELIVERIES))
     .filter(record => record.status === 'CLOSED')
-    .sort((a, b) => String(b.closedAt || '').localeCompare(String(a.closedAt || '')));
+    .sort((a, b) => deliveryTime(b) - deliveryTime(a));
 
   for (const record of records) {
     const row = record.rows?.find(item => item.productId === id);
@@ -465,6 +492,7 @@ async function trySyncAreaDelivery(record) {
         deliveryToken: record.deliveryToken,
         deliveryId: record.deliveryId,
         parentCartId: record.parentCartId,
+        operationalDate: record.operationalDate || null,
         rows: record.rows,
         closedAt: record.closedAt
       }
@@ -576,11 +604,17 @@ function normalizeRows(rows) {
 }
 
 function normalizeServerRecord(record = {}) {
+  const operationalDate = clean(record.operationalDate) || null;
+  if (operationalDate) {
+    operationalDateToEffectiveAt(operationalDate);
+  }
+
   return {
     id: clean(record.deliveryToken),
     deliveryToken: clean(record.deliveryToken),
     deliveryId: clean(record.deliveryId),
     parentCartId: clean(record.parentCartId),
+    operationalDate,
     rows: normalizeRows(record.rows || []),
     status: 'CLOSED',
     syncStatus: 'SYNCED',
@@ -605,6 +639,24 @@ function canonicalRows(rows) {
       }))
       .sort((a, b) => a.productId.localeCompare(b.productId))
   );
+}
+
+function deliveryTime(record) {
+  const operationalDate = clean(record?.operationalDate);
+  if (operationalDate) {
+    try {
+      return new Date(
+        operationalDateToEffectiveAt(operationalDate)
+      ).getTime();
+    } catch {
+      // Registro legacy/corrupto: conservar fallback técnico y no ocultarlo.
+    }
+  }
+
+  const fallback = new Date(
+    record?.closedAt || record?.updatedAt || record?.createdAt || 0
+  ).getTime();
+  return Number.isFinite(fallback) ? fallback : 0;
 }
 
 function draftKey(parentCartId, productId) {

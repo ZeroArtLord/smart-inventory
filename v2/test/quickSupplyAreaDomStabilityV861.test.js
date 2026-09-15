@@ -20,6 +20,7 @@ test('V8.6.1 no reescribe textContent si el estado visual del área no cambió',
   );
 });
 
-test('V8.6.1 fuerza un shell PWA nuevo para desalojar el módulo V8.6 defectuoso', () => {
-  assert.match(swSource, /smart-inventory-v2-shell-56/);
+test('V8.6.1 conserva un shell PWA posterior al módulo V8.6 defectuoso', () => {
+  assert.match(swSource, /smart-inventory-v2-shell-57/);
+  assert.doesNotMatch(swSource, /smart-inventory-v2-shell-55/);
 });

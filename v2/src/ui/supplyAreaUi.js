@@ -16,6 +16,7 @@ import {
   createLiveSupplyDeliveryToken,
   dispatchLiveSupply
 } from '../documents/liveSupplyService.js';
+import { STORES, get } from '../storage/database.js';
 
 const appRoot = document.getElementById('app');
 const EPSILON = 0.000001;
@@ -322,7 +323,13 @@ async function deliverWithAreas(button) {
     throw new Error(`Distribuye completamente ${incomplete.productName}`);
   }
 
-  const session = await getCurrentSession().catch(() => null);
+  const [session, parentDocument] = await Promise.all([
+    getCurrentSession().catch(() => null),
+    get(STORES.DOCUMENTS, documentId)
+  ]);
+  const operationalDate = String(
+    parentDocument?.metadata?.operationalDate || ''
+  ).trim() || null;
   const token = createLiveSupplyDeliveryToken();
   const payloadRows = rows.map(({ element, complete, ...row }) => row);
 
@@ -333,6 +340,7 @@ async function deliverWithAreas(button) {
     await createAreaDeliveryIntent({
       deliveryToken: token,
       parentCartId: documentId,
+      operationalDate,
       rows: payloadRows,
       userId: session?.userId || null
     });

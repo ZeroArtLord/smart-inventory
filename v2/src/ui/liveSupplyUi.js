@@ -8,9 +8,11 @@ import {
   restoreLiveSupplyRemaining,
   finalizeLiveSupplyCart,
   createLiveSupplyDeliveryToken,
+  setLiveSupplyOperationalDate,
   LIVE_SUPPLY_CART_KIND,
   LIVE_SUPPLY_DELIVERY_KIND
 } from '../documents/liveSupplyService.js';
+import { todayOperationalDate } from '../documents/operationalDate.js';
 
 const appRoot = document.getElementById('app');
 let enhancing = false;
@@ -33,6 +35,17 @@ if (appRoot) {
     event.preventDefault();
     event.stopPropagation();
     handleLiveAction(button).catch(error => {
+      reportError(error);
+      showLiveToast(error.message || String(error), 'danger');
+    });
+  });
+
+  appRoot.addEventListener('change', event => {
+    const input = event.target.closest('[data-v87-operational-date]');
+    if (!input) return;
+
+    event.preventDefault();
+    changeOperationalDate(input).catch(error => {
       reportError(error);
       showLiveToast(error.message || String(error), 'danger');
     });
@@ -141,13 +154,9 @@ async function enhanceSupplyView() {
     }
 
     const session = await safeSession();
-    let liveDocument = documentRecord;
-
-    if (documentRecord.metadata?.kind !== LIVE_SUPPLY_CART_KIND) {
-      liveDocument = await enableLiveSupplyCart(documentId, {
-        userId: session?.userId || documentRecord.ownerId || null
-      });
-    }
+    const liveDocument = await enableLiveSupplyCart(documentId, {
+      userId: session?.userId || documentRecord.ownerId || null
+    });
 
     const summary = await getLiveSupplyCartSummary(liveDocument.id);
     renderLivePanel(workspace, summary);
@@ -181,6 +190,13 @@ function releaseLegacyClose(button) {
 function renderLivePanel(workspace, summary) {
   workspace.querySelector('.v5-live-supply-panel')?.remove();
 
+  const operationalDate = String(
+    summary.document.metadata?.operationalDate || todayOperationalDate()
+  );
+  const operationalDateDisabled = summary.closedDeliveryCount > 0
+    ? 'disabled'
+    : '';
+
   const panel = document.createElement('article');
   panel.className = 'card v5-live-supply-panel';
   panel.dataset.liveDocumentId = summary.document.id;
@@ -190,6 +206,20 @@ function renderLivePanel(workspace, summary) {
         <div class="v5-live-eyebrow">V5-E · SURTIDO VIVO · EXACT-ONCE</div>
         <h3>Carrito abierto durante el turno</h3>
         <p>Cada <strong>Entregar</strong> crea un surtido hijo cerrado. Solo esa entrega física descuenta stock.</p>
+        <label class="v87-live-operational-date">
+          <span>Fecha operativa</span>
+          <input
+            data-v87-operational-date
+            type="date"
+            value="${escapeHtml(operationalDate)}"
+            max="${escapeHtml(todayOperationalDate())}"
+            ${operationalDateDisabled}
+            aria-label="Fecha operativa del surtido"
+          >
+          <small>${operationalDateDisabled
+            ? 'Bloqueada después de la primera entrega física.'
+            : 'Puedes usar hoy o un día anterior antes de la primera entrega.'}</small>
+        </label>
       </div>
       <div class="v5-live-head-badges">
         <span class="badge status-good">${summary.closedDeliveryCount} entrega(s)</span>
@@ -307,6 +337,33 @@ function renderLiveRow(row) {
       </div>
     </div>
   `;
+}
+
+async function changeOperationalDate(input) {
+  if (actionRunning || input.disabled) return;
+
+  const documentId = input.closest('.v5-live-supply-panel')
+    ?.dataset.liveDocumentId || activeSupplyDocumentId();
+  if (!documentId) throw new Error('No se identificó el carrito activo');
+
+  actionRunning = true;
+  input.disabled = true;
+  setPanelBusy(true);
+
+  try {
+    const session = await safeSession();
+    await setLiveSupplyOperationalDate(documentId, input.value, {
+      userId: session?.userId || null
+    });
+    await rerenderLivePanel(documentId);
+    showLiveToast('Fecha operativa actualizada.', 'success');
+  } catch (error) {
+    await rerenderLivePanel(documentId).catch(reportError);
+    throw error;
+  } finally {
+    actionRunning = false;
+    setPanelBusy(false);
+  }
 }
 
 async function handleLiveAction(button) {

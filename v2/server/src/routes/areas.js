@@ -49,8 +49,23 @@ areasRouter.get('/deliveries', async (req, res, next) => {
               created_by,created_at,updated_at
        FROM supply_area_deliveries
        WHERE workspace_id = $1
-         AND ($2::timestamptz IS NULL OR closed_at >= $2::timestamptz)
-       ORDER BY closed_at DESC
+         AND (
+           $2::timestamptz IS NULL
+           OR (
+             NULLIF(payload->>'operationalDate', '') IS NOT NULL
+             AND payload->>'operationalDate' >= to_char($2::timestamptz, 'YYYY-MM-DD')
+           )
+           OR (
+             NULLIF(payload->>'operationalDate', '') IS NULL
+             AND closed_at >= $2::timestamptz
+           )
+         )
+       ORDER BY
+         COALESCE(
+           NULLIF(payload->>'operationalDate', ''),
+           to_char(closed_at, 'YYYY-MM-DD')
+         ) DESC,
+         closed_at DESC
        LIMIT 5000`,
       [req.auth.workspaceId, from ? from.toISOString() : null]
     );
@@ -106,7 +121,10 @@ areasRouter.post(
             delivery.deliveryToken,
             delivery.deliveryId,
             delivery.parentCartId,
-            JSON.stringify({ rows: delivery.rows }),
+            JSON.stringify({
+              operationalDate: delivery.operationalDate,
+              rows: delivery.rows
+            }),
             delivery.closedAt,
             req.auth.userId || null
           ]
@@ -119,6 +137,7 @@ areasRouter.post(
           metadata: {
             deliveryId: delivery.deliveryId,
             parentCartId: delivery.parentCartId,
+            operationalDate: delivery.operationalDate,
             rowCount: delivery.rows.length,
             allocationCount: delivery.rows.reduce(
               (sum, row) => sum + row.allocations.length,
@@ -456,6 +475,7 @@ async function normalizeDeliveryPayload(body = {}, workspaceId) {
   const deliveryToken = requiredText(body.deliveryToken, 'Token de entrega requerido', 220);
   const deliveryId = requiredText(body.deliveryId, 'Entrega requerida', 220);
   const parentCartId = requiredText(body.parentCartId, 'Carrito padre requerido', 220);
+  const operationalDate = optionalOperationalDate(body.operationalDate);
   const closedAtDate = new Date(body.closedAt);
   if (!Number.isFinite(closedAtDate.getTime())) {
     throw badDelivery('Fecha de entrega inválida');
@@ -521,6 +541,7 @@ async function normalizeDeliveryPayload(body = {}, workspaceId) {
     deliveryToken,
     deliveryId,
     parentCartId,
+    operationalDate,
     closedAt: closedAtDate.toISOString(),
     rows: normalizedRows
   };
@@ -590,6 +611,7 @@ function mapDeliveryRow(row) {
     deliveryToken: row.delivery_token,
     deliveryId: row.delivery_id,
     parentCartId: row.parent_cart_id,
+    operationalDate: optionalOperationalDate(row.payload?.operationalDate),
     rows: Array.isArray(row.payload?.rows) ? row.payload.rows : [],
     closedAt: row.closed_at,
     createdBy: row.created_by,
@@ -624,6 +646,7 @@ function canonicalDelivery(delivery) {
   return JSON.stringify({
     deliveryId: delivery.deliveryId,
     parentCartId: delivery.parentCartId,
+    operationalDate: delivery.operationalDate || null,
     rows
   });
 }
@@ -638,6 +661,26 @@ function badDelivery(message) {
 function requiredText(value, message, maxLength) {
   const text = String(value ?? '').trim();
   if (!text || text.length > maxLength) throw badDelivery(message);
+  return text;
+}
+
+function optionalOperationalDate(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    throw badDelivery('Fecha operativa inválida');
+  }
+
+  const [year, month, day] = text.split('-').map(Number);
+  const probe = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+  if (
+    probe.getUTCFullYear() !== year ||
+    probe.getUTCMonth() !== month - 1 ||
+    probe.getUTCDate() !== day
+  ) {
+    throw badDelivery('Fecha operativa inválida');
+  }
+
   return text;
 }
 
