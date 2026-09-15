@@ -678,12 +678,8 @@ function ensureSupplyHistoryActionPortal() {
     if (event.key === 'Escape') closeSupplyHistoryActionPortal();
   });
 
-  const reposition = () => {
-    if (portal.hidden || !portal._v871Trigger) return;
-    positionSupplyHistoryActionPortal(portal, portal._v871Trigger);
-  };
-  window.addEventListener('resize', reposition);
-  window.addEventListener('scroll', reposition, true);
+  window.addEventListener('resize', closeSupplyHistoryActionPortal);
+  window.addEventListener('scroll', closeSupplyHistoryActionPortal, true);
   return portal;
 }
 
