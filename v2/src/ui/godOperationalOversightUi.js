@@ -325,6 +325,13 @@ function renderHistory(container, history, type, actor, memberIndex) {
 }
 
 function renderSupplyHistory(container, groups, actor, memberIndex) {
+  // VIGIA-HIST-EXTERNO-03: el boceto v5 aprobado pertenece exclusivamente
+  // al bloque 👑 Historial del equipo. WAREHOUSE conserva el render V8.7.
+  if (actor.roleCode !== 'GOD') {
+    renderSupplyHistoryV87(container, groups, actor, memberIndex);
+    return;
+  }
+
   container.innerHTML = groups.length
     ? groups.map(group => {
         if (group.kind !== 'LIVE_CART') {
@@ -352,7 +359,7 @@ function renderSupplyHistory(container, groups, actor, memberIndex) {
 
         return `
           <article
-            class="closed-document-row v82-operational-row v871-history-parent ${godForeign ? 'v82-god-foreign' : ''}"
+            class="v82-operational-row v871-history-parent ${godForeign ? 'v82-god-foreign' : ''}"
             data-v871-supply-history-parent="1"
             data-v82-document-id="${escapeHtml(parent.id)}"
           >
@@ -428,6 +435,133 @@ function renderSupplyHistory(container, groups, actor, memberIndex) {
         `;
       }).join('')
     : '<div class="empty compact-empty">No hay documentos cerrados visibles.</div>';
+}
+
+function renderSupplyHistoryV87(container, groups, actor, memberIndex) {
+  container.innerHTML = groups.length
+    ? groups.map(group => {
+        if (group.kind !== 'LIVE_CART') {
+          return renderSupplyDeliveryRowV87(
+            group.document,
+            actor,
+            memberIndex,
+            {
+              deliveredTotal: group.summary?.deliveredTotal,
+              fallbackKind: group.kind
+            }
+          );
+        }
+
+        const parent = group.document;
+        const owner = ownerLabel(parent, actor, memberIndex);
+        const operationalDate = formatOperationalDay(group.operationalDate);
+        const summary = group.summary || {};
+
+        return `
+          <article
+            class="closed-document-row v82-operational-row v87-supply-history-parent"
+            data-v87-supply-history-parent="1"
+            data-v82-document-id="${escapeHtml(parent.id)}"
+          >
+            <div class="history-doc-title">
+              <div class="history-doc-icon">↑</div>
+              <div class="v82-document-copy">
+                <strong title="ID técnico: ${escapeHtml(parent.id)}">Surtido · ${escapeHtml(operationalDate)}</strong>
+                <small>Fecha operativa: ${escapeHtml(operationalDate)}</small>
+                <span class="v82-owner-line">${escapeHtml(owner)}</span>
+              </div>
+            </div>
+
+            <div class="v87-history-parent-actions">
+              <details data-v87-history-summary>
+                <summary>Resumen</summary>
+                <div class="v87-history-summary-grid">
+                  <span><b>Planificado:</b> ${formatSummaryQuantity(summary.plannedTotal)}</span>
+                  <span><b>Entregado:</b> ${formatSummaryQuantity(summary.deliveredTotal)}</span>
+                  <span><b>Pendiente:</b> ${formatSummaryQuantity(summary.pendingTotal)}</span>
+                  <span><b>Cancelado:</b> ${formatSummaryQuantity(summary.cancelledTotal)}</span>
+                  <span><b>Estado:</b> ${escapeHtml(humanStatus(summary.status))}</span>
+                </div>
+              </details>
+
+              <details data-v87-history-toggle>
+                <summary>Ver entregas (${group.summary.deliveryCount})</summary>
+                <div data-v87-delivery-list>
+                  ${group.deliveries.length
+                    ? group.deliveries.map(delivery =>
+                        renderSupplyDeliveryRowV87(
+                          delivery.document,
+                          actor,
+                          memberIndex,
+                          {
+                            parentDocument: parent,
+                            deliveredTotal: delivery.deliveredTotal
+                          }
+                        )
+                      ).join('')
+                    : '<div class="empty compact-empty">No hay entregas físicas cerradas.</div>'}
+                </div>
+              </details>
+            </div>
+          </article>
+        `;
+      }).join('')
+    : '<div class="empty compact-empty">No hay documentos cerrados visibles.</div>';
+}
+
+function renderSupplyDeliveryRowV87(
+  document,
+  actor,
+  memberIndex,
+  {
+    parentDocument = null,
+    deliveredTotal = null,
+    fallbackKind = ''
+  } = {}
+) {
+  const ownershipDocument = parentDocument || document;
+  const owner = ownerLabel(ownershipDocument, actor, memberIndex);
+  const canCorrect = actor.roleCode === 'GOD' &&
+    document.status === DOCUMENT_STATUS.CLOSED &&
+    !document.metadata?.correctionDraftId;
+  const technicalWhen = document.closedAt || document.updatedAt || document.createdAt;
+  const fallbackLabel = fallbackKind === 'ORPHAN_DELIVERY'
+    ? 'Entrega huérfana'
+    : fallbackKind === 'LEGACY_SUPPLY'
+      ? 'Surtido legacy'
+      : 'Entrega física';
+
+  return `
+    <div class="closed-document-row v82-operational-row v87-supply-delivery-row" data-v82-document-id="${escapeHtml(document.id)}">
+      <div class="history-doc-title">
+        <div class="history-doc-icon">↳</div>
+        <div class="v82-document-copy">
+          <strong title="ID técnico: ${escapeHtml(document.id)}">${escapeHtml(fallbackLabel)} · ${escapeHtml(formatOperationalDate(technicalWhen))}</strong>
+          <small>${escapeHtml(humanStatus(document.status))}${deliveredTotal === null || deliveredTotal === undefined ? '' : ` · Entregado: ${formatSummaryQuantity(deliveredTotal)}`}</small>
+          <span class="v82-owner-line">${escapeHtml(owner)}</span>
+        </div>
+      </div>
+
+      <div class="document-export-actions">
+        <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="csv" type="button">CSV</button>
+        <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="xlsx" type="button">Excel</button>
+        <button class="primary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="print" type="button">Imprimir / PDF</button>
+        ${canCorrect ? `
+          <button
+            class="danger"
+            data-action="correct-document"
+            data-id="${escapeHtml(document.id)}"
+            data-type="${escapeHtml(DOCUMENT_TYPES.SUPPLY)}"
+            type="button"
+            title="Crea reversos y un nuevo borrador; no reescribe el original"
+          >Corregir</button>
+        ` : ''}
+        ${document.metadata?.correctionDraftId
+          ? '<span class="badge status-warning">Con corrección</span>'
+          : ''}
+      </div>
+    </div>
+  `;
 }
 
 function renderSupplyDeliveryRow(
@@ -555,7 +689,7 @@ function ensureSupplyHistoryActionPortal() {
 
 function openSupplyHistoryActionPortal(trigger) {
   const portal = ensureSupplyHistoryActionPortal();
-  const row = trigger.closest('.closed-document-row');
+  const row = trigger.closest('[data-v871-supply-history-parent], .closed-document-row');
   if (!row) return;
 
   closeSupplyHistoryActionPortal();
