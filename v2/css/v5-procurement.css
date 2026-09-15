@@ -1,0 +1,283 @@
+.v5-procurement-manual {
+  grid-column: 1 / -1;
+  border: 1px solid var(--border);
+  overflow: visible;
+}
+
+.v5-procurement-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.v5-procurement-head h3,
+.v5-extra-panel h4 {
+  margin: 3px 0 6px;
+}
+
+.v5-procurement-head p,
+.v5-extra-panel p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.v5-eyebrow {
+  font-weight: 900;
+  color: var(--accent);
+  letter-spacing: .05em;
+}
+
+.v5-procurement-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.v5-procurement-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, .8fr);
+  gap: 16px;
+}
+
+.v5-manual-product-panel,
+.v5-extra-panel {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--surface-soft, rgba(255,255,255,.55));
+}
+
+.v5-extra-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.v5-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.v5-field > span {
+  font-size: .82rem;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.v5-field input,
+.v5-field select {
+  width: 100%;
+}
+
+.v5-procurement-results {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.v5-procurement-result {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--surface, #fff);
+  color: inherit;
+  border-radius: 12px;
+  padding: 11px 12px;
+}
+
+.v5-procurement-result span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.v5-procurement-result small {
+  color: var(--muted);
+}
+
+.v5-selected-product {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-top: 13px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(52, 120, 246, .08);
+  border: 1px solid rgba(52, 120, 246, .2);
+}
+
+.v5-selected-product > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.v5-selected-product small {
+  color: var(--muted);
+}
+
+.v5-decision-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+  margin: 12px 0;
+}
+
+.v5-decision-metrics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.v5-decision-metrics small {
+  color: var(--muted);
+}
+
+.v5-vigia-suggestion {
+  background: rgba(52, 120, 246, .09);
+  border-color: rgba(52, 120, 246, .3) !important;
+}
+
+.v5-manual-fields {
+  display: grid;
+  grid-template-columns: .7fr .8fr;
+  gap: 10px;
+}
+
+.v5-field-wide {
+  grid-column: 1 / -1;
+}
+
+.v5-add-manual,
+.v5-add-extra {
+  margin-top: 12px;
+  width: 100%;
+}
+
+.v5-manual-note,
+.v5-extra-safety {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(52, 120, 246, .06);
+}
+
+.v5-extra-safety {
+  background: rgba(245, 166, 35, .08);
+  color: var(--muted);
+}
+
+.v5-extra-safety strong {
+  color: inherit;
+}
+
+.v5-extra-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.v5-empty-selection {
+  margin-top: 12px;
+  min-height: 125px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.v5-empty-selection strong {
+  color: inherit;
+}
+
+.v5-active-summary {
+  margin-top: 14px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  color: var(--muted);
+}
+
+.v5-extra-card {
+  border-color: rgba(245, 166, 35, .35) !important;
+  background: linear-gradient(180deg, rgba(245,166,35,.055), transparent);
+}
+
+.v5-extra-chip {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 6px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  background: rgba(245,166,35,.15);
+  color: #9a6100;
+}
+
+.v5-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 86px;
+  z-index: 99999;
+  max-width: min(420px, calc(100vw - 36px));
+  background: #162032;
+  color: #fff;
+  border-radius: 12px;
+  padding: 12px 15px;
+  box-shadow: 0 16px 45px rgba(0,0,0,.25);
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .v5-procurement-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .v5-procurement-head {
+    flex-direction: column;
+  }
+
+  .v5-procurement-badges {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 620px) {
+  .v5-procurement-manual {
+    padding: 13px;
+  }
+
+  .v5-decision-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .v5-manual-fields,
+  .v5-extra-row {
+    grid-template-columns: 1fr;
+  }
+
+  .v5-field-wide {
+    grid-column: auto;
+  }
+}

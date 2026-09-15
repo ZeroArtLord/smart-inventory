@@ -1,0 +1,80 @@
+/* V6 catalog category browsing.
+ * Additive UI only: never mutates products, categories or stock.
+ */
+
+.v6-catalog-category-filter {
+  flex: 0 1 300px;
+  min-width: 230px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.v6-catalog-category-filter > span {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.v6-catalog-category-filter select {
+  min-width: 0;
+  min-height: 42px;
+  padding: 7px 34px 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.v6-catalog-category-empty {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: #f9fbfe;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.v6-catalog-category-empty[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  .catalog-toolbar-v2 {
+    flex-wrap: wrap;
+  }
+
+  .catalog-search-v2 {
+    flex: 1 1 100%;
+  }
+
+  .v6-catalog-category-filter {
+    flex: 1 1 min(100%, 320px);
+    min-width: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .v6-catalog-category-filter {
+    flex: 1 1 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .v6-catalog-category-filter select {
+    width: 100%;
+    min-height: 46px;
+    font-size: 16px;
+  }
+
+  .catalog-toolbar-v2 > .badge {
+    margin-left: auto;
+  }
+}
