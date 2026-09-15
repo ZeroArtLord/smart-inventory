@@ -71,6 +71,197 @@
   background: #991b1b;
 }
 
+/* VIGÍA V8.7.1 · Historial externo jerárquico de Surtidos.
+   Solo cambia presentación: los documentos hijos siguen siendo los reales. */
+.v871-history-parent {
+  display: block;
+  padding: 14px 16px;
+  overflow: visible;
+}
+
+.v871-history-parent-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+}
+
+.v871-history-parent-main .history-doc-title {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.v871-history-parent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.v871-history-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid #e4e7ec;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475467;
+  font-size: .7rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.v871-history-parent-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.v871-history-more {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  background: #fff;
+  color: #344054;
+  font-size: 1.25rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.v871-history-more:hover,
+.v871-history-more[aria-expanded="true"] {
+  border-color: #98a2b3;
+  background: #f2f4f7;
+}
+
+.v871-history-control {
+  min-height: 36px;
+  padding: 7px 11px;
+  white-space: nowrap;
+}
+
+.v871-history-control[aria-expanded="true"] {
+  border-color: #9b8afb;
+  background: #f4f3ff;
+  color: #5925dc;
+}
+
+.v871-history-summary {
+  margin: 12px 0 2px 48px;
+  padding: 11px 12px;
+  border: 1px solid #eaecf0;
+  border-radius: 12px;
+  background: #f9fafb;
+}
+
+.v871-history-summary[hidden],
+.v871-history-deliveries[hidden],
+.v871-history-action-portal[hidden] {
+  display: none !important;
+}
+
+.v871-history-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 8px 12px;
+  color: #475467;
+  font-size: .75rem;
+}
+
+.v871-history-deliveries {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0 48px;
+  padding: 10px;
+  border: 1px solid #eaecf0;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.v871-history-delivery {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #e4e7ec;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.v871-history-delivery .history-doc-title {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.v871-history-action-staging {
+  display: none !important;
+}
+
+.v871-history-action-portal {
+  position: fixed;
+  z-index: 2147483;
+  max-width: calc(100vw - 24px);
+  padding: 10px;
+  border: 1px solid #d0d5dd;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 20px 44px rgba(16, 24, 40, .24);
+}
+
+.v871-history-action-title {
+  padding: 3px 5px 9px;
+  color: #667085;
+  font-size: .7rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.v871-history-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.v871-history-action-grid > button {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  margin: 0;
+  white-space: normal;
+}
+
+.v871-history-action-grid > .v5-saint-separator,
+.v871-history-action-grid > .badge {
+  grid-column: 1 / -1;
+}
+
+.v871-history-action-grid > .v5-saint-separator {
+  display: block;
+  margin: 3px 0 0;
+  padding-top: 7px;
+  border-top: 1px solid #eaecf0;
+  color: #667085;
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+
 @media (max-width: 760px) {
   .v82-operational-row.v82-god-foreign {
     box-shadow: inset 2px 0 0 #7c4dff;
@@ -78,5 +269,37 @@
 
   .v82-owner-line {
     font-size: .68rem;
+  }
+
+  .v871-history-parent {
+    padding: 12px;
+  }
+
+  .v871-history-parent-main {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .v871-history-parent-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .v871-history-parent-actions .v871-history-control {
+    flex: 1 1 auto;
+  }
+
+  .v871-history-summary,
+  .v871-history-deliveries {
+    margin-left: 0;
+  }
+
+  .v871-history-delivery {
+    align-items: flex-start;
+  }
+
+  .v871-history-action-grid {
+    grid-template-columns: 1fr;
   }
 }
