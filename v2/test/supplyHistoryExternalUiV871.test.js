@@ -90,6 +90,12 @@ test('V8.7.1 usa un portal global vertical fixed que nunca queda bajo otras tarj
   assert.match(css, /\.v871-history-action-grid[\s\S]*grid-template-columns:\s*1fr/);
 });
 
+test('V8.7.1 cierra el portal al hacer scroll o resize como el boceto v5 aprobado', () => {
+  assert.match(ui, /window\.addEventListener\('resize', closeSupplyHistoryActionPortal\)/);
+  assert.match(ui, /window\.addEventListener\('scroll', closeSupplyHistoryActionPortal, true\)/);
+  assert.doesNotMatch(ui, /const reposition = \(\) =>/);
+});
+
 test('V8.7.1 mantiene entregas colapsadas y layout responsive del boceto', () => {
   assert.match(ui, /v871-history-deliveries/);
   assert.match(css, /\.v871-history-parent/);
