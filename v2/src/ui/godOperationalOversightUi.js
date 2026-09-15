@@ -32,6 +32,28 @@ if (appRoot) {
   // control ajeno en el DOM, un WAREHOUSE no puede administrar un ENTRY/SUPPLY
   // que no le pertenece. GOD conserva el bypass deliberado.
   appRoot.addEventListener('click', event => {
+    const summaryToggle = event.target.closest('[data-v871-summary-toggle]');
+    if (summaryToggle) {
+      event.preventDefault();
+      toggleSupplyHistoryPanel(summaryToggle);
+      return;
+    }
+
+    const deliveriesToggle = event.target.closest('[data-v871-deliveries-toggle]');
+    if (deliveriesToggle) {
+      event.preventDefault();
+      toggleSupplyHistoryPanel(deliveriesToggle);
+      return;
+    }
+
+    const supplyActionsTrigger = event.target.closest('[data-v871-supply-actions-trigger]');
+    if (supplyActionsTrigger) {
+      event.preventDefault();
+      event.stopPropagation();
+      openSupplyHistoryActionPortal(supplyActionsTrigger);
+      return;
+    }
+
     const godOpen = event.target.closest('[data-v82-open-document]');
     if (godOpen) {
       if (!currentActor) return;
@@ -174,6 +196,7 @@ async function enhanceOperationalWorkspace() {
       return;
     }
 
+    closeSupplyHistoryActionPortal();
     renderDrafts(draftList, drafts, type, currentActor, memberIndex);
     renderHistory(historyList, history, type, currentActor, memberIndex);
     decorateHeadings(type, currentActor, drafts.length, history.length);
@@ -322,52 +345,80 @@ function renderSupplyHistory(container, groups, actor, memberIndex) {
           String(parent.ownerId || '') !== actor.ownerId;
         const operationalDate = formatOperationalDay(group.operationalDate);
         const summary = group.summary || {};
+        const safeParentId = domSafeId(parent.id);
+        const summaryId = `v871-summary-${safeParentId}`;
+        const deliveriesId = `v871-deliveries-${safeParentId}`;
 
         return `
           <article
-            class="closed-document-row v82-operational-row v87-supply-history-parent ${godForeign ? 'v82-god-foreign' : ''}"
-            data-v87-supply-history-parent="1"
+            class="closed-document-row v82-operational-row v871-history-parent ${godForeign ? 'v82-god-foreign' : ''}"
+            data-v871-supply-history-parent="1"
             data-v82-document-id="${escapeHtml(parent.id)}"
           >
-            <div class="history-doc-title">
-              <div class="history-doc-icon">↑</div>
-              <div class="v82-document-copy">
-                <strong title="ID técnico: ${escapeHtml(parent.id)}">Surtido · ${escapeHtml(operationalDate)}</strong>
-                <small>Fecha operativa: ${escapeHtml(operationalDate)}</small>
-                <span class="v82-owner-line">${godForeign ? '👑 ' : ''}${escapeHtml(owner)}</span>
+            <div class="v871-history-parent-main">
+              <div class="history-doc-title">
+                <div class="history-doc-icon">↑</div>
+                <div class="v82-document-copy">
+                  <strong title="ID técnico: ${escapeHtml(parent.id)}">Surtido · ${escapeHtml(operationalDate)}</strong>
+                  <span class="v82-owner-line">${godForeign ? '👑 ' : ''}${escapeHtml(owner)}</span>
+                  <div class="v871-history-parent-meta">
+                    <span class="v871-history-chip">${formatSummaryQuantity(summary.deliveredTotal)} uds</span>
+                    <span class="v871-history-chip">${Number(summary.deliveryCount || 0)} entrega(s)</span>
+                    <span class="v871-history-chip">${escapeHtml(humanStatus(summary.status))}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="v871-history-parent-actions">
+                <button
+                  class="v871-history-more"
+                  data-v871-supply-actions-trigger="parent"
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                  title="Más opciones"
+                >⋯</button>
+                <button
+                  class="secondary v871-history-control"
+                  data-v871-summary-toggle="1"
+                  aria-controls="${summaryId}"
+                  aria-expanded="false"
+                  type="button"
+                >Resumen</button>
+                <button
+                  class="secondary v871-history-control"
+                  data-v871-deliveries-toggle="1"
+                  aria-controls="${deliveriesId}"
+                  aria-expanded="false"
+                  type="button"
+                >Ver entregas (${group.summary.deliveryCount})</button>
               </div>
             </div>
 
-            <div class="v87-history-parent-actions">
-              <details data-v87-history-summary>
-                <summary>Resumen</summary>
-                <div class="v87-history-summary-grid">
-                  <span><b>Planificado:</b> ${formatSummaryQuantity(summary.plannedTotal)}</span>
-                  <span><b>Entregado:</b> ${formatSummaryQuantity(summary.deliveredTotal)}</span>
-                  <span><b>Pendiente:</b> ${formatSummaryQuantity(summary.pendingTotal)}</span>
-                  <span><b>Cancelado:</b> ${formatSummaryQuantity(summary.cancelledTotal)}</span>
-                  <span><b>Estado:</b> ${escapeHtml(humanStatus(summary.status))}</span>
-                </div>
-              </details>
+            <div id="${summaryId}" class="v871-history-summary" hidden>
+              <div class="v871-history-summary-grid">
+                <span><b>Planificado:</b> ${formatSummaryQuantity(summary.plannedTotal)}</span>
+                <span><b>Entregado:</b> ${formatSummaryQuantity(summary.deliveredTotal)}</span>
+                <span><b>Pendiente:</b> ${formatSummaryQuantity(summary.pendingTotal)}</span>
+                <span><b>Cancelado:</b> ${formatSummaryQuantity(summary.cancelledTotal)}</span>
+                <span><b>Estado:</b> ${escapeHtml(humanStatus(summary.status))}</span>
+              </div>
+            </div>
 
-              <details data-v87-history-toggle>
-                <summary>Ver entregas (${group.summary.deliveryCount})</summary>
-                <div data-v87-delivery-list>
-                  ${group.deliveries.length
-                    ? group.deliveries.map(delivery =>
-                        renderSupplyDeliveryRow(
-                          delivery.document,
-                          actor,
-                          memberIndex,
-                          {
-                            parentDocument: parent,
-                            deliveredTotal: delivery.deliveredTotal
-                          }
-                        )
-                      ).join('')
-                    : '<div class="empty compact-empty">No hay entregas físicas cerradas.</div>'}
-                </div>
-              </details>
+            <div id="${deliveriesId}" class="v871-history-deliveries" hidden>
+              ${group.deliveries.length
+                ? group.deliveries.map(delivery =>
+                    renderSupplyDeliveryRow(
+                      delivery.document,
+                      actor,
+                      memberIndex,
+                      {
+                        parentDocument: parent,
+                        deliveredTotal: delivery.deliveredTotal
+                      }
+                    )
+                  ).join('')
+                : '<div class="empty compact-empty">No hay entregas físicas cerradas.</div>'}
             </div>
           </article>
         `;
@@ -398,19 +449,32 @@ function renderSupplyDeliveryRow(
     : fallbackKind === 'LEGACY_SUPPLY'
       ? 'Surtido legacy'
       : 'Entrega física';
+  const displayWhen = parentDocument
+    ? formatOperationalTime(technicalWhen)
+    : formatOperationalDate(technicalWhen);
 
   return `
-    <div class="closed-document-row v82-operational-row v87-supply-delivery-row ${godForeign ? 'v82-god-foreign' : ''}" data-v82-document-id="${escapeHtml(document.id)}">
+    <div class="closed-document-row v82-operational-row v871-history-delivery ${godForeign ? 'v82-god-foreign' : ''}" data-v82-document-id="${escapeHtml(document.id)}">
       <div class="history-doc-title">
         <div class="history-doc-icon">↳</div>
         <div class="v82-document-copy">
-          <strong title="ID técnico: ${escapeHtml(document.id)}">${escapeHtml(fallbackLabel)} · ${escapeHtml(formatOperationalDate(technicalWhen))}</strong>
+          <strong title="ID técnico: ${escapeHtml(document.id)}">${escapeHtml(fallbackLabel)} · ${escapeHtml(displayWhen)}</strong>
           <small>${escapeHtml(humanStatus(document.status))}${deliveredTotal === null || deliveredTotal === undefined ? '' : ` · Entregado: ${formatSummaryQuantity(deliveredTotal)}`}</small>
           <span class="v82-owner-line">${godForeign ? '👑 ' : ''}${escapeHtml(owner)}</span>
         </div>
       </div>
 
-      <div class="document-export-actions">
+      <button
+        class="v871-history-more"
+        data-v871-supply-actions-trigger="delivery"
+        data-v871-delivery-actions-trigger="1"
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        title="Acciones de esta entrega"
+      >⋯</button>
+
+      <div class="document-export-actions v871-history-action-staging" aria-hidden="true">
         <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="csv" type="button">CSV</button>
         <button class="secondary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="xlsx" type="button">Excel</button>
         <button class="primary" data-action="export-document" data-id="${escapeHtml(document.id)}" data-format="print" type="button">Imprimir / PDF</button>
@@ -430,6 +494,167 @@ function renderSupplyDeliveryRow(
       </div>
     </div>
   `;
+}
+
+function toggleSupplyHistoryPanel(trigger) {
+  const targetId = String(trigger.getAttribute('aria-controls') || '').trim();
+  if (!targetId) return;
+
+  const target = document.getElementById(targetId);
+  if (!target) return;
+
+  const willOpen = target.hidden;
+  target.hidden = !willOpen;
+  trigger.setAttribute('aria-expanded', String(willOpen));
+}
+
+function ensureSupplyHistoryActionPortal() {
+  let portal = document.querySelector('.v871-history-action-portal');
+  if (portal) return portal;
+
+  portal = document.createElement('div');
+  portal.className = 'v871-history-action-portal';
+  portal.hidden = true;
+  portal.setAttribute('role', 'menu');
+  portal.addEventListener('click', handleSupplyHistoryPortalClick);
+  document.body.appendChild(portal);
+
+  document.addEventListener('pointerdown', event => {
+    if (portal.hidden) return;
+    if (portal.contains(event.target)) return;
+    if (event.target.closest('[data-v871-supply-actions-trigger]')) return;
+    closeSupplyHistoryActionPortal();
+  }, true);
+
+  window.addEventListener('resize', closeSupplyHistoryActionPortal);
+  window.addEventListener('scroll', closeSupplyHistoryActionPortal, true);
+  return portal;
+}
+
+function openSupplyHistoryActionPortal(trigger) {
+  const portal = ensureSupplyHistoryActionPortal();
+  const row = trigger.closest('.closed-document-row');
+  if (!row) return;
+
+  closeSupplyHistoryActionPortal();
+  portal.dataset.sourceDocumentId = String(row.dataset.v82DocumentId || '');
+
+  if (trigger.dataset.v871DeliveryActionsTrigger === '1') {
+    const staging = row.querySelector('.v871-history-action-staging');
+    if (!staging) return;
+
+    portal.innerHTML = `
+      <div class="v871-history-action-title">Acciones de la entrega</div>
+      <div class="v871-history-action-grid">${staging.innerHTML}</div>
+    `;
+  } else {
+    const parent = trigger.closest('[data-v871-supply-history-parent]');
+    const summary = parent?.querySelector('[data-v871-summary-toggle]');
+    const deliveries = parent?.querySelector('[data-v871-deliveries-toggle]');
+    if (!parent || !summary || !deliveries) return;
+
+    portal.innerHTML = `
+      <div class="v871-history-action-title">Surtido</div>
+      <div class="v871-history-action-grid">
+        <button class="secondary" data-v871-portal-toggle="summary" type="button">Resumen</button>
+        <button class="secondary" data-v871-portal-toggle="deliveries" type="button">${escapeHtml(deliveries.textContent || 'Ver entregas')}</button>
+      </div>
+    `;
+  }
+
+  portal.hidden = false;
+  trigger.setAttribute('aria-expanded', 'true');
+  portal._v871Trigger = trigger;
+  requestAnimationFrame(() => positionSupplyHistoryActionPortal(portal, trigger));
+}
+
+function positionSupplyHistoryActionPortal(portal, trigger) {
+  if (!portal || !trigger || portal.hidden) return;
+
+  const triggerRect = trigger.getBoundingClientRect();
+  const margin = 12;
+  const width = Math.min(330, Math.max(220, window.innerWidth - margin * 2));
+  const measuredHeight = Math.max(portal.offsetHeight, 80);
+  const left = Math.min(
+    Math.max(margin, triggerRect.right - width),
+    Math.max(margin, window.innerWidth - width - margin)
+  );
+  const roomBelow = window.innerHeight - triggerRect.bottom - margin;
+  const top = roomBelow >= measuredHeight
+    ? triggerRect.bottom + 8
+    : Math.max(margin, triggerRect.top - measuredHeight - 8);
+
+  portal.style.width = `${width}px`;
+  portal.style.left = `${Math.round(left)}px`;
+  portal.style.top = `${Math.round(top)}px`;
+}
+
+function handleSupplyHistoryPortalClick(event) {
+  const portal = event.currentTarget;
+  const button = event.target.closest('button');
+  if (!button) return;
+
+  const portalToggle = button.dataset.v871PortalToggle;
+  if (portalToggle) {
+    event.preventDefault();
+    const parentId = String(portal.dataset.sourceDocumentId || '');
+    const parent = appRoot?.querySelector(
+      `[data-v871-supply-history-parent][data-v82-document-id="${cssEscape(parentId)}"]`
+    );
+    const selector = portalToggle === 'summary'
+      ? '[data-v871-summary-toggle]'
+      : '[data-v871-deliveries-toggle]';
+    const trigger = parent?.querySelector(selector);
+    if (trigger) toggleSupplyHistoryPanel(trigger);
+    closeSupplyHistoryActionPortal();
+    return;
+  }
+
+  if (button.dataset.action === 'export-document' || button.dataset.action === 'correct-document') {
+    event.preventDefault();
+    forwardOperationalActionToApp(button);
+    closeSupplyHistoryActionPortal();
+    return;
+  }
+
+  // Las acciones SAINT y 80mm son atendidas por sus módulos mediante
+  // delegación global en document. El portal conserva sus data-* originales.
+  if (button.matches('[data-v5-saint-action], [data-supply-thermal-print]')) {
+    setTimeout(closeSupplyHistoryActionPortal, 0);
+  }
+}
+
+function forwardOperationalActionToApp(sourceButton) {
+  if (!appRoot || !sourceButton) return;
+
+  const bridge = document.createElement('button');
+  bridge.type = 'button';
+  bridge.hidden = true;
+
+  ['action', 'id', 'format', 'type'].forEach(key => {
+    const value = sourceButton.dataset[key];
+    if (value !== undefined) bridge.dataset[key] = value;
+  });
+
+  appRoot.appendChild(bridge);
+  try {
+    bridge.click();
+  } finally {
+    bridge.remove();
+  }
+}
+
+function closeSupplyHistoryActionPortal() {
+  const portal = document.querySelector('.v871-history-action-portal');
+  if (!portal || portal.hidden) return;
+
+  if (portal._v871Trigger) {
+    portal._v871Trigger.setAttribute('aria-expanded', 'false');
+    portal._v871Trigger = null;
+  }
+  portal.hidden = true;
+  portal.innerHTML = '';
+  delete portal.dataset.sourceDocumentId;
 }
 
 function renderFlatHistoryRow(document, type, actor, memberIndex) {
@@ -600,6 +825,16 @@ function formatSummaryQuantity(value) {
   }).format(number));
 }
 
+function formatOperationalTime(value) {
+  if (!value) return 'Sin hora';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Sin hora';
+
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${hour}:${minute}`;
+}
+
 function formatOperationalDate(value) {
   if (!value) return 'Sin fecha';
   const date = new Date(value);
@@ -612,6 +847,15 @@ function formatOperationalDate(value) {
   const minute = String(date.getMinutes()).padStart(2, '0');
 
   return `${day}/${month}/${year} · ${hour}:${minute}`;
+}
+
+function domSafeId(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '-');
+}
+
+function cssEscape(value) {
+  if (globalThis.CSS?.escape) return globalThis.CSS.escape(String(value || ''));
+  return String(value || '').replace(/["\\]/g, '\\$&');
 }
 
 function showToast(message, tone = 'info') {
