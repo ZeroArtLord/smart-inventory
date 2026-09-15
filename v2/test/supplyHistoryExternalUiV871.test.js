@@ -7,13 +7,26 @@ const [ui, css] = await Promise.all([
   fs.readFile(new URL('../css/v8-god-oversight.css', import.meta.url), 'utf8')
 ]);
 
-test('V8.7.1 limita el rediseño al historial jerárquico de Surtidos', () => {
+test('V8.7.1 limita el rediseño exclusivamente al Historial del equipo GOD de Surtidos', () => {
   assert.match(ui, /renderSupplyHistory/);
+  assert.match(ui, /actor\.roleCode !== 'GOD'/);
+  assert.match(ui, /renderSupplyHistoryV87\(container, groups, actor, memberIndex\)/);
   assert.match(ui, /data-v871-supply-history-parent/);
   assert.match(ui, /data-v871-supply-actions-trigger/);
   assert.match(ui, /data-v871-summary-toggle/);
   assert.match(ui, /data-v871-deliveries-toggle/);
   assert.match(ui, /Ver entregas \(\$\{group\.summary\.deliveryCount\}\)/);
+});
+
+test('V8.7.1 el padre visual GOD no se anuncia como documento fisico cerrado', () => {
+  assert.match(
+    ui,
+    /class="v82-operational-row v871-history-parent \$\{godForeign \? 'v82-god-foreign' : ''\}"/
+  );
+  assert.match(
+    ui,
+    /trigger\.closest\('\[data-v871-supply-history-parent\], \.closed-document-row'\)/
+  );
 });
 
 test('V8.7.1 replica el encabezado y metadatos visibles del boceto v5 corregido', () => {
@@ -35,7 +48,7 @@ test('V8.7.1 muestra Resumen como cuatro cajas del boceto', () => {
   assert.match(css, /\.v871-history-summary-grid[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
 });
 
-test('V8.7.1 numera entregas dentro del padre y conserva cada ID físico real', () => {
+test('V8.7.1 numera entregas dentro del padre y conserva cada ID fisico real', () => {
   assert.match(ui, /deliveryNumber:\s*index \+ 1/);
   assert.match(ui, /Entrega \$\{Number\(deliveryNumber\)\} ·/);
   assert.match(ui, /data-v82-document-id="\$\{escapeHtml\(document\.id\)\}"/);
