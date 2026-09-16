@@ -8,17 +8,21 @@ import {
   getCurrentSession,
   listWorkspaceMembers
 } from '../admin/adminClient.js';
-import { buildSupplyThermalPayload } from '../printing/supplyThermalPayload.js';
+import {
+  buildSupplyThermalPayload,
+  buildConsolidatedSupplyThermalPayload
+} from '../printing/supplyThermalPayload.js';
 import { printThermalSupplyDocument } from '../printing/thermalPrinterClient.js';
 
 const app = document.getElementById('app');
 const printing = new Set();
+const LIVE_SUPPLY_DELIVERY = 'LIVE_SUPPLY_DELIVERY';
 let timer = null;
 
 if (app) {
   const observer = new MutationObserver(scheduleEnhance);
   observer.observe(app, { childList: true, subtree: true });
-  document.addEventListener('click', handleClick);
+  document.addEventListener('click', handleClick, true);
   scheduleEnhance();
 }
 
@@ -66,11 +70,27 @@ function resolveDocumentId(row) {
 }
 
 async function handleClick(event) {
+  const parentAction = event.target.closest('[data-v871-parent-action="thermal"]');
+  if (parentAction) {
+    const portal = parentAction.closest('.v871-history-action-portal');
+    const parentId = String(portal?.dataset?.sourceDocumentId || '').trim();
+    if (!parentId) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeHistoryPortal();
+    await printConsolidatedParentSupply(parentId);
+    return;
+  }
+
   const button = event.target.closest('[data-supply-thermal-print]');
   if (!button) return;
 
   event.preventDefault();
+  await printIndividualSupply(button);
+}
 
+async function printIndividualSupply(button) {
   const documentId = String(button.dataset.documentId || '').trim();
   if (!documentId || printing.has(documentId)) return;
 
@@ -119,6 +139,67 @@ async function handleClick(event) {
     button.disabled = false;
     button.textContent = previous;
   }
+}
+
+async function printConsolidatedParentSupply(parentId) {
+  const printKey = `parent:${parentId}`;
+  if (printing.has(printKey)) return;
+  printing.add(printKey);
+
+  try {
+    const [parentDocument, documents, products, categories, session] = await Promise.all([
+      get(STORES.DOCUMENTS, parentId),
+      getAll(STORES.DOCUMENTS),
+      getAll(STORES.PRODUCTS),
+      getAll(STORES.CATEGORIES),
+      safeSession()
+    ]);
+
+    if (!parentDocument || parentDocument.type !== DOCUMENT_TYPES.SUPPLY) {
+      throw new Error('No se encontró el Surtido padre en este dispositivo');
+    }
+
+    const deliveryDocuments = (Array.isArray(documents) ? documents : [])
+      .filter(document =>
+        document.type === DOCUMENT_TYPES.SUPPLY &&
+        document.status === DOCUMENT_STATUS.CLOSED &&
+        String(document?.metadata?.kind || '').trim().toUpperCase() === LIVE_SUPPLY_DELIVERY &&
+        String(document?.metadata?.parentCartId || '').trim() === parentId
+      )
+      .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+
+    if (!deliveryDocuments.length) {
+      throw new Error('Este Surtido no tiene entregas físicas cerradas para imprimir');
+    }
+
+    const deliveryLines = await Promise.all(
+      deliveryDocuments.map(delivery => listDocumentLines(delivery.id))
+    );
+    const lines = deliveryLines.flat();
+    const ownerLabel = await resolveOwnerLabel(parentDocument, session);
+    const supply = buildConsolidatedSupplyThermalPayload({
+      parentDocument,
+      deliveryDocuments,
+      lines,
+      products,
+      categories,
+      ownerLabel
+    });
+
+    const result = await printThermalSupplyDocument(supply);
+    toast(
+      `${result.itemCount} producto(s) consolidado(s) · ${deliveryDocuments.length} entrega(s) · 1 copia · ${result.printer.name}`
+    );
+  } catch (error) {
+    console.error(error);
+    toast(error?.message || String(error), true);
+  } finally {
+    printing.delete(printKey);
+  }
+}
+
+function closeHistoryPortal() {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 }
 
 function isSupplyView() {
