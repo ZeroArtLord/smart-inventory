@@ -79,6 +79,13 @@ test('V8.7.1 acciones del padre nunca fingen que el acumulador es una entrega fi
   assert.match(ui, /findSupplyHistoryDeliveryAction/);
 });
 
+test('V8.7.1 80mm del padre usa una accion consolidada y no obliga a elegir Entrega N', () => {
+  assert.match(ui, /data-supply-thermal-parent-print/);
+  assert.match(ui, /parentAction === 'thermal'/);
+  assert.match(ui, /querySelector\('\[data-supply-thermal-parent-print\]'\)/);
+  assert.match(ui, /activateSupplyHistoryAction\(aggregateThermal\)/);
+});
+
 test('V8.7.1 usa un portal global vertical fixed que nunca queda bajo otras tarjetas', () => {
   assert.match(ui, /ensureSupplyHistoryActionPortal/);
   assert.match(ui, /document\.body\.appendChild\(portal\)/);
