@@ -1,0 +1,208 @@
+/* V6 procurement final layout hardening.
+ * This file intentionally loads after mobile-launch-hardening.css so the
+ * approved procurement cards, sticky review bar and 80mm print surface win
+ * over generic shell rules without modifying other VIGÍA workflows.
+ */
+
+.v6p-workspace {
+  padding-bottom: 104px;
+}
+
+.v6p-tabs {
+  top: 72px;
+}
+
+.v6p-sticky {
+  left: calc(var(--sidebar-width) + ((100vw - var(--sidebar-width)) / 2));
+  width: min(1500px, calc(100vw - var(--sidebar-width) - 40px));
+}
+
+.v6p-product,
+.v6p-list-card,
+.v6p-extra-form,
+.v6p-extra-pending,
+.v6p-modal {
+  min-width: 0;
+}
+
+.v6p-product-main,
+.v6p-suggest,
+.v6p-quantity,
+.v6p-method,
+.v6p-row-actions,
+.v6p-list-line > * {
+  min-width: 0;
+}
+
+.v6p-product-main strong,
+.v6p-product-main small,
+.v6p-product-main em,
+.v6p-list-line strong,
+.v6p-list-line small,
+.v6p-ticket-row strong,
+.v6p-ticket-row span {
+  overflow-wrap: anywhere;
+}
+
+.v6p-ticket-row > b {
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 1080px) {
+  .v6p-sticky {
+    width: calc(100vw - var(--sidebar-width) - 28px);
+  }
+}
+
+@media (max-width: 760px) {
+  .v6p-workspace {
+    padding-bottom: calc(170px + env(safe-area-inset-bottom));
+  }
+
+  .v6p-tabs {
+    top: calc(64px + env(safe-area-inset-top));
+  }
+
+  .v6p-sticky {
+    left: 50%;
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    width: calc(100vw - 18px);
+    max-height: calc(100vh - 150px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow: auto;
+  }
+
+  .v6p-product,
+  .v6p-list-card,
+  .v6p-extra-form,
+  .v6p-extra-pending {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .v6p-product {
+    overflow: hidden;
+  }
+
+  .v6p-quantity > div {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .v6p-quantity input {
+    flex: 1 1 74px;
+    min-width: 64px;
+  }
+
+  .v6p-quantity select {
+    flex: 1 1 96px;
+    min-width: 88px;
+  }
+
+  .v6p-modal {
+    max-height: calc(100dvh - 20px);
+  }
+
+  .v6p-ticket-preview {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 430px) {
+  .v6p-sticky {
+    bottom: calc(70px + env(safe-area-inset-bottom));
+    width: calc(100vw - 12px);
+  }
+
+  .v6p-ticket-preview {
+    padding: 8px;
+  }
+
+  .v6p-ticket {
+    width: min(80mm, 100%);
+  }
+}
+
+@page {
+  size: 80mm auto;
+  margin: 3mm;
+}
+
+@media print {
+  html,
+  body {
+    width: 80mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  #v6pPrintModal,
+  #v6pPrintModal * {
+    visibility: visible !important;
+  }
+
+  #v6pPrintModal {
+    display: block !important;
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 80mm !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  #v6pPrintModal .v6p-modal,
+  #v6pPrintModal .v6p-print-modal {
+    display: block !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  #v6pPrintModal .v6p-modal-head,
+  #v6pPrintModal .v6p-print-toolbar {
+    display: none !important;
+  }
+
+  #v6pPrintModal .v6p-modal-body {
+    padding: 0 !important;
+  }
+
+  #v6pPrintModal .v6p-ticket-preview {
+    display: block !important;
+    width: 80mm !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+  }
+
+  #v6pPrintModal .v6p-ticket {
+    display: block !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    margin: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  #v6pPrintModal .v6p-ticket:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+}

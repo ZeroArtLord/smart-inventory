@@ -3,10 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f5f7fb">
-  <title>Smart Inventory V2</title>
+  <meta name="theme-color" content="#2f6fed">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="VIGÍA">
+  <meta name="format-detection" content="telephone=no">
+  <title>VIGÍA - Inventory Intelligence</title>
   <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="./icons/vigia-icon.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/vigia-apple-touch-icon.png">
   <link rel="stylesheet" href="./css/app.css">
+  <link rel="stylesheet" href="./css/v5-procurement.css">
+  <link rel="stylesheet" href="./css/v6-procurement.css">
+  <link rel="stylesheet" href="./css/v5-saint-report.css">
+  <link rel="stylesheet" href="./css/v5-reconciliation.css">
+  <link rel="stylesheet" href="./css/v5-live-supply.css">
+  <link rel="stylesheet" href="./css/v5-saint-bridge.css">
+  <link rel="stylesheet" href="./css/v5-quick-stock.css">
+  <link rel="stylesheet" href="./css/mobile-launch-hardening.css">
+  <link rel="stylesheet" href="./css/v6-procurement-hardening.css">
+  <link rel="stylesheet" href="./css/v6-thermal-printer.css">
+  <link rel="stylesheet" href="./css/v6-catalog-category-filter.css">
+  <link rel="stylesheet" href="./css/v7-supply-areas.css">
+  <link rel="stylesheet" href="./css/v8-6-quick-supply-area.css">
+  <link rel="stylesheet" href="./css/v8-reports.css">
+  <link rel="stylesheet" href="./css/v8-god-oversight.css">
 </head>
 <body>
   <div class="si-layout">
@@ -102,6 +124,24 @@
 
   <script src="./vendor/xlsx.full.min.js"></script>
   <script type="module" src="./src/ui/app.js"></script>
+  <script type="module" src="./src/ui/godOperationalOversightUi.js"></script>
+  <script type="module" src="./src/ui/supplyThermalPrintUi.js"></script>
   <script type="module" src="./src/ui/vigiaIntelligenceUi.js"></script>
+  <script type="module" src="./src/ui/countWorkflowUi.js"></script>
+  <script type="module" src="./src/ui/saintBridgeUi.js"></script>
+  <script type="module" src="./src/ui/countReconciliationUi.js"></script>
+  <script type="module" src="./src/ui/countReconciliationBulkUi.js"></script>
+  <script type="module" src="./src/ui/liveSupplyUi.js"></script>
+  <script type="module" src="./src/ui/supplyAreaUi.js"></script>
+  <script type="module" src="./src/ui/quickSupplyAreaUi.js"></script>
+  <script type="module" src="./src/ui/areaWorkspaceUi.js"></script>
+  <script type="module" src="./src/ui/reportBuilderV8Ui.js"></script>
+  <script type="module" src="./src/ui/quickStockCorrectionUi.js"></script>
+  <script type="module" src="./src/ui/quickStockCorrectionRefreshUi.js"></script>
+  <script type="module" src="./src/ui/procurementWorkspaceV6Ui.js"></script>
+  <script type="module" src="./src/ui/thermalPrinterSettingsUi.js"></script>
+  <script type="module" src="./src/ui/thermalDirectPrintUi.js"></script>
+  <script type="module" src="./src/ui/catalogCategoryFilterUi.js"></script>
+  <script type="module" src="./src/ui/saintSupplyReportUi.js"></script>
 </body>
 </html>

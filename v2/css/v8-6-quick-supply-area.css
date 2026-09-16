@@ -1,0 +1,116 @@
+.v86-quick-area-panel {
+  margin: 14px 0 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-soft, var(--surface));
+}
+
+.v86-quick-area-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.v86-quick-area-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.v86-quick-area-head strong {
+  font-size: 0.92rem;
+}
+
+.v86-quick-area-head small {
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.v86-quick-area-head [data-quick-area-state] {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.v86-quick-area-head [data-quick-area-state].selected {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.v86-quick-area-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 8px;
+}
+
+.v86-quick-area-button {
+  min-height: 44px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.v86-quick-area-button:hover {
+  border-color: var(--accent);
+}
+
+.v86-quick-area-button:active {
+  transform: scale(0.98);
+}
+
+.v86-quick-area-button.selected,
+.v86-quick-area-button[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
+}
+
+.v86-quick-area-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .v86-quick-area-panel {
+    margin: 12px 0 14px;
+    padding: 12px;
+  }
+
+  .v86-quick-area-head {
+    display: grid;
+  }
+
+  .v86-quick-area-head [data-quick-area-state] {
+    justify-self: start;
+  }
+
+  .v86-quick-area-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .v86-quick-area-button {
+    min-height: 48px;
+    padding: 10px;
+  }
+}
+
+@media (max-width: 390px) {
+  .v86-quick-area-grid {
+    grid-template-columns: 1fr;
+  }
+}
