@@ -4,6 +4,9 @@ const OWNERSHIP_GUARDED_ENTITIES = new Set([
   'documentLine',
   'movement'
 ]);
+const LIVE_SUPPLY_CART_KIND = 'LIVE_SUPPLY_CART';
+const LIVE_SUPPLY_DELIVERY_KIND = 'LIVE_SUPPLY_DELIVERY';
+const LIVE_DELIVERY_OWNER_PREFIX = 'live-delivery:';
 
 export function operationalActorOwnerId(auth = {}) {
   if (String(auth.authMode || '').toLowerCase() === 'firebase') {
@@ -36,6 +39,21 @@ export async function assertOperationalEventOwnership(client, auth, event) {
   if (event.entityType === 'document' && event.operation === 'CREATE') {
     const type = normalizeType(event.payload?.type);
     if (!TEAM_OPERATIONAL_TYPES.has(type)) return;
+
+    if (isLiveSupplyDelivery(event.payload)) {
+      const parentCartId = liveSupplyDeliveryParentId(event.payload);
+      if (!parentCartId) {
+        throw forbidden('La entrega física de Surtido Vivo no tiene una identidad válida.');
+      }
+
+      await assertLiveSupplyParentOwnership(
+        client,
+        auth.workspaceId,
+        actorOwnerId,
+        parentCartId
+      );
+      return;
+    }
 
     const requestedOwnerId = String(event.payload?.ownerId || '').trim();
     if (!requestedOwnerId || requestedOwnerId !== actorOwnerId) {
@@ -121,6 +139,60 @@ export async function assertOperationalDocumentOwnership(
   }
 
   return document;
+}
+
+async function assertLiveSupplyParentOwnership(
+  client,
+  workspaceId,
+  actorOwnerId,
+  parentCartId
+) {
+  const result = await client.query(
+    `SELECT type, owner_id, metadata
+     FROM documents
+     WHERE workspace_id = $1
+       AND id = $2
+     LIMIT 1`,
+    [workspaceId, parentCartId]
+  );
+
+  if (result.rowCount !== 1) {
+    throw forbidden('No se encontró el Surtido Vivo padre de esta entrega.');
+  }
+
+  const parent = result.rows[0];
+  const parentType = normalizeType(parent.type);
+  const parentKind = normalizeType(parent.metadata?.kind);
+  const parentOwnerId = String(parent.owner_id || '').trim();
+
+  if (
+    parentType !== 'SUPPLY' ||
+    parentKind !== LIVE_SUPPLY_CART_KIND ||
+    !parentOwnerId ||
+    parentOwnerId !== actorOwnerId
+  ) {
+    throw forbidden('La entrega física pertenece a un Surtido Vivo de otro usuario.');
+  }
+}
+
+function isLiveSupplyDelivery(document) {
+  return (
+    normalizeType(document?.type) === 'SUPPLY' &&
+    normalizeType(document?.metadata?.kind) === LIVE_SUPPLY_DELIVERY_KIND
+  );
+}
+
+function liveSupplyDeliveryParentId(document) {
+  if (!isLiveSupplyDelivery(document)) return '';
+
+  const parentCartId = String(document?.metadata?.parentCartId || '').trim();
+  if (!parentCartId) return '';
+
+  const ownerId = String(document?.ownerId ?? document?.owner_id ?? '').trim();
+  const expectedOwnerId = `${LIVE_DELIVERY_OWNER_PREFIX}${parentCartId}`;
+  if (ownerId !== expectedOwnerId) return '';
+
+  return parentCartId;
 }
 
 function resolveDocumentId(event) {
