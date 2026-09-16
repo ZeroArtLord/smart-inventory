@@ -66,7 +66,7 @@ export async function assertOperationalEventOwnership(client, auth, event) {
   if (!documentId) return;
 
   const result = await client.query(
-    `SELECT type, owner_id
+    `SELECT type, owner_id, metadata
      FROM documents
      WHERE workspace_id = $1
        AND id = $2
@@ -78,14 +78,12 @@ export async function assertOperationalEventOwnership(client, auth, event) {
   // decidirá si el evento es válido. No inventamos propiedad desde el payload.
   if (result.rowCount !== 1) return;
 
-  const document = result.rows[0];
-  const type = normalizeType(document.type);
-  if (!TEAM_OPERATIONAL_TYPES.has(type)) return;
-
-  const ownerId = String(document.owner_id || '').trim();
-  if (!ownerId || ownerId !== actorOwnerId) {
-    throw forbidden('Este documento operativo pertenece a otro usuario.');
-  }
+  await assertCanonicalOperationalDocumentOwner(
+    client,
+    auth.workspaceId,
+    actorOwnerId,
+    result.rows[0]
+  );
 }
 
 export async function assertOperationalDocumentOwnership(
@@ -100,7 +98,7 @@ export async function assertOperationalDocumentOwnership(
   }
 
   const result = await client.query(
-    `SELECT type, owner_id
+    `SELECT type, owner_id, metadata
      FROM documents
      WHERE workspace_id = $1
        AND id = $2
@@ -131,14 +129,44 @@ export async function assertOperationalDocumentOwnership(
     throw forbidden('No se pudo resolver el propietario operativo del usuario.');
   }
 
-  if (TEAM_OPERATIONAL_TYPES.has(type)) {
-    const ownerId = String(document.owner_id || '').trim();
-    if (!ownerId || ownerId !== actorOwnerId) {
-      throw forbidden('Este documento operativo pertenece a otro usuario.');
-    }
-  }
+  await assertCanonicalOperationalDocumentOwner(
+    client,
+    auth.workspaceId,
+    actorOwnerId,
+    document
+  );
 
   return document;
+}
+
+async function assertCanonicalOperationalDocumentOwner(
+  client,
+  workspaceId,
+  actorOwnerId,
+  document
+) {
+  const type = normalizeType(document?.type);
+  if (!TEAM_OPERATIONAL_TYPES.has(type)) return;
+
+  if (isLiveSupplyDelivery(document)) {
+    const parentCartId = liveSupplyDeliveryParentId(document);
+    if (!parentCartId) {
+      throw forbidden('La entrega física de Surtido Vivo no tiene una identidad válida.');
+    }
+
+    await assertLiveSupplyParentOwnership(
+      client,
+      workspaceId,
+      actorOwnerId,
+      parentCartId
+    );
+    return;
+  }
+
+  const ownerId = String(document?.owner_id ?? document?.ownerId ?? '').trim();
+  if (!ownerId || ownerId !== actorOwnerId) {
+    throw forbidden('Este documento operativo pertenece a otro usuario.');
+  }
 }
 
 async function assertLiveSupplyParentOwnership(
@@ -163,7 +191,7 @@ async function assertLiveSupplyParentOwnership(
   const parent = result.rows[0];
   const parentType = normalizeType(parent.type);
   const parentKind = normalizeType(parent.metadata?.kind);
-  const parentOwnerId = String(parent.owner_id || '').trim();
+  const parentOwnerId = String(parent.owner_id ?? parent.ownerId ?? '').trim();
 
   if (
     parentType !== 'SUPPLY' ||
