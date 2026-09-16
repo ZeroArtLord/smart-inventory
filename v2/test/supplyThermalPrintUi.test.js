@@ -45,20 +45,27 @@ test('botón térmico obtiene id tanto de filas GOD como del historial legacy', 
   assert.ok(ui.includes('data-supply-thermal-print'));
 });
 
-test('80mm del Surtido padre consolida todas sus entregas físicas en un único trabajo', async () => {
+test('80mm del Surtido padre intercepta el portal y consolida todas sus entregas físicas en un único trabajo', async () => {
   const ui = await read('../src/ui/supplyThermalPrintUi.js');
 
   for (const text of [
-    'data-supply-thermal-parent-print',
+    'data-v871-parent-action="thermal"',
+    'v871-history-action-portal',
+    'sourceDocumentId',
     'buildConsolidatedSupplyThermalPayload',
     'LIVE_SUPPLY_DELIVERY',
     'parentCartId',
     'deliveryDocuments',
     'listDocumentLines',
-    'printThermalSupplyDocument'
+    'printThermalSupplyDocument',
+    'stopImmediatePropagation'
   ]) {
     assert.ok(ui.includes(text), `Falta contrato térmico consolidado: ${text}`);
   }
 
+  assert.ok(
+    ui.includes("document.addEventListener('click', handleClick, true)"),
+    'La acción térmica del padre debe interceptarse en captura antes del selector por entrega'
+  );
   assert.ok(ui.includes('Promise.all'));
 });
