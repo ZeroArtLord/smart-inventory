@@ -15,7 +15,11 @@ function fakeClient(documents = {}) {
       if (!document) return { rowCount: 0, rows: [] };
       return {
         rowCount: 1,
-        rows: [{ type: document.type, owner_id: document.ownerId }]
+        rows: [{
+          type: document.type,
+          owner_id: document.ownerId,
+          metadata: document.metadata || {}
+        }]
       };
     }
   };
@@ -60,6 +64,30 @@ test('WAREHOUSE puede crear su propio ENTRY pero no crear uno a nombre de otro u
     operation: 'CREATE',
     payload: { id: 'entry-foreign', type: 'ENTRY', ownerId: 'firebase-b' }
   }), error => error?.code === 'OPERATIONAL_DOCUMENT_FORBIDDEN');
+});
+
+test('WAREHOUSE puede crear LIVE_SUPPLY_DELIVERY de su propio carrito aunque use owner sintético', async () => {
+  const client = fakeClient({
+    'supply-a': {
+      type: 'SUPPLY',
+      ownerId: 'firebase-a',
+      metadata: { kind: 'LIVE_SUPPLY_CART' }
+    }
+  });
+
+  await assert.doesNotReject(() => assertOperationalEventOwnership(client, firebaseWarehouse, {
+    entityType: 'document',
+    operation: 'CREATE',
+    payload: {
+      id: 'delivery-a',
+      type: 'SUPPLY',
+      ownerId: 'live-delivery:supply-a',
+      metadata: {
+        kind: 'LIVE_SUPPLY_DELIVERY',
+        parentCartId: 'supply-a'
+      }
+    }
+  }));
 });
 
 test('WAREHOUSE no puede actualizar líneas ni movimientos de ENTRY/SUPPLY ajenos', async () => {
