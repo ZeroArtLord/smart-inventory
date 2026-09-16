@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const {
-  buildSupplyThermalPayload
+  buildSupplyThermalPayload,
+  buildConsolidatedSupplyThermalPayload
 } = await import('../src/printing/supplyThermalPayload.js');
 
 const document = {
@@ -161,4 +162,84 @@ test('payload no convierte cantidad por presentaciones ni expone lotes FEFO', ()
   assert.equal(payload.items[0].quantityText, '48 UND');
   assert.equal('lotNumber' in payload.items[0], false);
   assert.equal('allocations' in payload.items[0], false);
+});
+
+test('payload consolidado agrupa por producto y conserva todos los decimales significativos', () => {
+  const parentDocument = {
+    id: 'sur_live_parent_1',
+    type: 'SUPPLY',
+    status: 'DRAFT',
+    ownerId: 'warehouse-a',
+    createdAt: '2026-09-16T12:00:00.000Z',
+    metadata: {
+      kind: 'LIVE_SUPPLY_CART',
+      operationalDate: '2026-09-16'
+    }
+  };
+  const deliveryDocuments = [
+    {
+      id: 'delivery-1',
+      type: 'SUPPLY',
+      status: 'CLOSED',
+      closedAt: '2026-09-16T13:00:00.000Z',
+      metadata: {
+        kind: 'LIVE_SUPPLY_DELIVERY',
+        parentCartId: parentDocument.id
+      }
+    },
+    {
+      id: 'delivery-2',
+      type: 'SUPPLY',
+      status: 'CLOSED',
+      closedAt: '2026-09-16T14:00:00.000Z',
+      metadata: {
+        kind: 'LIVE_SUPPLY_DELIVERY',
+        parentCartId: parentDocument.id
+      }
+    }
+  ];
+
+  const payload = buildConsolidatedSupplyThermalPayload({
+    parentDocument,
+    deliveryDocuments,
+    lines: [
+      {
+        documentId: 'delivery-1',
+        productId: 'cola',
+        productName: 'COCA COLA ZERO 355ML',
+        quantity: 1.2345
+      },
+      {
+        documentId: 'delivery-2',
+        productId: 'cola',
+        productName: 'COCA COLA ZERO 355ML',
+        quantity: 2.00005
+      },
+      {
+        documentId: 'delivery-2',
+        productId: 'harina',
+        productName: 'HARINA',
+        quantity: 0.3333
+      }
+    ],
+    products,
+    categories,
+    ownerLabel: 'Depósito'
+  });
+
+  assert.equal(payload.id, parentDocument.id);
+  assert.equal(payload.ownerLabel, 'Depósito');
+  assert.equal(payload.items.length, 2);
+  assert.deepEqual(payload.items[0], {
+    name: 'COCA COLA ZERO 355ML',
+    quantityText: '3,23455 UND',
+    category: 'BEBIDAS',
+    note: ''
+  });
+  assert.deepEqual(payload.items[1], {
+    name: 'HARINA',
+    quantityText: '0,3333 KG',
+    category: 'VÍVERES',
+    note: ''
+  });
 });
