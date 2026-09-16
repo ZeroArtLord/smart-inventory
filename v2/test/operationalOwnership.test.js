@@ -90,6 +90,54 @@ test('WAREHOUSE puede crear LIVE_SUPPLY_DELIVERY de su propio carrito aunque use
   }));
 });
 
+test('WAREHOUSE no puede crear LIVE_SUPPLY_DELIVERY si el carrito padre pertenece a otro usuario', async () => {
+  const client = fakeClient({
+    'supply-b': {
+      type: 'SUPPLY',
+      ownerId: 'firebase-b',
+      metadata: { kind: 'LIVE_SUPPLY_CART' }
+    }
+  });
+
+  await assert.rejects(() => assertOperationalEventOwnership(client, firebaseWarehouse, {
+    entityType: 'document',
+    operation: 'CREATE',
+    payload: {
+      id: 'delivery-b',
+      type: 'SUPPLY',
+      ownerId: 'live-delivery:supply-b',
+      metadata: {
+        kind: 'LIVE_SUPPLY_DELIVERY',
+        parentCartId: 'supply-b'
+      }
+    }
+  }), error => error?.code === 'OPERATIONAL_DOCUMENT_FORBIDDEN');
+});
+
+test('WAREHOUSE no puede falsificar el owner sintético de LIVE_SUPPLY_DELIVERY', async () => {
+  const client = fakeClient({
+    'supply-a': {
+      type: 'SUPPLY',
+      ownerId: 'firebase-a',
+      metadata: { kind: 'LIVE_SUPPLY_CART' }
+    }
+  });
+
+  await assert.rejects(() => assertOperationalEventOwnership(client, firebaseWarehouse, {
+    entityType: 'document',
+    operation: 'CREATE',
+    payload: {
+      id: 'delivery-spoof',
+      type: 'SUPPLY',
+      ownerId: 'live-delivery:another-cart',
+      metadata: {
+        kind: 'LIVE_SUPPLY_DELIVERY',
+        parentCartId: 'supply-a'
+      }
+    }
+  }), error => error?.code === 'OPERATIONAL_DOCUMENT_FORBIDDEN');
+});
+
 test('WAREHOUSE no puede actualizar líneas ni movimientos de ENTRY/SUPPLY ajenos', async () => {
   const client = fakeClient({
     'entry-b': { type: 'ENTRY', ownerId: 'firebase-b' },
