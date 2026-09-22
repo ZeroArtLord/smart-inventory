@@ -1,5 +1,8 @@
 import { getCurrentSession } from '../admin/adminClient.js';
-import { listAreas } from '../areas/areaService.js';
+import {
+  listAreas,
+  findAreaByShortcut
+} from '../areas/areaService.js';
 import {
   createAreaDeliveryIntent,
   completeAreaDelivery,
@@ -53,6 +56,10 @@ if (appRoot) {
 
   appRoot.addEventListener('click', event => {
     handleAreaClick(event).catch(error => showAreaToast(error.message || String(error), 'danger'));
+  });
+
+  document.addEventListener('keydown', event => {
+    handleAreaShortcut(event);
   });
 
   // Interceptamos antes del listener V5-E solo cuando existen áreas activas.
@@ -232,12 +239,71 @@ function renderAllocationPanel(row) {
       `).join('')}
     </div>
 
+    ${renderShortcutHint()}
+
     <div class="v7-area-panel-foot">
       <span class="v7-area-status" data-area-status>Distribuye toda la cantidad antes de entregar.</span>
       <small data-area-save-status>Sin cambios pendientes</small>
       <small>Las áreas no crean movimientos extra.</small>
     </div>
   `;
+}
+
+function renderShortcutHint() {
+  const shortcuts = activeAreas
+    .filter(area => area.active !== false && area.shortcutKey)
+    .map(area =>
+      `<span><kbd>Alt+${escapeHtml(area.shortcutKey)}</kbd> ${escapeHtml(area.name)}</span>`
+    )
+    .join('');
+
+  return shortcuts
+    ? `<div class="v88-area-shortcut-hint"><strong>Atajos:</strong>${shortcuts}</div>`
+    : '';
+}
+
+function handleAreaShortcut(event) {
+  if (
+    !event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    event.repeat
+  ) {
+    return;
+  }
+
+  const area = findAreaByShortcut(activeAreas, event.key);
+  if (!area) return;
+
+  const target = event.target instanceof Element
+    ? event.target
+    : document.activeElement;
+  const row = target?.closest?.('.v5-live-row');
+  if (!row) return;
+
+  const panel = row.querySelector('.v7-area-panel');
+  if (!panel) return;
+
+  const quantity = deliveryQuantity(panel);
+  if (!(quantity > 0)) {
+    showAreaToast('Escribe primero la cantidad a entregar.', 'danger');
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  setAllocations(panel, [{
+    areaId: area.id,
+    quantity
+  }]);
+
+  panel.classList.add('open');
+  showAreaToast(
+    `Todo a ${area.name} · Alt+${area.shortcutKey}`,
+    'success'
+  );
 }
 
 async function handleAreaClick(event) {
