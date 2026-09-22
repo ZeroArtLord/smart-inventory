@@ -7,6 +7,14 @@ export function normalizeScannedCode(value) {
   return String(value ?? '').trim();
 }
 
+export function isLikelyBarcodeInput(value) {
+  const code = normalizeScannedCode(value);
+  if (code.length < 6 || code.length > 64) return false;
+  if (/\s/.test(code)) return false;
+  if (!/[0-9]/.test(code)) return false;
+  return /^[A-Za-z0-9._\-/]+$/.test(code);
+}
+
 export function resolveProductByBarcode(products, code) {
   const target = normalizeScannedCode(code);
   if (!target) return null;
