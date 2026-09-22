@@ -37,3 +37,16 @@ test('Catálogo y documentos aceptan barcode desconocido por Enter y abren asoci
   assert.match(app, /isLikelyBarcodeInput/);
   assert.match(app, /resolveOrAssociateBarcode/);
 });
+
+
+test('lector USB no puede convertir accidentalmente un barcode en cantidad de Conteo/Surtido', async () => {
+  const [scanner, app, count] = await Promise.all([
+    read('../src/scanner/barcodeScanner.js'),
+    read('../src/ui/app.js'),
+    read('../src/ui/countWorkflowUi.js')
+  ]);
+
+  assert.match(scanner, /isStrongBarcodeInput/);
+  assert.match(app, /operationQuantity[\s\S]*isStrongBarcodeInput/);
+  assert.match(count, /v5CountValue[\s\S]*isStrongBarcodeInput/);
+});
