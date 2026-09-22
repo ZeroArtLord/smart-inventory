@@ -108,15 +108,13 @@ export async function bootstrapFirebaseAccess({
   const execute = async ({
     forceRefresh = false
   } = {}) => {
-    const token = await getAuthToken({
-      required: true,
-      forceRefresh
-    });
-
-    let response;
-
     try {
-      response = await fetch(
+      const token = await getAuthToken({
+        required: true,
+        forceRefresh
+      });
+
+      const response = await fetch(
         buildApiUrl(
           config.apiBaseUrl,
           '/api/v1/auth/bootstrap'
@@ -130,19 +128,19 @@ export async function bootstrapFirebaseAccess({
           body: '{}'
         }
       );
+
+      const data = await readJson(response);
+
+      return {
+        response,
+        data
+      };
     } catch (error) {
       return {
         offlineFallback: true,
         networkError: error
       };
     }
-
-    const data = await readJson(response);
-
-    return {
-      response,
-      data
-    };
   };
 
   let result = await execute();
