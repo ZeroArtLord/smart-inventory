@@ -83,6 +83,7 @@ import {
 } from '../auth/firebaseClient.js';
 import {
   clearOfflineAccessSnapshot,
+  readOfflineAccessSnapshot,
   setOfflineLogoutLock,
   getOfflineLogoutLock,
   clearOfflineLogoutLock
@@ -5774,17 +5775,35 @@ async function revalidateOfflineAccessBeforeSync() {
     };
   }
 
+  const expectedUid =
+    state.authUser?.uid || null;
+  const requiredWorkspaceId =
+    state.session?.workspaceId || null;
+
+  try {
+    await readOfflineAccessSnapshot({
+      uid: expectedUid,
+      workspaceId:
+        requiredWorkspaceId
+    });
+  } catch (error) {
+    await clearOfflineAccessSnapshot();
+    lockAuthenticatedUi();
+    state.offlineAuthError = error;
+
+    return {
+      ok: false,
+      confirmedInvalid: true,
+      error
+    };
+  }
+
   if (!navigator.onLine) {
     return {
       ok: false,
       offline: true
     };
   }
-
-  const expectedUid =
-    state.authUser?.uid || null;
-  const requiredWorkspaceId =
-    state.session?.workspaceId || null;
 
   authTransitionInProgress = true;
 
