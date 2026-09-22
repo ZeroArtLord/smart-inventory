@@ -50,6 +50,8 @@ import {
   DOCUMENT_STATUS
 } from '../documents/documentTypes.js';
 import {
+  LIVE_SUPPLY_CART_KIND,
+  getLiveSupplyCartSummary,
   updateLiveSupplyPlannedQuantity,
   removeLiveSupplyLine
 } from '../documents/liveSupplyService.js';
@@ -246,11 +248,19 @@ function bindGlobalEvents() {
     if (window.innerWidth > 760) closeMobileSidebar();
   });
 
-  appRoot.addEventListener('click', handleClick);
+  appRoot.addEventListener('click', event => {
+    handleClick(event).catch(error =>
+      showToast(error.message || String(error))
+    );
+  });
   appRoot.addEventListener('submit', handleSubmit);
   appRoot.addEventListener('input', handleInput);
   appRoot.addEventListener('change', handleChange);
-  appRoot.addEventListener('keydown', handleKeydown);
+  appRoot.addEventListener('keydown', event => {
+    handleKeydown(event).catch(error =>
+      showToast(error.message || String(error))
+    );
+  });
 }
 
 async function openShellView(view) {
@@ -2934,6 +2944,17 @@ function renderCountProduct(product) {
 async function renderCartWorkspace(type) {
   const lines = await listDocumentLines(state.activeDocumentId);
   const documentRecord = await get(STORES.DOCUMENTS, state.activeDocumentId);
+  const liveSupplySummary =
+    type === DOCUMENT_TYPES.SUPPLY &&
+    documentRecord?.metadata?.kind === LIVE_SUPPLY_CART_KIND
+      ? await getLiveSupplyCartSummary(state.activeDocumentId).catch(() => null)
+      : null;
+  const deliveredByProduct = new Map(
+    (liveSupplySummary?.rows || []).map(row => [
+      row.productId,
+      Number(row.delivered || 0)
+    ])
+  );
   const linkedReplenishment = documentRecord?.metadata?.replenishmentId
     ? await get(
         STORES.REPLENISHMENTS,
@@ -3126,37 +3147,46 @@ async function renderCartWorkspace(type) {
 
           <div class="document-line-list">
             ${lines.length
-              ? lines.map(line => `
-                <div class="document-line-v2">
-                  <div class="document-line-icon">▣</div>
-                  <div>
-                    <strong>${escapeHtml(line.productName)}</strong>
-                    <small>
-                      ${line.lotNumber ? 'Lote ' + escapeHtml(line.lotNumber) : 'Sin lote'}
-                      ${line.expiresAt ? ' · vence ' + formatShortDate(line.expiresAt) : ''}
-                    </small>
-                  </div>
-                  <span>${formatNumber(line.quantity)}</span>
-                  ${type === DOCUMENT_TYPES.SUPPLY ? `
-                    <div class="document-line-edit-actions">
-                      <button
-                        class="secondary"
-                        data-action="edit-draft-line"
-                        data-line-id="${escapeHtml(line.id)}"
-                        data-product-id="${escapeHtml(line.productId)}"
-                        type="button"
-                      >Editar</button>
-                      <button
-                        class="danger"
-                        data-action="remove-draft-line"
-                        data-line-id="${escapeHtml(line.id)}"
-                        data-product-id="${escapeHtml(line.productId)}"
-                        type="button"
-                      >Eliminar</button>
+              ? lines.map(line => {
+                  const lineDelivered = deliveredByProduct.get(line.productId) || 0;
+                  return `
+                    <div class="document-line-v2">
+                      <div class="document-line-icon">▣</div>
+                      <div>
+                        <strong>${escapeHtml(line.productName)}</strong>
+                        <small>
+                          ${line.lotNumber ? 'Lote ' + escapeHtml(line.lotNumber) : 'Sin lote'}
+                          ${line.expiresAt ? ' · vence ' + formatShortDate(line.expiresAt) : ''}
+                        </small>
+                      </div>
+                      <span>${formatNumber(line.quantity)}</span>
+                      ${type === DOCUMENT_TYPES.SUPPLY ? `
+                        <div class="document-line-edit-actions">
+                          <button
+                            class="secondary"
+                            data-action="edit-draft-line"
+                            data-line-id="${escapeHtml(line.id)}"
+                            data-product-id="${escapeHtml(line.productId)}"
+                            type="button"
+                          >Editar</button>
+                          ${lineDelivered <= 0 ? `
+                            <button
+                              class="danger"
+                              data-action="remove-draft-line"
+                              data-line-id="${escapeHtml(line.id)}"
+                              data-product-id="${escapeHtml(line.productId)}"
+                              type="button"
+                            >Eliminar</button>
+                          ` : `
+                            <span class="badge status-good" title="Las entregas cerradas son inmutables">
+                              ${formatNumber(lineDelivered)} entregado
+                            </span>
+                          `}
+                        </div>
+                      ` : ''}
                     </div>
-                  ` : ''}
-                </div>
-              `).join('')
+                  `;
+                }).join('')
               : '<div class="empty compact-empty">El documento está vacío.</div>'}
           </div>
         </article>
