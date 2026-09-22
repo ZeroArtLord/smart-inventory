@@ -5447,6 +5447,14 @@ async function refreshProducts() {
 
 async function refreshSaveStatus() {
   const pending = await getPendingSyncCount();
+
+  if (state.authAccessOffline) {
+    saveStatus.textContent = pending
+      ? `✓ Modo offline autorizado · ${pending} pendientes`
+      : '✓ Modo offline autorizado';
+    return;
+  }
+
   saveStatus.textContent = pending
     ? `✓ Local · ${pending} pendientes de servidor`
     : '✓ Guardado local';
