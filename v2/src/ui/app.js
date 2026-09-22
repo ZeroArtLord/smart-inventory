@@ -50,6 +50,12 @@ import {
   DOCUMENT_STATUS
 } from '../documents/documentTypes.js';
 import {
+  LIVE_SUPPLY_CART_KIND,
+  getLiveSupplyCartSummary,
+  updateLiveSupplyPlannedQuantity,
+  removeLiveSupplyLine
+} from '../documents/liveSupplyService.js';
+import {
   getReplenishmentSuggestion
 } from '../intelligence/replenishmentEngine.js';
 import {
@@ -131,6 +137,7 @@ const state = {
   importPreview: null,
   saintInitialLoadDraft: null,
   editingProductId: null,
+  editingDocumentLineId: null,
   reportDays: 30,
   reportRows: [],
   session: null,
@@ -241,11 +248,19 @@ function bindGlobalEvents() {
     if (window.innerWidth > 760) closeMobileSidebar();
   });
 
-  appRoot.addEventListener('click', handleClick);
+  appRoot.addEventListener('click', event => {
+    handleClick(event).catch(error =>
+      showToast(error.message || String(error))
+    );
+  });
   appRoot.addEventListener('submit', handleSubmit);
   appRoot.addEventListener('input', handleInput);
   appRoot.addEventListener('change', handleChange);
-  appRoot.addEventListener('keydown', handleKeydown);
+  appRoot.addEventListener('keydown', event => {
+    handleKeydown(event).catch(error =>
+      showToast(error.message || String(error))
+    );
+  });
 }
 
 async function openShellView(view) {
@@ -2929,13 +2944,28 @@ function renderCountProduct(product) {
 async function renderCartWorkspace(type) {
   const lines = await listDocumentLines(state.activeDocumentId);
   const documentRecord = await get(STORES.DOCUMENTS, state.activeDocumentId);
+  const liveSupplySummary =
+    type === DOCUMENT_TYPES.SUPPLY &&
+    documentRecord?.metadata?.kind === LIVE_SUPPLY_CART_KIND
+      ? await getLiveSupplyCartSummary(state.activeDocumentId).catch(() => null)
+      : null;
+  const deliveredByProduct = new Map(
+    (liveSupplySummary?.rows || []).map(row => [
+      row.productId,
+      Number(row.delivered || 0)
+    ])
+  );
   const linkedReplenishment = documentRecord?.metadata?.replenishmentId
     ? await get(
         STORES.REPLENISHMENTS,
         documentRecord.metadata.replenishmentId
       )
     : null;
-  const selectedProductId = linkedReplenishment?.productId ||
+  const editingLine = type === DOCUMENT_TYPES.SUPPLY && state.editingDocumentLineId
+    ? lines.find(line => line.id === state.editingDocumentLineId) || null
+    : null;
+  const selectedProductId = editingLine?.productId ||
+    linkedReplenishment?.productId ||
     state.selectedProductId;
   const selected = state.products.find(
     product => product.id === selectedProductId
@@ -3038,6 +3068,7 @@ async function renderCartWorkspace(type) {
               inputmode="decimal"
               autocomplete="off"
               placeholder="0"
+              value="${editingLine ? escapeHtml(String(editingLine.quantity)) : ''}"
             >
           </label>
 
@@ -3061,8 +3092,13 @@ async function renderCartWorkspace(type) {
           ` : ''}
 
           <button class="primary document-add-line" data-action="add-line" data-type="${type}" type="button">
-            ＋ Agregar al documento
+            ${editingLine ? 'Guardar cambio' : '＋ Agregar al documento'}
           </button>
+          ${editingLine ? `
+            <button class="secondary" data-action="cancel-line-edit" type="button">
+              Cancelar edición
+            </button>
+          ` : ''}
         ` : `
           <div class="document-empty-product">
             <div class="document-empty-icon">⌕</div>
@@ -3111,19 +3147,46 @@ async function renderCartWorkspace(type) {
 
           <div class="document-line-list">
             ${lines.length
-              ? lines.map(line => `
-                <div class="document-line-v2">
-                  <div class="document-line-icon">▣</div>
-                  <div>
-                    <strong>${escapeHtml(line.productName)}</strong>
-                    <small>
-                      ${line.lotNumber ? 'Lote ' + escapeHtml(line.lotNumber) : 'Sin lote'}
-                      ${line.expiresAt ? ' · vence ' + formatShortDate(line.expiresAt) : ''}
-                    </small>
-                  </div>
-                  <span>${formatNumber(line.quantity)}</span>
-                </div>
-              `).join('')
+              ? lines.map(line => {
+                  const lineDelivered = deliveredByProduct.get(line.productId) || 0;
+                  return `
+                    <div class="document-line-v2">
+                      <div class="document-line-icon">▣</div>
+                      <div>
+                        <strong>${escapeHtml(line.productName)}</strong>
+                        <small>
+                          ${line.lotNumber ? 'Lote ' + escapeHtml(line.lotNumber) : 'Sin lote'}
+                          ${line.expiresAt ? ' · vence ' + formatShortDate(line.expiresAt) : ''}
+                        </small>
+                      </div>
+                      <span>${formatNumber(line.quantity)}</span>
+                      ${type === DOCUMENT_TYPES.SUPPLY ? `
+                        <div class="document-line-edit-actions">
+                          <button
+                            class="secondary"
+                            data-action="edit-draft-line"
+                            data-line-id="${escapeHtml(line.id)}"
+                            data-product-id="${escapeHtml(line.productId)}"
+                            type="button"
+                          >Editar</button>
+                          ${lineDelivered <= 0 ? `
+                            <button
+                              class="danger"
+                              data-action="remove-draft-line"
+                              data-line-id="${escapeHtml(line.id)}"
+                              data-product-id="${escapeHtml(line.productId)}"
+                              type="button"
+                            >Eliminar</button>
+                          ` : `
+                            <span class="badge status-good" title="Las entregas cerradas son inmutables">
+                              ${formatNumber(lineDelivered)} entregado
+                            </span>
+                          `}
+                        </div>
+                      ` : ''}
+                    </div>
+                  `;
+                }).join('')
               : '<div class="empty compact-empty">El documento está vacío.</div>'}
           </div>
         </article>
@@ -3172,6 +3235,7 @@ async function handleClick(event) {
         state.activeDocumentId = button.dataset.id;
         state.activeDocumentType = button.dataset.type;
         state.selectedProductId = null;
+        state.editingDocumentLineId = null;
         return render();
       case 'cancel-document':
         return cancelDraft(button.dataset.id);
@@ -3183,6 +3247,14 @@ async function handleClick(event) {
         return render();
       case 'add-line':
         return addOperationLine(button.dataset.type);
+      case 'edit-draft-line':
+        return editDraftLine(button.dataset.lineId, button.dataset.productId);
+      case 'remove-draft-line':
+        return removeDraftLine(button.dataset.productId);
+      case 'cancel-line-edit':
+        state.editingDocumentLineId = null;
+        state.selectedProductId = null;
+        return render();
       case 'close-document':
         return finishDocument();
       case 'apply-catalog-import':
@@ -4087,6 +4159,7 @@ async function startDocument(type) {
   state.activeDocumentId = document.id;
   state.activeDocumentType = type;
   state.selectedProductId = null;
+  state.editingDocumentLineId = null;
   showToast('Borrador creado');
   scheduleSync();
   await render();
@@ -4153,12 +4226,18 @@ async function addOperationLine(type) {
     ? document.getElementById('lotNumber')?.value?.trim() || ''
     : '';
 
-  const existing = lines.find(line =>
+  const editingLine = type === DOCUMENT_TYPES.SUPPLY && state.editingDocumentLineId
+    ? lines.find(line => line.id === state.editingDocumentLineId) || null
+    : null;
+
+  const existing = editingLine || lines.find(line =>
     line.productId === productId &&
     (type !== DOCUMENT_TYPES.ENTRY || (line.lotNumber || '') === lotNumber)
   );
 
-  const accumulatedQuantity = Number(existing?.quantity || 0) + quantity;
+  const accumulatedQuantity = editingLine
+    ? quantity
+    : Number(existing?.quantity || 0) + quantity;
 
   if (
     linkedReplenishment &&
@@ -4185,10 +4264,48 @@ async function addOperationLine(type) {
     data.expiresAt = document.getElementById('expiresAt')?.value || null;
   }
 
-  await saveDocumentLine(data);
+  if (editingLine && type === DOCUMENT_TYPES.SUPPLY) {
+    await updateLiveSupplyPlannedQuantity(
+      state.activeDocumentId,
+      productId,
+      accumulatedQuantity,
+      { userId: currentOwnerId() }
+    );
+  } else {
+    await saveDocumentLine(data);
+  }
 
+  state.editingDocumentLineId = null;
   state.selectedProductId = null;
-  showToast('Línea guardada');
+  showToast(editingLine ? 'Cantidad actualizada' : 'Línea guardada');
+  scheduleSync();
+  await render();
+}
+
+async function editDraftLine(lineId, productId) {
+  if (!lineId || !productId) throw new Error('Línea de surtido no identificada');
+  state.editingDocumentLineId = lineId;
+  state.selectedProductId = productId;
+  await render();
+}
+
+async function removeDraftLine(productId) {
+  if (!productId) throw new Error('Producto no identificado');
+
+  const confirmed = confirm(
+    '¿Eliminar este producto del carrito? Solo se permite si todavía no tuvo una entrega física.'
+  );
+  if (!confirmed) return;
+
+  await removeLiveSupplyLine(
+    state.activeDocumentId,
+    productId,
+    { userId: currentOwnerId() }
+  );
+
+  state.editingDocumentLineId = null;
+  state.selectedProductId = null;
+  showToast('Producto eliminado del carrito');
   scheduleSync();
   await render();
 }
@@ -4269,6 +4386,7 @@ async function cancelDraft(documentId) {
     state.activeDocumentId = null;
     state.activeDocumentType = null;
     state.selectedProductId = null;
+    state.editingDocumentLineId = null;
   }
 
   showToast('Borrador cancelado');
@@ -4302,6 +4420,7 @@ async function finishDocument() {
   state.activeDocumentId = null;
   state.activeDocumentType = null;
   state.selectedProductId = null;
+  state.editingDocumentLineId = null;
 
   showToast(`Cerrado · ${result.movements?.length || 0} movimientos generados`);
   scheduleSync();

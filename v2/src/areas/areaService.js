@@ -36,12 +36,16 @@ export async function refreshAreas() {
   return areas.map(normalizeArea).sort(compareAreas);
 }
 
-export async function createArea({ name, sortOrder = 0 } = {}) {
+export async function createArea({ name, sortOrder = 0, shortcutKey = null } = {}) {
   requireOnlineWrite();
 
   const data = await apiRequest('/api/v1/areas', {
     method: 'POST',
-    body: { name, sortOrder }
+    body: {
+      name,
+      sortOrder,
+      shortcutKey: normalizeAreaShortcutKey(shortcutKey)
+    }
   });
 
   const area = normalizeArea(data.area);
@@ -52,11 +56,18 @@ export async function createArea({ name, sortOrder = 0 } = {}) {
 export async function updateArea(areaId, patch = {}) {
   requireOnlineWrite();
 
+  const nextPatch = {
+    ...patch,
+    ...(Object.prototype.hasOwnProperty.call(patch, 'shortcutKey')
+      ? { shortcutKey: normalizeAreaShortcutKey(patch.shortcutKey) }
+      : {})
+  };
+
   const data = await apiRequest(
     `/api/v1/areas/${encodeURIComponent(areaId)}`,
     {
       method: 'PATCH',
-      body: patch
+      body: nextPatch
     }
   );
 
@@ -83,6 +94,7 @@ function normalizeArea(area = {}) {
     sortOrder: Number.isFinite(Number(area.sortOrder))
       ? Number(area.sortOrder)
       : 0,
+    shortcutKey: normalizeAreaShortcutKey(area.shortcutKey),
     createdAt: area.createdAt || null,
     updatedAt: area.updatedAt || null
   };
@@ -91,4 +103,29 @@ function normalizeArea(area = {}) {
 function compareAreas(a, b) {
   return Number(a.sortOrder || 0) - Number(b.sortOrder || 0) ||
     String(a.name || '').localeCompare(String(b.name || ''), 'es');
+}
+
+export function normalizeAreaShortcutKey(value) {
+  const key = String(value ?? '').trim().toUpperCase();
+  if (!key) return null;
+  if (!/^[A-Z0-9]$/.test(key)) {
+    throw new Error('El atajo del área debe ser una sola letra o número');
+  }
+  return key;
+}
+
+export function findAreaByShortcut(areas, key) {
+  let shortcut;
+  try {
+    shortcut = normalizeAreaShortcutKey(key);
+  } catch (_) {
+    return null;
+  }
+
+  if (!shortcut) return null;
+
+  return (Array.isArray(areas) ? areas : []).find(area =>
+    area?.active !== false &&
+    normalizeAreaShortcutKey(area?.shortcutKey) === shortcut
+  ) || null;
 }
