@@ -136,6 +136,10 @@ export async function bootstrapFirebaseAccess({
         data
       };
     } catch (error) {
+      if (isDefinitiveAuthError(error)) {
+        throw error;
+      }
+
       return {
         offlineFallback: true,
         networkError: error
@@ -276,6 +280,19 @@ export async function selectFirebaseWorkspace(workspaceId) {
   );
 
   return result.config;
+}
+
+function isDefinitiveAuthError(error) {
+  return [
+    'AUTH_TOKEN_INVALID',
+    'AUTH_SESSION_MISSING',
+    'auth/user-disabled',
+    'auth/user-token-expired',
+    'auth/invalid-user-token',
+    'auth/user-not-found'
+  ].includes(
+    String(error?.code || '')
+  );
 }
 
 async function readJson(response) {
