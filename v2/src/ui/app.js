@@ -379,55 +379,236 @@ async function initializeApplicationAuth() {
     state.availableWorkspaces = [];
     state.workspaceReady = true;
     state.authAccessOffline = false;
+    state.offlineAuthError = null;
+    state.offlineVerifiedAt = null;
     updateAuthUi();
     updateNavigationUi();
     return 'authenticated';
   }
 
-  const user = await initializeFirebaseClient({
-    onUserChanged:
-      handleFirebaseAuthStateChanged
-  });
+  const logoutLock =
+    await getOfflineLogoutLock();
 
-  state.authUser = firebaseUserSummary(user);
-  authLifecycleReady = true;
-  updateAuthUi();
+  if (!navigator.onLine) {
+    if (logoutLock) {
+      state.offlineAuthError = new Error(
+        'La sesión fue cerrada en este dispositivo. Conéctate para iniciar sesión otra vez.'
+      );
+      return 'offline-locked';
+    }
 
-  if (!state.authUser) {
+    return initializeOfflineApplicationAuth({
+      workspaceId: config.workspaceId
+    });
+  }
+
+  try {
+    authTransitionInProgress = true;
+
+    const user = await initializeFirebaseClient({
+      onUserChanged:
+        handleFirebaseAuthStateChanged
+    });
+
+    authLifecycleReady = true;
+
+    if (logoutLock) {
+      if (user) {
+        await logoutFirebase()
+          .catch(() => {});
+      }
+
+      await clearOfflineAccessSnapshot();
+      await clearOfflineLogoutLock();
+
+      state.authUser = null;
+      state.availableWorkspaces = [];
+      state.workspaceReady = false;
+      state.authAccessOffline = false;
+      state.offlineAuthError = null;
+      updateAuthUi();
+      updateNavigationUi();
+      return 'signed-out';
+    }
+
+    state.authUser =
+      firebaseUserSummary(user);
+    updateAuthUi();
+
+    if (!state.authUser) {
+      state.availableWorkspaces = [];
+      state.workspaceReady = false;
+      state.authAccessOffline = false;
+      state.offlineAuthError = null;
+      updateNavigationUi();
+      return 'signed-out';
+    }
+
+    const access = await bootstrapFirebaseAccess({
+      uid: state.authUser.uid
+    });
+
+    applyFirebaseAccessState(access);
+
+    return access.selectedWorkspace
+      ? 'authenticated'
+      : 'workspace-required';
+  } catch (error) {
+    if (!canFallbackToOfflineAccess(error)) {
+      throw error;
+    }
+
+    return initializeOfflineApplicationAuth({
+      workspaceId: config.workspaceId,
+      cause: error
+    });
+  } finally {
+    authTransitionInProgress = false;
+  }
+}
+
+async function initializeOfflineApplicationAuth({
+  workspaceId = null,
+  cause = null
+} = {}) {
+  try {
+    const logoutLock =
+      await getOfflineLogoutLock();
+
+    if (logoutLock) {
+      const error = new Error(
+        'La sesión fue cerrada en este dispositivo. Conéctate para iniciar sesión otra vez.'
+      );
+      error.code = 'OFFLINE_AUTH_LOGGED_OUT';
+      throw error;
+    }
+
+    const access =
+      await getCachedFirebaseAccess({
+        workspaceId
+      });
+
+    state.authUser =
+      cachedAuthUserFromAccess(access);
+    state.availableWorkspaces =
+      access.workspaces || [];
+    state.workspaceReady =
+      Boolean(access.selectedWorkspace);
+    state.authAccessOffline = true;
+    state.offlineAuthError = cause || null;
+    state.offlineVerifiedAt =
+      access.verifiedAt ||
+      access.cachedAt ||
+      null;
+    state.session =
+      sessionFromCachedAccess(access);
+
+    updateAuthUi();
+    updateNavigationUi();
+
+    return access.selectedWorkspace
+      ? 'authenticated'
+      : 'offline-locked';
+  } catch (error) {
+    state.authUser = null;
+    state.session = null;
     state.availableWorkspaces = [];
     state.workspaceReady = false;
     state.authAccessOffline = false;
+    state.offlineAuthError = error;
+    state.offlineVerifiedAt = null;
+    updateAuthUi();
     updateNavigationUi();
-    return 'signed-out';
+    return 'offline-locked';
+  }
+}
+
+function cachedAuthUserFromAccess(access) {
+  const user = access?.user || {};
+  const uid =
+    user.externalAuthId ||
+    user.uid ||
+    user.id ||
+    null;
+
+  if (!uid) return null;
+
+  return {
+    uid,
+    email: user.email || null,
+    displayName:
+      user.displayName ||
+      user.email ||
+      'Usuario offline',
+    photoURL: user.photoURL || null,
+    cachedOffline: true
+  };
+}
+
+function applyFirebaseAccessState(access) {
+  state.availableWorkspaces =
+    access?.workspaces || [];
+  state.workspaceReady =
+    Boolean(access?.selectedWorkspace);
+  state.authAccessOffline =
+    Boolean(access?.offline);
+  state.offlineVerifiedAt =
+    access?.verifiedAt ||
+    access?.cachedAt ||
+    null;
+  state.offlineAuthError = null;
+
+  if (access?.selectedWorkspace) {
+    state.session =
+      sessionFromCachedAccess(
+        access,
+        {
+          cachedOffline:
+            Boolean(access.offline)
+        }
+      );
   }
 
-  const access = await bootstrapFirebaseAccess({
-    uid: state.authUser.uid
-  });
-
-  state.availableWorkspaces = access.workspaces || [];
-  state.workspaceReady = Boolean(access.selectedWorkspace);
-  state.authAccessOffline = Boolean(access.offline);
-
-  if (access.offline && access.selectedWorkspace) {
-    state.session = sessionFromCachedAccess(access);
-  }
-
+  updateAuthUi();
   updateNavigationUi();
+}
 
-  return access.selectedWorkspace
-    ? 'authenticated'
-    : 'workspace-required';
+function canFallbackToOfflineAccess(error) {
+  const code = String(error?.code || '');
+
+  return ![
+    'FIREBASE_PROJECT_MISMATCH',
+    'AUTH_SECURE_CONTEXT_REQUIRED',
+    'AUTH_TOKEN_INVALID',
+    'NO_ACTIVE_WORKSPACE',
+    'WORKSPACE_ACCESS_DENIED',
+    'auth/user-disabled',
+    'auth/user-token-expired',
+    'auth/invalid-user-token',
+    'auth/user-not-found'
+  ].includes(code);
 }
 
 async function startAuthenticatedApp() {
   await refreshProducts();
-  await syncAndRefresh({ renderAfter: false });
-  await refreshProducts();
 
-  if (navigator.onLine) {
-    await refreshSession({ silent: true });
-    state.authAccessOffline = false;
+  if (
+    !state.authAccessOffline &&
+    navigator.onLine
+  ) {
+    await syncAndRefresh({
+      renderAfter: false
+    });
+    await refreshProducts();
+
+    const liveSession =
+      await refreshSession({
+        silent: true
+      });
+
+    if (liveSession) {
+      state.authAccessOffline = false;
+    }
   }
 
   updateAuthUi();
@@ -455,6 +636,35 @@ function renderAuthGate() {
 
         <div class="product-meta">
           El acceso al inventario y a la sincronización se valida otra vez en el servidor.
+        </div>
+      </article>
+    </section>
+  `;
+}
+
+function renderOfflineAuthGate() {
+  const message =
+    state.offlineAuthError?.message ||
+    'No hay una autorización offline válida en este dispositivo.';
+
+  appRoot.innerHTML = `
+    <section class="auth-gate" data-offline-auth-gate>
+      <article class="card auth-card stack">
+        <div class="auth-mark">S2</div>
+        <div>
+          <h1>Sin conexión</h1>
+          <p class="product-meta">
+            ${escapeHtml(message)}
+          </p>
+        </div>
+
+        <div class="status-warning">
+          Conéctate una vez para validar tu cuenta y este almacén.
+          Después VIGÍA podrá abrir offline durante la vigencia segura del acceso guardado.
+        </div>
+
+        <div class="product-meta">
+          Por seguridad no se permite iniciar una cuenta nueva mientras el servidor o Internet no estén disponibles.
         </div>
       </article>
     </section>
