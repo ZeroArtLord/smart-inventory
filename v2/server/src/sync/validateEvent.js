@@ -97,6 +97,12 @@ export function validateSyncEvent(event) {
       }
       validateInitialLoad(payload);
       break;
+    case 'manualProcurementRequest':
+      if (operation !== 'UPDATE') {
+        throw new Error('La marca Comprar solo admite UPDATE');
+      }
+      validateManualProcurementRequest(payload);
+      break;
     default:
       throw new Error(`Entidad no soportada: ${entityType}`);
   }
@@ -386,6 +392,49 @@ function validateInitialLoad(payload) {
     finiteNonNegative(
       row.quantity ?? 0,
       'Existencia inicial'
+    );
+  }
+}
+
+function validateManualProcurementRequest(payload) {
+  requireText(
+    payload.productId || payload.id,
+    'productId de marca Comprar'
+  );
+
+  if (typeof payload.requested !== 'boolean') {
+    throw new Error(
+      'requested de marca Comprar debe ser boolean'
+    );
+  }
+
+  if (
+    payload.requested === true &&
+    payload.requestedAt
+  ) {
+    requireDate(
+      payload.requestedAt,
+      'requestedAt de marca Comprar'
+    );
+  }
+
+  if (
+    payload.requestedBy !== null &&
+    payload.requestedBy !== undefined &&
+    typeof payload.requestedBy !== 'string'
+  ) {
+    throw new Error(
+      'requestedBy de marca Comprar inválido'
+    );
+  }
+
+  if (
+    payload.source !== null &&
+    payload.source !== undefined &&
+    typeof payload.source !== 'string'
+  ) {
+    throw new Error(
+      'source de marca Comprar inválido'
     );
   }
 }
