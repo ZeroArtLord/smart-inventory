@@ -166,7 +166,9 @@ const state = {
   authUser: null,
   availableWorkspaces: [],
   workspaceReady: false,
-  authAccessOffline: false
+  authAccessOffline: false,
+  offlineAuthError: null,
+  offlineVerifiedAt: null
 };
 
 const devOwnerId = getLocalOwnerId();
@@ -197,6 +199,11 @@ async function init() {
     if (authState === 'workspace-required') {
       updateAuthUi();
       return renderWorkspaceGate();
+    }
+
+    if (authState === 'offline-locked') {
+      updateAuthUi();
+      return renderOfflineAuthGate();
     }
 
     await startAuthenticatedApp();
