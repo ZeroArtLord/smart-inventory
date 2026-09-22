@@ -3861,16 +3861,16 @@ async function handleKeydown(event) {
       return selectBarcodeMatch(exactBarcode);
     }
 
+    if (isLikelyBarcodeInput(raw)) {
+      event.preventDefault();
+      return associateUnknownBarcode(raw);
+    }
+
     if (state.searchResults.length) {
       event.preventDefault();
       state.selectedProductId = state.searchResults[0].id;
       state.searchResults = [];
       return render();
-    }
-
-    if (isLikelyBarcodeInput(raw)) {
-      event.preventDefault();
-      return associateUnknownBarcode(raw);
     }
   }
 }
