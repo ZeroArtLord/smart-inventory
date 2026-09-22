@@ -185,7 +185,11 @@ async function canonicalizeProtectedProductBridgeFields(
        saint_bridge_source,
        saint_bridge_source_product_id,
        saint_bridge_code,
-       saint_bridge_name
+       saint_bridge_name,
+       manual_procurement_requested,
+       manual_procurement_requested_at,
+       manual_procurement_requested_by,
+       manual_procurement_requested_source
      FROM products
      WHERE workspace_id = $1
        AND id = $2`,
@@ -204,6 +208,14 @@ async function canonicalizeProtectedProductBridgeFields(
     saintBridgeSourceProductId: row.saint_bridge_source_product_id || null,
     saintBridgeCode: row.saint_bridge_code || '',
     saintBridgeName: row.saint_bridge_name || '',
+    manualProcurementRequested:
+      row.manual_procurement_requested === true,
+    manualProcurementRequestedAt:
+      row.manual_procurement_requested_at || null,
+    manualProcurementRequestedBy:
+      row.manual_procurement_requested_by || null,
+    manualProcurementRequestedSource:
+      row.manual_procurement_requested_source || null,
     ...(row.saint_bridge_source === true ? { active: false } : {})
   };
 
