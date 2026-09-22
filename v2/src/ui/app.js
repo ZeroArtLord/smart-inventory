@@ -5631,7 +5631,40 @@ function scheduleSync(delay = 350) {
 }
 
 async function syncAndRefresh({ renderAfter = false } = {}) {
-  const result = await syncNow({
+  if (
+    state.authMode === 'firebase' &&
+    state.authAccessOffline
+  ) {
+    const revalidation =
+      await revalidateOfflineAccessBeforeSync();
+
+    if (!revalidation.ok) {
+      if (saveStatus) {
+        saveStatus.textContent =
+          revalidation.confirmedInvalid
+            ? 'Acceso bloqueado · requiere conexión'
+            : '✓ Guardado local · Modo offline autorizado';
+      }
+
+      if (
+        revalidation.confirmedInvalid &&
+        renderAfter
+      ) {
+        renderAuthGate();
+      }
+
+      return {
+        ok: false,
+        skipped:
+          revalidation.confirmedInvalid
+            ? 'access-revoked'
+            : 'offline-auth',
+        error: revalidation.error || null
+      };
+    }
+  }
+
+  let result = await syncNow({
     localUserId: currentOwnerId(),
     displayName:
       state.authUser?.displayName ||
@@ -5665,6 +5698,7 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
 
     if (recovery.confirmedInvalid) {
       lockAuthenticatedUi();
+      await clearOfflineAccessSnapshot();
       await logoutFirebase().catch(() => {});
       state.authUser = null;
       updateAuthUi();
@@ -5687,6 +5721,7 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
     state.authMode === 'firebase' &&
     result?.error?.code === 'WORKSPACE_ACCESS_DENIED'
   ) {
+    await clearOfflineAccessSnapshot();
     lockAuthenticatedUi();
 
     if (renderAfter) {
@@ -5698,7 +5733,10 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
   }
 
   if (result?.ok) {
-    if (state.authMode === 'firebase' && navigator.onLine) {
+    if (
+      state.authMode === 'firebase' &&
+      navigator.onLine
+    ) {
       const liveSession = await refreshSession({
         silent: true
       });
@@ -5711,15 +5749,150 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
     if (result.pulled > 0) {
       await refreshProducts();
 
-      const reconciled = await reconcileReplenishmentReceipts();
-      if (reconciled.length > 0) scheduleSync(100);
+      const reconciled =
+        await reconcileReplenishmentReceipts();
 
-      if (renderAfter && canAutoRefresh()) await render();
+      if (reconciled.length > 0) {
+        scheduleSync(100);
+      }
+
+      if (
+        renderAfter &&
+        canAutoRefresh()
+      ) {
+        await render();
+      }
     }
   }
 
   await refreshSaveStatus();
+  updateAuthUi();
+  updateNavigationUi();
   return result;
+}
+
+async function revalidateOfflineAccessBeforeSync() {
+  if (!state.authAccessOffline) {
+    return {
+      ok: true,
+      revalidated: false
+    };
+  }
+
+  if (!navigator.onLine) {
+    return {
+      ok: false,
+      offline: true
+    };
+  }
+
+  const expectedUid =
+    state.authUser?.uid || null;
+  const requiredWorkspaceId =
+    state.session?.workspaceId || null;
+
+  authTransitionInProgress = true;
+
+  try {
+    const user =
+      await initializeFirebaseClient({
+        onUserChanged:
+          handleFirebaseAuthStateChanged
+      });
+
+    authLifecycleReady = true;
+
+    const liveUser =
+      firebaseUserSummary(user);
+
+    if (!liveUser) {
+      const error = new Error(
+        'La sesión online ya no está disponible. Inicia sesión otra vez.'
+      );
+      error.code =
+        'AUTH_REVALIDATION_REQUIRED';
+      throw error;
+    }
+
+    if (
+      expectedUid &&
+      liveUser.uid !== expectedUid
+    ) {
+      const error = new Error(
+        'La cuenta online no coincide con la autorización offline guardada.'
+      );
+      error.code =
+        'AUTH_ACCOUNT_MISMATCH';
+      throw error;
+    }
+
+    const access =
+      await bootstrapFirebaseAccess({
+        uid: liveUser.uid,
+        requireWorkspaceId:
+          requiredWorkspaceId
+      });
+
+    if (access.offline) {
+      return {
+        ok: false,
+        offline: true
+      };
+    }
+
+    state.authUser = liveUser;
+    applyFirebaseAccessState(access);
+    state.authAccessOffline = false;
+    state.offlineVerifiedAt =
+      access.cachedAt || null;
+    state.offlineAuthError = null;
+
+    await clearOfflineLogoutLock();
+
+    return {
+      ok: true,
+      revalidated: true
+    };
+  } catch (error) {
+    if (isDefinitiveAccessRevocation(error)) {
+      await clearOfflineAccessSnapshot();
+      lockAuthenticatedUi();
+      state.offlineAuthError = error;
+
+      return {
+        ok: false,
+        confirmedInvalid: true,
+        error
+      };
+    }
+
+    state.authAccessOffline = true;
+    state.offlineAuthError = error;
+
+    return {
+      ok: false,
+      offline: true,
+      error
+    };
+  } finally {
+    authTransitionInProgress = false;
+  }
+}
+
+function isDefinitiveAccessRevocation(error) {
+  return [
+    'AUTH_TOKEN_INVALID',
+    'AUTH_REVALIDATION_REQUIRED',
+    'AUTH_ACCOUNT_MISMATCH',
+    'NO_ACTIVE_WORKSPACE',
+    'WORKSPACE_ACCESS_DENIED',
+    'auth/user-disabled',
+    'auth/user-token-expired',
+    'auth/invalid-user-token',
+    'auth/user-not-found'
+  ].includes(
+    String(error?.code || '')
+  );
 }
 
 async function recoverFirebaseSessionAfterTokenError() {
