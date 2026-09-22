@@ -15,7 +15,11 @@ function fakeClient(documents = {}) {
       if (!document) return { rowCount: 0, rows: [] };
       return {
         rowCount: 1,
-        rows: [{ type: document.type, owner_id: document.ownerId }]
+        rows: [{
+          type: document.type,
+          owner_id: document.ownerId,
+          metadata: document.metadata || {}
+        }]
       };
     }
   };
@@ -59,6 +63,78 @@ test('WAREHOUSE puede crear su propio ENTRY pero no crear uno a nombre de otro u
     entityType: 'document',
     operation: 'CREATE',
     payload: { id: 'entry-foreign', type: 'ENTRY', ownerId: 'firebase-b' }
+  }), error => error?.code === 'OPERATIONAL_DOCUMENT_FORBIDDEN');
+});
+
+test('WAREHOUSE puede crear LIVE_SUPPLY_DELIVERY de su propio carrito aunque use owner sintético', async () => {
+  const client = fakeClient({
+    'supply-a': {
+      type: 'SUPPLY',
+      ownerId: 'firebase-a',
+      metadata: { kind: 'LIVE_SUPPLY_CART' }
+    }
+  });
+
+  await assert.doesNotReject(() => assertOperationalEventOwnership(client, firebaseWarehouse, {
+    entityType: 'document',
+    operation: 'CREATE',
+    payload: {
+      id: 'delivery-a',
+      type: 'SUPPLY',
+      ownerId: 'live-delivery:supply-a',
+      metadata: {
+        kind: 'LIVE_SUPPLY_DELIVERY',
+        parentCartId: 'supply-a'
+      }
+    }
+  }));
+});
+
+test('WAREHOUSE no puede crear LIVE_SUPPLY_DELIVERY si el carrito padre pertenece a otro usuario', async () => {
+  const client = fakeClient({
+    'supply-b': {
+      type: 'SUPPLY',
+      ownerId: 'firebase-b',
+      metadata: { kind: 'LIVE_SUPPLY_CART' }
+    }
+  });
+
+  await assert.rejects(() => assertOperationalEventOwnership(client, firebaseWarehouse, {
+    entityType: 'document',
+    operation: 'CREATE',
+    payload: {
+      id: 'delivery-b',
+      type: 'SUPPLY',
+      ownerId: 'live-delivery:supply-b',
+      metadata: {
+        kind: 'LIVE_SUPPLY_DELIVERY',
+        parentCartId: 'supply-b'
+      }
+    }
+  }), error => error?.code === 'OPERATIONAL_DOCUMENT_FORBIDDEN');
+});
+
+test('WAREHOUSE no puede falsificar el owner sintético de LIVE_SUPPLY_DELIVERY', async () => {
+  const client = fakeClient({
+    'supply-a': {
+      type: 'SUPPLY',
+      ownerId: 'firebase-a',
+      metadata: { kind: 'LIVE_SUPPLY_CART' }
+    }
+  });
+
+  await assert.rejects(() => assertOperationalEventOwnership(client, firebaseWarehouse, {
+    entityType: 'document',
+    operation: 'CREATE',
+    payload: {
+      id: 'delivery-spoof',
+      type: 'SUPPLY',
+      ownerId: 'live-delivery:another-cart',
+      metadata: {
+        kind: 'LIVE_SUPPLY_DELIVERY',
+        parentCartId: 'supply-a'
+      }
+    }
   }), error => error?.code === 'OPERATIONAL_DOCUMENT_FORBIDDEN');
 });
 
