@@ -6,6 +6,9 @@ import { STORES, getAll } from '../storage/database.js';
 import { buildInventoryReport } from '../reporting/reportingEngine.js';
 import { calculatePendingInboundByProduct, changeReplenishmentStatus, REPLENISHMENT_STATUS } from '../replenishment/replenishmentService.js';
 import { createProcurementLists, listProcurementLists, procurementDisplayQuantity, updateDraftProcurementLine } from '../replenishment/procurementListService.js';
+import {
+  clearManualProcurementRequests
+} from '../replenishment/manualProcurementRequestService.js';
 import { completeProcurementExtra, isProcurementExtra } from '../replenishment/warehouseProcurementService.js';
 import { createDocument } from '../documents/documentService.js';
 import { DOCUMENT_TYPES } from '../documents/documentTypes.js';
@@ -72,10 +75,106 @@ async function reload() {
 }
 
 function seedDrafts() {
+  const recommendedIds = new Set(
+    state.rows
+      .filter(row =>
+        Number(row.suggestedQuantity || 0) > 0
+      )
+      .map(row => row.productId)
+  );
+
+  for (const [productId, draft] of state.drafts) {
+    const product =
+      state.productsById.get(productId);
+    const flagged =
+      product?.manualProcurementRequested === true;
+
+    if (
+      draft?.source === 'COUNT_FLAG' &&
+      !flagged
+    ) {
+      if (recommendedIds.has(productId)) {
+        draft.manual = false;
+        draft.countFlag = false;
+        draft.source = 'VIGIA_SUGGESTION';
+      } else {
+        state.drafts.delete(productId);
+      }
+    }
+  }
+
   for (const row of state.rows) {
-    if (!(Number(row.suggestedQuantity||0)>0) || state.drafts.has(row.productId)) continue;
-    const product=state.productsById.get(row.productId); if (!product) continue;
-    state.drafts.set(product.id,makeDraft(product,row,false));
+    if (
+      !(Number(row.suggestedQuantity || 0) > 0)
+    ) {
+      continue;
+    }
+
+    const product =
+      state.productsById.get(row.productId);
+
+    if (!product) continue;
+
+    let draft =
+      state.drafts.get(product.id);
+
+    if (!draft) {
+      draft = makeDraft(
+        product,
+        row,
+        false
+      );
+      state.drafts.set(
+        product.id,
+        draft
+      );
+    }
+
+    if (
+      product.manualProcurementRequested === true
+    ) {
+      draft.countFlag = true;
+    }
+  }
+
+  for (const product of state.products) {
+    if (
+      product.manualProcurementRequested !== true
+    ) {
+      continue;
+    }
+
+    const row =
+      state.rowsById.get(product.id) ||
+      fallbackRow(product.id);
+
+    let draft =
+      state.drafts.get(product.id);
+
+    if (!draft) {
+      draft = makeDraft(
+        product,
+        row,
+        true
+      );
+      state.drafts.set(
+        product.id,
+        draft
+      );
+    }
+
+    draft.countFlag = true;
+
+    if (
+      !(Number(row.suggestedQuantity || 0) > 0)
+    ) {
+      draft.manual = true;
+      draft.source = 'COUNT_FLAG';
+
+      if (!(Number(draft.displayQuantity || 0) > 0)) {
+        draft.displayQuantity = 1;
+      }
+    }
   }
 }
 
@@ -83,6 +182,7 @@ function makeDraft(product,row,manual=false) {
   const display=recommendedDisplay(product,Number(row?.suggestedQuantity||0));
   return {
     productId:product.id,selected:false,manual,source:manual?'MANUAL':'VIGIA_SUGGESTION',
+    countFlag:product.manualProcurementRequested===true,
     displayQuantity:display.quantity || (manual?1:0),displayUnit:display.unit,displayConversion:display.conversion,
     method:product.replenishmentMethod==='ORDER'?'ORDER':'PURCHASE',note:'',detailsOpen:false,noteOpen:false
   };
@@ -232,6 +332,21 @@ async function confirmLists() {
     return {productId:d.productId,method:d.method,requestedQuantity:requested,displayQuantity:Number(d.displayQuantity),displayUnit:d.displayUnit,displayConversion:Number(d.displayConversion||1),notes:d.note,reason:d.note,source:d.source,categoryName:categoryName(product?.categoryId),vigiaSuggestedQuantity:Number(row.suggestedQuantity||0),stockAtDecision:Number(row.stock||0),pendingInboundAtDecision:Number(row.pendingInbound||0)};
   });
   const result=await createProcurementLists({lines,extras:state.pendingExtras.map(e=>({...e})),ownerId:state.session?.userId||null,ownerLabel:actorLabel()});
+
+  const fulfilledCountFlags = selected
+    .filter(draft => draft.countFlag === true)
+    .map(draft => draft.productId);
+
+  if (fulfilledCountFlags.length) {
+    await clearManualProcurementRequests(
+      fulfilledCountFlags,
+      {
+        userId: state.session?.userId || null,
+        source: 'PROCUREMENT'
+      }
+    );
+  }
+
   close('v6pReviewModal');selected.forEach(d=>{d.selected=false;});state.pendingExtras=[];await attemptSync();await reload();state.activeTab='lists';paint();toast(`${[result.purchaseListId,result.orderListId].filter(Boolean).length} lista(s) creada(s).`);
 }
 
