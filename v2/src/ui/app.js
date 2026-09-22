@@ -764,6 +764,15 @@ async function signInWithGoogle() {
 }
 
 async function chooseWorkspace(workspaceId) {
+  if (
+    state.authAccessOffline ||
+    !navigator.onLine
+  ) {
+    throw new Error(
+      'Cambiar de almacén requiere conexión para validar el acceso.'
+    );
+  }
+
   const allowed = state.availableWorkspaces.some(
     workspace => workspace.id === workspaceId
   );
@@ -1299,7 +1308,8 @@ async function renderHome() {
         <p>Visión operativa del almacén en tiempo real, calculada desde movimientos y lotes.</p>
       </div>
       <div class="dashboard-sync">
-        ${state.availableWorkspaces.length > 1
+        ${state.availableWorkspaces.length > 1 &&
+          !state.authAccessOffline
           ? '<button class="secondary" data-action="show-workspace-picker" type="button">Cambiar almacén</button>'
           : ''}
         ${installPromptEvent
