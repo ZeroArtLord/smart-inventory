@@ -1,14 +1,41 @@
+import {
+  barcodeKey,
+  normalizeProductBarcodes
+} from '../catalog/barcodeModel.js';
+
 export function normalizeScannedCode(value) {
   return String(value ?? '').trim();
 }
 
-export function findProductByBarcode(products, code) {
+export function resolveProductByBarcode(products, code) {
   const target = normalizeScannedCode(code);
   if (!target) return null;
+  const key = barcodeKey(target);
 
-  return (Array.isArray(products) ? products : []).find(product =>
-    normalizeScannedCode(product.barcode) === target
-  ) || null;
+  for (const product of Array.isArray(products) ? products : []) {
+    const mappings = normalizeProductBarcodes(
+      product?.barcodes,
+      { legacyBarcode: product?.barcode }
+    );
+
+    const barcode = mappings.find(item =>
+      item.active !== false &&
+      barcodeKey(item.code) === key
+    );
+
+    if (barcode) {
+      return {
+        product,
+        barcode
+      };
+    }
+  }
+
+  return null;
+}
+
+export function findProductByBarcode(products, code) {
+  return resolveProductByBarcode(products, code)?.product || null;
 }
 
 export function supportsCameraBarcodeScanner() {
