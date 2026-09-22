@@ -111,13 +111,12 @@ import {
   startCameraBarcodeScanner
 } from '../scanner/barcodeScanner.js';
 import {
-  addProductBarcode,
   barcodeSearchTerms,
   normalizeProductBarcodes
 } from '../catalog/barcodeModel.js';
 import {
-  openBarcodeAssociationDialog
-} from './barcodeAssociationUi.js';
+  resolveOrAssociateBarcode
+} from './barcodeIntelligenceController.js';
 import {
   buildDocumentExportRows,
   downloadCsv,
@@ -3516,66 +3515,37 @@ async function associateUnknownBarcode(code) {
   const scannedCode = String(code || '').trim();
   if (!scannedCode) return null;
 
-  if (!hasClientPermission('catalog.write')) {
+  const allowAssociate =
+    hasClientPermission('catalog.write');
+
+  const result = await resolveOrAssociateBarcode({
+    code: scannedCode,
+    products: state.products,
+    allowAssociate,
+    onAssociated: async () => {
+      await refreshProducts();
+      scheduleSync(100);
+    }
+  });
+
+  if (result.status === 'unknown') {
     showToast(
       `Código ${scannedCode} no reconocido. No tienes permiso para asociarlo.`
     );
     return null;
   }
 
-  const associated = await openBarcodeAssociationDialog({
-    code: scannedCode,
-    products: state.products,
-    onAssociate: async ({
-      productId,
-      code: nextCode,
-      label,
-      conversion
-    }) => {
-      requireClientPermission('catalog.write');
-
-      const product = state.products.find(
-        item => item.id === productId
-      );
-      if (!product) {
-        throw new Error('Producto no encontrado');
-      }
-
-      const barcodes = addProductBarcode(product, {
-        code: nextCode,
-        label,
-        conversion
-      });
-
-      const updated = await updateProduct(
-        product.id,
-        { barcodes }
-      );
-
-      await refreshProducts();
-      scheduleSync(100);
-
-      return {
-        product: updated,
-        barcode: updated.barcodes.find(
-          item => item.code === nextCode
-        ) || {
-          code: nextCode,
-          label,
-          conversion
-        }
-      };
-    }
-  });
-
-  if (!associated?.product) return null;
+  if (!result.product) return null;
 
   await selectBarcodeMatch(
-    associated,
-    { associated: true }
+    result,
+    {
+      associated:
+        result.status === 'associated'
+    }
   );
 
-  return associated;
+  return result;
 }
 
 async function openBarcodeScanner() {
