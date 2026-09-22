@@ -992,8 +992,15 @@ function updateAuthUi() {
           ? ' · ' + state.session.roleCode
           : '';
 
+    const offlineLabel =
+      state.authAccessOffline
+        ? ' · Modo offline autorizado'
+        : '';
+
     userStatus.textContent =
-      identityLabel + roleLabel;
+      identityLabel +
+      roleLabel +
+      offlineLabel;
 
     const avatar =
       document.getElementById('profileAvatar');
