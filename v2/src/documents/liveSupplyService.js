@@ -216,6 +216,7 @@ export async function getLiveSupplyCartSummary(documentId) {
   }
 
   const rows = lines
+    .filter(line => line.draftRemoved !== true)
     .map(line => {
       const planned = positiveOrZero(line.quantity);
       const delivered = Math.max(
@@ -411,6 +412,85 @@ async function dispatchLiveSupplyInternal(
     }
     throw error;
   }
+}
+
+export async function updateLiveSupplyPlannedQuantity(
+  documentId,
+  productId,
+  quantity,
+  { userId = null } = {}
+) {
+  const parentId = clean(documentId);
+  const id = clean(productId);
+  if (!parentId || !id) throw new Error('Línea de surtido no identificada');
+
+  await enableLiveSupplyCart(parentId, { userId });
+  const summary = await getLiveSupplyCartSummary(parentId);
+  const row = summary.rows.find(item => item.productId === id);
+  if (!row) throw new Error('Producto no encontrado en el carrito');
+
+  const nextQuantity = round(positive(quantity, 'Cantidad planificada'));
+  if (nextQuantity + EPSILON < row.delivered) {
+    throw new Error(
+      `${row.productName}: no puedes bajar el plan a ${formatQuantity(nextQuantity)} porque ya se entregaron ${formatQuantity(row.delivered)}`
+    );
+  }
+
+  return updateParentLine(parentId, id, line => {
+    const now = new Date().toISOString();
+    return {
+      ...line,
+      quantity: nextQuantity,
+      draftRemoved: false,
+      draftRemovedAt: null,
+      draftRemovedBy: null,
+      liveCancelRemaining: false,
+      liveCancelReason: null,
+      liveCancelAt: null,
+      liveCancelBy: null,
+      livePlanEditedAt: now,
+      livePlanEditedBy: userId,
+      version: nextEntityVersion(line),
+      updatedAt: now
+    };
+  });
+}
+
+export async function removeLiveSupplyLine(
+  documentId,
+  productId,
+  { userId = null } = {}
+) {
+  const parentId = clean(documentId);
+  const id = clean(productId);
+  if (!parentId || !id) throw new Error('Línea de surtido no identificada');
+
+  await enableLiveSupplyCart(parentId, { userId });
+  const summary = await getLiveSupplyCartSummary(parentId);
+  const row = summary.rows.find(item => item.productId === id);
+  if (!row) throw new Error('Producto no encontrado en el carrito');
+
+  if (row.delivered > EPSILON) {
+    throw new Error(
+      `${row.productName}: no puede eliminarse porque ya tiene ${formatQuantity(row.delivered)} entregado. Edita el plan sin bajar de lo entregado o cancela solo el pendiente.`
+    );
+  }
+
+  return updateParentLine(parentId, id, line => {
+    const now = new Date().toISOString();
+    return {
+      ...line,
+      draftRemoved: true,
+      draftRemovedAt: now,
+      draftRemovedBy: userId,
+      liveCancelRemaining: false,
+      liveCancelReason: null,
+      liveCancelAt: null,
+      liveCancelBy: null,
+      version: nextEntityVersion(line),
+      updatedAt: now
+    };
+  });
 }
 
 export async function cancelLiveSupplyRemaining(
