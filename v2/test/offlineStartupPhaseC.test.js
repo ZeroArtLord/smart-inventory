@@ -49,3 +49,17 @@ test('Fase C muestra estado offline autorizado en la interfaz', async () => {
   assert.match(app, /Modo offline autorizado/);
   assert.match(app, /cachedOffline/);
 });
+
+
+test('Fase C no cambia de workspace usando permisos cacheados offline', async () => {
+  const app = await read('../src/ui/app.js');
+
+  assert.match(
+    app,
+    /Cambiar de almacén requiere conexión/
+  );
+  assert.match(
+    app,
+    /state\.authAccessOffline/
+  );
+});
