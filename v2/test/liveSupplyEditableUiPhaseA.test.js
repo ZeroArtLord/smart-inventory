@@ -36,3 +36,17 @@ test('A1 carrito lateral permite editar y quitar una línea ya agregada', () => 
     assert.ok(appUi.includes(text), `Falta contrato A1 en app.js: ${text}`);
   }
 });
+
+
+test('A1 oculta eliminar cuando ya existe entrega física y captura rechazos async como validación normal', () => {
+  for (const text of [
+    'getLiveSupplyCartSummary',
+    'deliveredByProduct',
+    'lineDelivered',
+    'lineDelivered <= 0',
+    'handleClick(event).catch',
+    'showToast(error.message || String(error))'
+  ]) {
+    assert.ok(appUi.includes(text), `Falta pulido A1: ${text}`);
+  }
+});
