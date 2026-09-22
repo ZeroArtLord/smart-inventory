@@ -136,7 +136,7 @@
   }
 
   .catalog-toolbar-v2 {
-    position: sticky;
+    position:sticky;
     top: 58px;
     z-index: 8;
     display: grid;
