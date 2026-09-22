@@ -103,7 +103,10 @@ export async function saveDocumentLine(data = {}) {
       ? nextEntityVersion(existing)
       : initialEntityVersion(),
     updatedAt: now,
-    createdAt: existing?.createdAt || now
+    createdAt: existing?.createdAt || now,
+    draftRemoved: false,
+    draftRemovedAt: null,
+    draftRemovedBy: null
   };
 
   let line;
@@ -164,9 +167,11 @@ export async function listDocumentLines(documentId) {
     documentId
   );
 
-  return lines.sort((a, b) =>
-    String(a.createdAt).localeCompare(String(b.createdAt))
-  );
+  return lines
+    .filter(line => line.draftRemoved !== true)
+    .sort((a, b) =>
+      String(a.createdAt).localeCompare(String(b.createdAt))
+    );
 }
 
 export async function listDraftDocuments({ ownerId = null, type = null } = {}) {
