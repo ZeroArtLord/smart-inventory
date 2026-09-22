@@ -324,3 +324,89 @@ test('Firebase exige contexto seguro cuando el navegador lo reporta inseguro', a
     }
   );
 });
+
+
+test('Fase C usa autorización offline si navegador dice online pero API no responde', async () => {
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { onLine: true },
+    configurable: true
+  });
+
+  await saveSyncConfig({
+    authMode: 'firebase',
+    apiBaseUrl: '',
+    workspaceId: 'workspace-auth-1',
+    serverUserId: null
+  });
+
+  setAuthTokenProvider(
+    async () => 'firebase-token-cached'
+  );
+
+  globalThis.fetch = async () => {
+    throw new TypeError('Failed to fetch');
+  };
+
+  const result = await bootstrapFirebaseAccess({
+    uid: 'firebase-uid-1',
+    requireWorkspaceId: 'workspace-auth-1'
+  });
+
+  assert.equal(result.offline, true);
+  assert.equal(
+    result.selectedWorkspace.id,
+    'workspace-auth-1'
+  );
+
+  clearAuthTokenProvider();
+});
+
+test('Fase C revalidación exige conservar acceso al workspace local', async () => {
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { onLine: true },
+    configurable: true
+  });
+
+  await saveSyncConfig({
+    authMode: 'firebase',
+    apiBaseUrl: '',
+    workspaceId: 'workspace-auth-1',
+    serverUserId: null
+  });
+
+  setAuthTokenProvider(
+    async () => 'firebase-token-live'
+  );
+
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async json() {
+      return {
+        ok: true,
+        user: {
+          id: 'server-user-1',
+          externalAuthId: 'firebase-uid-1',
+          email: 'user@example.com'
+        },
+        workspaces: [{
+          id: 'workspace-OTRO',
+          name: 'Otro almacén',
+          roleCode: 'WAREHOUSE',
+          permissions: ['count.write']
+        }]
+      };
+    }
+  });
+
+  await assert.rejects(
+    bootstrapFirebaseAccess({
+      uid: 'firebase-uid-1',
+      requireWorkspaceId: 'workspace-auth-1'
+    }),
+    error =>
+      error?.code === 'WORKSPACE_ACCESS_DENIED'
+  );
+
+  clearAuthTokenProvider();
+});
