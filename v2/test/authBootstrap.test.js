@@ -128,7 +128,7 @@ test('autorización offline no se comparte con otro UID', async () => {
       uid: 'firebase-uid-distinto'
     }),
     error =>
-      error.code === 'OFFLINE_AUTH_CACHE_MISSING' &&
+      error.code === 'OFFLINE_AUTH_USER_MISMATCH' &&
       /otra cuenta/i.test(error.message)
   );
 
