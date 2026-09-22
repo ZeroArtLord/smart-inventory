@@ -110,7 +110,9 @@ import {
   startCameraBarcodeScanner
 } from '../scanner/barcodeScanner.js';
 import {
-  addProductBarcode
+  addProductBarcode,
+  barcodeSearchTerms,
+  normalizeProductBarcodes
 } from '../catalog/barcodeModel.js';
 import {
   openBarcodeAssociationDialog
@@ -2233,7 +2235,13 @@ async function renderCatalog() {
                     return `
                       <tr
                         data-catalog-filter="${escapeHtml(
-                          [product.name, product.saintCode, product.sku, product.barcode]
+                          [
+                            product.name,
+                            product.saintCode,
+                            product.sku,
+                            product.barcode,
+                            ...barcodeSearchTerms(product)
+                          ]
                             .filter(Boolean)
                             .join(' ')
                             .toLowerCase()
@@ -2304,12 +2312,25 @@ async function renderCatalog() {
                   : status === 'low'
                     ? 'Bajo'
                     : 'Normal';
+                const productBarcodes = normalizeProductBarcodes(
+                  product.barcodes,
+                  { legacyBarcode: product.barcode }
+                );
+                const categoryName = product.categoryId
+                  ? categoryById.get(product.categoryId)?.name || 'Categoría desconocida'
+                  : 'Sin categoría';
 
                 return `
                   <article
                     class="catalog-mobile-card"
                     data-catalog-filter="${escapeHtml(
-                      [product.name, product.saintCode, product.sku, product.barcode]
+                      [
+                        product.name,
+                        product.saintCode,
+                        product.sku,
+                        product.barcode,
+                        ...barcodeSearchTerms(product)
+                      ]
                         .filter(Boolean)
                         .join(' ')
                         .toLowerCase()
@@ -2325,20 +2346,11 @@ async function renderCatalog() {
                         <small>${product.sku
                           ? 'SKU ' + escapeHtml(product.sku)
                           : 'SKU —'}</small>
-                        <small>${escapeHtml(
-                          product.categoryId
-                            ? categoryById.get(product.categoryId)?.name || 'Categoría desconocida'
-                            : 'Sin categoría'
-                        )}</small>
+                        <span class="catalog-mobile-category">${escapeHtml(categoryName)}</span>
                         <small>${escapeHtml(catalogPresentationSummary(product))}</small>
-                        ${canWriteCatalog ? `
-                          <button
-                            class="catalog-edit-link"
-                            data-action="edit-product"
-                            data-product-id="${escapeHtml(product.id)}"
-                            type="button"
-                          >Editar</button>
-                        ` : ''}
+                        <small class="catalog-mobile-barcode-count">
+                          ▥ ${productBarcodes.length} código${productBarcodes.length === 1 ? '' : 's'}
+                        </small>
                       </div>
                       <span class="catalog-status ${status}"><span></span>${statusLabel}</span>
                     </div>
@@ -2347,9 +2359,19 @@ async function renderCatalog() {
                       <div><small>Mín.</small>${renderCatalogQuantity(product, product.minStock || 0)}</div>
                       <div><small>Máx.</small>${product.maxStock ? renderCatalogQuantity(product, product.maxStock) : '<strong>—</strong>'}</div>
                     </div>
-                    <div class="product-meta">
-                      ${escapeHtml(catalogUnitCode(product))} ·
-                      ${escapeHtml(replenishmentLabel(product.replenishmentMethod))}
+                    <div class="catalog-mobile-footer">
+                      <div class="product-meta">
+                        ${escapeHtml(catalogUnitCode(product))} ·
+                        ${escapeHtml(replenishmentLabel(product.replenishmentMethod))}
+                      </div>
+                      ${canWriteCatalog ? `
+                        <button
+                          class="secondary catalog-mobile-primary-action"
+                          data-action="edit-product"
+                          data-product-id="${escapeHtml(product.id)}"
+                          type="button"
+                        >Editar producto</button>
+                      ` : ''}
                     </div>
                   </article>
                 `;
