@@ -195,6 +195,14 @@ export async function createProduct(data = {}) {
     targetDays,
     safetyDays,
     supplierId: data.supplierId || null,
+    manualProcurementRequested:
+      data.manualProcurementRequested === true,
+    manualProcurementRequestedAt:
+      data.manualProcurementRequestedAt || null,
+    manualProcurementRequestedBy:
+      data.manualProcurementRequestedBy || null,
+    manualProcurementRequestedSource:
+      data.manualProcurementRequestedSource || null,
     active: data.active !== false,
     version: initialEntityVersion(),
     createdAt: now,
