@@ -26,6 +26,7 @@ import {
 } from '../catalog/barcodeModel.js';
 import {
   isLikelyBarcodeInput,
+  isStrongBarcodeInput,
   resolveProductByBarcode
 } from '../scanner/barcodeScanner.js';
 import {
@@ -76,13 +77,8 @@ if (appRoot) {
       event.target?.id === 'v5CountValue'
     ) {
       event.preventDefault();
-      const button = appRoot.querySelector(
-        '[data-v5-count-action="save"]'
-      );
-      if (button) {
-        handleV5CountAction(button)
-          .catch(error => showLocalError(error));
-      }
+      handleCountValueEnter(event.target)
+        .catch(error => showLocalError(error));
       return;
     }
 
@@ -817,6 +813,45 @@ async function handleV5CountAction(button) {
 
     delete appRoot.dataset.v5CountForcedProductId;
     return renderV5Count(documentId);
+  }
+}
+
+async function handleCountValueEnter(input) {
+  const raw = String(
+    input?.value || ''
+  ).trim();
+
+  const products = (await getAll(
+    STORES.PRODUCTS
+  )).filter(product =>
+    product?.active !== false
+  );
+
+  const exactBarcode =
+    resolveProductByBarcode(
+      products,
+      raw
+    );
+
+  if (
+    exactBarcode ||
+    isStrongBarcodeInput(raw)
+  ) {
+    input.value = '';
+    await handleCountBarcodeSearch({
+      value: raw
+    });
+    return;
+  }
+
+  const button = appRoot.querySelector(
+    '[data-v5-count-action="save"]'
+  );
+
+  if (button) {
+    await handleV5CountAction(
+      button
+    );
   }
 }
 
