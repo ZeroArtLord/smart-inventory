@@ -989,7 +989,12 @@ function updateAuthUi() {
   }
 }
 
-function sessionFromCachedAccess(access) {
+function sessionFromCachedAccess(
+  access,
+  {
+    cachedOffline = true
+  } = {}
+) {
   const workspace = access?.selectedWorkspace;
   if (!workspace) return null;
 
@@ -1011,7 +1016,7 @@ function sessionFromCachedAccess(access) {
     roleCode: workspace.roleCode || null,
     permissions: workspace.permissions || [],
     authMode: 'firebase',
-    cachedOffline: true
+    cachedOffline
   };
 }
 
