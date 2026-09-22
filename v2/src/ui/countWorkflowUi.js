@@ -21,6 +21,23 @@ import {
   markCountProductPending,
   updateCountWorkflow
 } from '../documents/countWorkflowService.js';
+import {
+  barcodeSearchTerms
+} from '../catalog/barcodeModel.js';
+import {
+  isLikelyBarcodeInput,
+  resolveProductByBarcode
+} from '../scanner/barcodeScanner.js';
+import {
+  resolveOrAssociateBarcode
+} from './barcodeIntelligenceController.js';
+import {
+  setManualProcurementRequested
+} from '../replenishment/manualProcurementRequestService.js';
+import {
+  can,
+  getCurrentSession
+} from '../admin/adminClient.js';
 
 const appRoot = document.getElementById('app');
 const STYLE_ID = 'vigia-v5-count-styles';
@@ -66,12 +83,37 @@ if (appRoot) {
         handleV5CountAction(button)
           .catch(error => showLocalError(error));
       }
+      return;
+    }
+
+    if (
+      event.key === 'Enter' &&
+      event.target?.id === 'v5CountSearch'
+    ) {
+      handleCountBarcodeSearch(event.target)
+        .then(handled => {
+          if (handled) event.preventDefault();
+        })
+        .catch(error => showLocalError(error));
     }
   });
 
   appRoot.addEventListener('input', event => {
     if (event.target?.id !== 'v5CountSearch') return;
     filterJumpRows(event.target.value);
+  });
+
+  appRoot.addEventListener('change', event => {
+    const input = event.target.closest(
+      '[data-v5-count-buy-flag]'
+    );
+    if (!input) return;
+
+    handleCountBuyFlag(input)
+      .catch(error => {
+        input.checked = !input.checked;
+        showLocalError(error);
+      });
   });
 }
 
@@ -113,6 +155,12 @@ function installStyles() {
     .v5-count-review{margin-top:12px;border-top:1px solid var(--border);padding-top:12px}
     .v5-count-review summary{cursor:pointer;font-weight:800}
     .v5-count-review-list{display:grid;gap:6px;margin-top:10px}
+    .v89-count-buy-flag{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:color-mix(in srgb,#f59e0b 5%,var(--surface,#fff));cursor:pointer}
+    .v89-count-buy-flag.is-marked{border-color:#f0b44c;background:#fff8e8}
+    .v89-count-buy-flag input{width:20px;height:20px;flex:0 0 20px;accent-color:#d97706}
+    .v89-count-buy-flag span{display:grid;gap:2px}
+    .v89-count-buy-flag strong{font-size:14px;color:#7c4a00}
+    .v89-count-buy-flag small{color:var(--muted,#64748b);font-size:12px}
     @media(max-width:760px){
       .v5-count-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
       .v5-count-actions{grid-template-columns:1fr}
@@ -599,6 +647,23 @@ function renderProductCard(product, wasPending, existingLine = null) {
             : ''}
       </div>
 
+      <label class="v89-count-buy-flag ${product.manualProcurementRequested === true ? 'is-marked' : ''}">
+        <input
+          type="checkbox"
+          data-v5-count-buy-flag
+          data-product-id="${escapeHtml(product.id)}"
+          ${product.manualProcurementRequested === true ? 'checked' : ''}
+        >
+        <span>
+          <strong>🛒 Comprar</strong>
+          <small>
+            ${product.manualProcurementRequested === true
+              ? 'Marcado: aparecerá en Comprar / Pedir aunque VIGÍA no lo recomiende.'
+              : 'Márcalo para recordarlo en Comprar / Pedir. No necesitas indicar cantidad aquí.'}
+          </small>
+        </span>
+      </label>
+
       ${editing ? `
         <div class="v5-count-edit-note">
           <strong>Este producto ya estaba contado.</strong>
@@ -755,6 +820,105 @@ async function handleV5CountAction(button) {
   }
 }
 
+async function handleCountBuyFlag(input) {
+  const productId = String(
+    input?.dataset?.productId || ''
+  ).trim();
+
+  if (!productId) {
+    throw new Error('No se pudo identificar el producto');
+  }
+
+  const session = await getCurrentSession()
+    .catch(() => null);
+
+  await setManualProcurementRequested(
+    productId,
+    input.checked === true,
+    {
+      userId: session?.userId || null,
+      source: 'COUNT'
+    }
+  );
+
+  const documentId =
+    appRoot.dataset.v5CountDocumentId;
+
+  if (documentId) {
+    await renderV5Count(documentId);
+  }
+}
+
+async function handleCountBarcodeSearch(input) {
+  const raw = String(
+    input?.value || ''
+  ).trim();
+
+  if (!raw) return false;
+
+  const products = (await getAll(STORES.PRODUCTS))
+    .filter(product =>
+      product?.active !== false
+    );
+
+  const known = resolveProductByBarcode(
+    products,
+    raw
+  );
+
+  if (
+    !known &&
+    !isLikelyBarcodeInput(raw)
+  ) {
+    return false;
+  }
+
+  const session = await getCurrentSession()
+    .catch(() => null);
+
+  const result = await resolveOrAssociateBarcode({
+    code: raw,
+    products,
+    allowAssociate:
+      can(session, 'catalog.write')
+  });
+
+  if (result.status === 'unknown') {
+    throw new Error(
+      `Código ${raw} no reconocido. Necesitas permiso de catálogo para asociarlo.`
+    );
+  }
+
+  if (!result.product) {
+    return true;
+  }
+
+  const documentId =
+    appRoot.dataset.v5CountDocumentId;
+
+  if (!documentId) {
+    throw new Error(
+      'No se pudo identificar el conteo activo'
+    );
+  }
+
+  appRoot.dataset.v5CountForcedProductId =
+    result.product.id;
+
+  await updateCountWorkflow(
+    documentId,
+    {
+      mode: COUNT_WORKFLOW_MODES.CATEGORY,
+      activeCategoryId:
+        result.product.categoryId ||
+        '__UNCATEGORIZED__'
+    }
+  );
+
+  await renderV5Count(documentId);
+  return true;
+}
+
 function filterJumpRows(rawQuery) {
   const query = normalizeSearch(rawQuery);
   appRoot.querySelectorAll('[data-v5-count-search-row]')
@@ -769,7 +933,8 @@ function searchText(product) {
     product?.name,
     product?.saintCode,
     product?.sku,
-    product?.barcode
+    product?.barcode,
+    ...barcodeSearchTerms(product)
   ].filter(Boolean).join(' '));
 }
 
