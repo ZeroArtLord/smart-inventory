@@ -2200,6 +2200,15 @@ async function renderCatalog() {
               autocomplete="off"
             >
           </label>
+          <button
+            class="secondary scanner-button"
+            data-action="open-barcode-scanner"
+            type="button"
+            ${supportsCameraBarcodeScanner() ? '' : 'disabled'}
+            title="${supportsCameraBarcodeScanner()
+              ? 'Escanear y asociar producto'
+              : 'La cámara requiere HTTPS y navegador compatible'}"
+          >▣ Escanear</button>
           <span class="badge">${inventoryRows.length}</span>
         </div>
 
@@ -3544,14 +3553,40 @@ async function selectBarcodeMatch(match, {
 } = {}) {
   if (!match?.product) return;
 
+  const message = associated
+    ? `Código asociado: ${match.product.name}`
+    : `Escaneado: ${match.product.name} · ${match.barcode?.label || match.barcode?.code || ''}`;
+
+  if (state.view === 'count') {
+    showToast(message);
+
+    document.dispatchEvent(
+      new CustomEvent(
+        'vigia:barcode-resolved',
+        {
+          detail: {
+            product: match.product,
+            barcode: match.barcode || null,
+            associated
+          }
+        }
+      )
+    );
+    return;
+  }
+
+  if (state.view === 'catalog') {
+    state.editingProductId =
+      match.product.id;
+    showToast(message);
+    await render();
+    return;
+  }
+
   state.selectedProductId = match.product.id;
   state.searchResults = [];
 
-  showToast(
-    associated
-      ? `Código asociado: ${match.product.name}`
-      : `Escaneado: ${match.product.name} · ${match.barcode?.label || match.barcode?.code || ''}`
-  );
+  showToast(message);
 
   await render();
 
