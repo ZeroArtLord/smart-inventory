@@ -83,6 +83,17 @@ export async function applyEvent(client, auth, event) {
         payload
       );
       break;
+    case 'manualProcurementRequest':
+      if (operation !== 'UPDATE') {
+        throw new Error('La marca Comprar solo admite UPDATE');
+      }
+      result = await updateManualProcurementRequest(
+        client,
+        workspaceId,
+        userId,
+        payload
+      );
+      break;
     default:
       throw new Error(`Entidad no soportada: ${entityType}`);
   }
@@ -415,6 +426,100 @@ function barcodeError(
   error.statusCode = statusCode;
   error.details = details;
   return error;
+}
+
+async function updateManualProcurementRequest(
+  client,
+  workspaceId,
+  userId,
+  payload
+) {
+  const productId = String(
+    payload?.productId ||
+    payload?.id ||
+    ''
+  ).trim();
+
+  if (!productId) {
+    const error = new Error(
+      'La marca Comprar requiere producto'
+    );
+    error.code = 'MANUAL_PROCUREMENT_PRODUCT_REQUIRED';
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const requested = payload?.requested === true;
+  const requestedAt = requested
+    ? (payload?.requestedAt || new Date().toISOString())
+    : null;
+  const requestedBy = requested
+    ? (
+        String(
+          payload?.requestedBy ||
+          userId ||
+          ''
+        ).trim() ||
+        null
+      )
+    : null;
+  const source = requested
+    ? (
+        String(
+          payload?.source ||
+          'COUNT'
+        ).trim() ||
+        'COUNT'
+      )
+    : null;
+
+  const result = await client.query(
+    `UPDATE products
+     SET
+       manual_procurement_requested = $3,
+       manual_procurement_requested_at = $4,
+       manual_procurement_requested_by = $5,
+       manual_procurement_requested_source = $6,
+       updated_at = GREATEST(
+         updated_at,
+         COALESCE($4::timestamptz, now())
+       )
+     WHERE workspace_id = $1
+       AND id = $2
+     RETURNING id`,
+    [
+      workspaceId,
+      productId,
+      requested,
+      requestedAt,
+      requestedBy,
+      source
+    ]
+  );
+
+  if (result.rowCount !== 1) {
+    const error = new Error(
+      'Producto no encontrado para marcar Comprar'
+    );
+    error.code = 'MANUAL_PROCUREMENT_PRODUCT_NOT_FOUND';
+    error.statusCode = 409;
+    throw error;
+  }
+
+  payload.id = productId;
+  payload.productId = productId;
+  payload.requested = requested;
+  payload.requestedAt = requestedAt;
+  payload.requestedBy = requestedBy;
+  payload.source = source;
+
+  return {
+    productId,
+    requested,
+    requestedAt,
+    requestedBy,
+    source
+  };
 }
 
 async function upsertCategory(client, workspaceId, p) {
