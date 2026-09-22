@@ -105,10 +105,16 @@ import {
   REPLENISHMENT_STATUS
 } from '../replenishment/replenishmentService.js';
 import {
-  findProductByBarcode,
+  resolveProductByBarcode,
   supportsCameraBarcodeScanner,
   startCameraBarcodeScanner
 } from '../scanner/barcodeScanner.js';
+import {
+  addProductBarcode
+} from '../catalog/barcodeModel.js';
+import {
+  openBarcodeAssociationDialog
+} from './barcodeAssociationUi.js';
 import {
   buildDocumentExportRows,
   downloadCsv,
@@ -3495,21 +3501,101 @@ async function openBarcodeScanner() {
     barcodeScannerSession = await startCameraBarcodeScanner({
       videoElement: video,
       onCode: async code => {
-        const product = findProductByBarcode(state.products, code);
+        const match = resolveProductByBarcode(state.products, code);
 
-        if (!product) {
-          if (status) {
-            status.textContent = `Código ${code} no existe en el catálogo.`;
-            status.className = 'status-warning';
+        if (!match) {
+          closeBarcodeScanner();
+
+          if (!hasClientPermission('catalog.write')) {
+            showToast(
+              `Código ${code} no reconocido. No tienes permiso para asociarlo.`
+            );
+            return;
+          }
+
+          const associated = await openBarcodeAssociationDialog({
+            code,
+            products: state.products,
+            onAssociate: async ({
+              productId,
+              code: scannedCode,
+              label,
+              conversion
+            }) => {
+              requireClientPermission('catalog.write');
+
+              const product = state.products.find(
+                item => item.id === productId
+              );
+              if (!product) {
+                throw new Error('Producto no encontrado');
+              }
+
+              const barcodes = addProductBarcode(product, {
+                code: scannedCode,
+                label,
+                conversion
+              });
+
+              const updated = await updateProduct(
+                product.id,
+                { barcodes }
+              );
+
+              await refreshProducts();
+              scheduleSync(100);
+
+              return {
+                product: updated,
+                barcode: updated.barcodes.find(
+                  item => item.code === scannedCode
+                ) || {
+                  code: scannedCode,
+                  label,
+                  conversion
+                }
+              };
+            }
+          });
+
+          if (!associated?.product) return;
+
+          state.selectedProductId = associated.product.id;
+          state.searchResults = [];
+          showToast(
+            `Código asociado: ${associated.product.name}`
+          );
+          await render();
+
+          const quantityInput =
+            document.getElementById('operationQuantity');
+          if (quantityInput) {
+            quantityInput.value = String(
+              associated.barcode?.conversion || 1
+            );
+            quantityInput.focus();
+            quantityInput.select();
           }
           return;
         }
 
-        state.selectedProductId = product.id;
+        state.selectedProductId = match.product.id;
         state.searchResults = [];
         closeBarcodeScanner();
-        showToast(`Escaneado: ${product.name}`);
+        showToast(
+          `Escaneado: ${match.product.name} · ${match.barcode.label}`
+        );
         await render();
+
+        const quantityInput =
+          document.getElementById('operationQuantity');
+        if (quantityInput) {
+          quantityInput.value = String(
+            match.barcode.conversion || 1
+          );
+          quantityInput.focus();
+          quantityInput.select();
+        }
       },
       onError: error => {
         if (status) {
