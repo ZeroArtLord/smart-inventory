@@ -11,6 +11,7 @@ const files = [
   '../src/ui/liveSupplyUi.js',
   '../src/ui/supplyChecklistUi.js',
   '../src/ui/barcodeAssociationUi.js',
+  '../src/ui/barcodeIntelligenceController.js',
   '../src/ui/quickStockCorrectionUi.js',
   '../src/ui/quickStockCorrectionRefreshUi.js',
   '../src/ui/procurementWorkspaceV6Ui.js',
