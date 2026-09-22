@@ -115,7 +115,13 @@ export function normalizeAreaShortcutKey(value) {
 }
 
 export function findAreaByShortcut(areas, key) {
-  const shortcut = normalizeAreaShortcutKey(key);
+  let shortcut;
+  try {
+    shortcut = normalizeAreaShortcutKey(key);
+  } catch (_) {
+    return null;
+  }
+
   if (!shortcut) return null;
 
   return (Array.isArray(areas) ? areas : []).find(area =>
