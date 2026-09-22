@@ -7,9 +7,10 @@ async function read(path) {
 }
 
 test('B1 código desconocido abre asociación con búsqueda de producto y conversión', async () => {
-  const [app, ui] = await Promise.all([
+  const [app, ui, controller] = await Promise.all([
     read('../src/ui/app.js'),
-    read('../src/ui/barcodeAssociationUi.js')
+    read('../src/ui/barcodeAssociationUi.js'),
+    read('../src/ui/barcodeIntelligenceController.js')
   ]);
 
   for (const text of [
@@ -19,7 +20,12 @@ test('B1 código desconocido abre asociación con búsqueda de producto y conver
     'Código no reconocido',
     'conversion'
   ]) {
-    assert.ok(app.includes(text) || ui.includes(text), `Falta contrato B1 UI: ${text}`);
+    assert.ok(
+      app.includes(text) ||
+      ui.includes(text) ||
+      controller.includes(text),
+      `Falta contrato B1 UI: ${text}`
+    );
   }
 
   for (const text of [
