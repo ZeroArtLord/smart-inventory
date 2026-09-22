@@ -4,6 +4,8 @@ import {
   enableLiveSupplyCart,
   getLiveSupplyCartSummary,
   dispatchLiveSupply,
+  updateLiveSupplyPlannedQuantity,
+  removeLiveSupplyLine,
   cancelLiveSupplyRemaining,
   restoreLiveSupplyRemaining,
   finalizeLiveSupplyCart,
@@ -329,11 +331,24 @@ function renderLiveRow(row) {
       </label>
 
       <div class="v5-live-row-actions">
+        <button
+          class="secondary"
+          data-v5-live-action="edit-plan"
+          data-product-id="${escapeHtml(row.productId)}"
+          data-planned="${escapeHtml(String(row.planned))}"
+          data-delivered="${escapeHtml(String(row.delivered))}"
+          type="button"
+        >Editar plan</button>
+        ${row.delivered <= 0
+          ? `<button class="danger" data-v5-live-action="remove-line" data-product-id="${escapeHtml(row.productId)}" type="button">Eliminar</button>`
+          : ''}
         ${row.cancelled
           ? `<button class="secondary" data-v5-live-action="restore" data-product-id="${escapeHtml(row.productId)}" type="button">Restaurar pendiente</button>`
-          : row.remaining > 0
+          : row.remaining > 0 && row.delivered > 0
             ? `<button class="ghost-button" data-v5-live-action="cancel-line" data-product-id="${escapeHtml(row.productId)}" type="button">Cancelar pendiente</button>`
-            : '<span class="badge status-good">Completo</span>'}
+            : row.remaining <= 0
+              ? '<span class="badge status-good">Completo</span>'
+              : ''}
       </div>
     </div>
   `;
@@ -384,6 +399,43 @@ async function handleLiveAction(button) {
   try {
     const session = await safeSession();
     const userId = session?.userId || null;
+
+    if (button.dataset.v5LiveAction === 'edit-plan') {
+      const current = String(button.dataset.planned || '').replace('.', ',');
+      const delivered = Number(button.dataset.delivered || 0);
+      const raw = window.prompt(
+        `Cantidad planificada nueva${delivered > 0 ? ` · ya entregado ${format(delivered)}` : ''}:`,
+        current
+      );
+
+      if (raw === null) return;
+      const quantity = Number(String(raw).trim().replace(',', '.'));
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new Error('La cantidad planificada debe ser mayor que cero');
+      }
+
+      await updateLiveSupplyPlannedQuantity(
+        documentId,
+        button.dataset.productId,
+        quantity,
+        { userId }
+      );
+      showLiveToast('Cantidad planificada actualizada.', 'success');
+    }
+
+    if (button.dataset.v5LiveAction === 'remove-line') {
+      const confirmed = window.confirm(
+        '¿Eliminar este producto del carrito? Solo se permite si todavía no tuvo ninguna entrega física.'
+      );
+      if (!confirmed) return;
+
+      await removeLiveSupplyLine(
+        documentId,
+        button.dataset.productId,
+        { userId }
+      );
+      showLiveToast('Producto eliminado del carrito.', 'success');
+    }
 
     if (button.dataset.v5LiveAction === 'deliver-selected') {
       const quantities = selectedQuantities();
