@@ -36,6 +36,7 @@ test('A3 resuelve solo áreas activas por su atajo', () => {
   assert.equal(findAreaByShortcut(areas, 'c')?.id, 'kitchen');
   assert.equal(findAreaByShortcut(areas, 'b'), null);
   assert.equal(findAreaByShortcut(areas, 'x'), null);
+  assert.equal(findAreaByShortcut(areas, 'ArrowLeft'), null);
 });
 
 test('A3 configuración y reparto exponen el atajo Alt+ configurado', async () => {
