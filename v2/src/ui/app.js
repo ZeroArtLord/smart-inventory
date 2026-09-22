@@ -711,6 +711,12 @@ function renderWorkspaceGate() {
 }
 
 async function signInWithGoogle() {
+  if (!navigator.onLine) {
+    throw new Error(
+      'Sin conexión. No se puede iniciar una cuenta nueva offline.'
+    );
+  }
+
   authTransitionInProgress = true;
 
   try {
@@ -805,10 +811,29 @@ async function handleAuthButton() {
     return signInWithGoogle();
   }
 
+  const uid =
+    state.authUser?.uid || null;
+
   authTransitionInProgress = true;
 
   try {
-    await logoutFirebase();
+    if (
+      state.authAccessOffline ||
+      !navigator.onLine
+    ) {
+      await setOfflineLogoutLock({
+        uid
+      });
+
+      await clearOfflineAccessSnapshot();
+
+      await logoutFirebase()
+        .catch(() => {});
+    } else {
+      await logoutFirebase();
+      await clearOfflineAccessSnapshot();
+      await clearOfflineLogoutLock();
+    }
   } finally {
     authTransitionInProgress = false;
   }
@@ -818,13 +843,24 @@ async function handleAuthButton() {
   state.availableWorkspaces = [];
   state.workspaceReady = false;
   state.authAccessOffline = false;
+  state.offlineAuthError = null;
+  state.offlineVerifiedAt = null;
   state.products = [];
   state.activeDocumentId = null;
   state.activeDocumentType = null;
   state.selectedProductId = null;
   updateAuthUi();
+  updateNavigationUi();
   showToast('Sesión cerrada');
-  renderAuthGate();
+
+  if (navigator.onLine) {
+    renderAuthGate();
+  } else {
+    state.offlineAuthError = new Error(
+      'La sesión fue cerrada en este dispositivo. Conéctate para iniciar sesión otra vez.'
+    );
+    renderOfflineAuthGate();
+  }
 }
 
 function handleFirebaseAuthStateChanged(user) {
