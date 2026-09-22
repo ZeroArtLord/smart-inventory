@@ -2458,6 +2458,61 @@ async function renderCatalog() {
           !haystack.includes(query);
       });
   });
+
+  catalogSearch?.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+
+    const raw = String(event.target.value || '').trim();
+    const known = resolveProductByBarcode(
+      state.products,
+      raw
+    );
+
+    if (!known && !isLikelyBarcodeInput(raw)) {
+      return;
+    }
+
+    event.preventDefault();
+
+    resolveOrAssociateBarcode({
+      code: raw,
+      products: state.products,
+      allowAssociate:
+        canWriteCatalog,
+      onAssociated: async () => {
+        await refreshProducts();
+        scheduleSync(100);
+      }
+    })
+      .then(async result => {
+        if (result.status === 'unknown') {
+          showToast(
+            `Código ${raw} no reconocido. No tienes permiso para asociarlo.`
+          );
+          return;
+        }
+
+        if (!result.product) return;
+
+        await refreshProducts();
+
+        if (canWriteCatalog) {
+          state.editingProductId =
+            result.product.id;
+        }
+
+        showToast(
+          result.status === 'associated'
+            ? `Código asociado: ${result.product.name}`
+            : `Código reconocido: ${result.product.name}`
+        );
+
+        await renderCatalog();
+      })
+      .catch(error =>
+        showToast(error.message || String(error))
+      );
+  });
 }
 
 async function renderReplenishmentWorkspace() {
