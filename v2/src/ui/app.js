@@ -1308,9 +1308,12 @@ async function renderHome() {
           ? `<button class="secondary status-warning" data-open-view="conflicts" type="button">⚠ ${snapshot.syncConflictCount} conflicto(s)</button>`
           : snapshot.pendingSyncCount
             ? `<span class="badge status-warning">${snapshot.pendingSyncCount} pendientes</span>`
-            : navigator.onLine
+            : (
+                navigator.onLine &&
+                !state.authAccessOffline
+              )
               ? '<span class="badge status-good">● Todo sincronizado</span>'
-              : '<span class="badge status-warning">Modo offline</span>'}
+              : '<span class="badge status-warning">Modo offline autorizado</span>'}
         <button class="primary" data-open-view="count" type="button">＋ Nuevo conteo</button>
       </div>
     </section>
