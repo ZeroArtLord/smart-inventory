@@ -915,20 +915,7 @@ async function handleFirebaseAccountTransition(
       uid: user.uid
     });
 
-  state.availableWorkspaces =
-    access.workspaces || [];
-  state.workspaceReady =
-    Boolean(access.selectedWorkspace);
-  state.authAccessOffline =
-    Boolean(access.offline);
-
-  if (
-    access.offline &&
-    access.selectedWorkspace
-  ) {
-    state.session =
-      sessionFromCachedAccess(access);
-  }
+  applyFirebaseAccessState(access);
 
   if (!access.selectedWorkspace) {
     updateNavigationUi();
