@@ -201,10 +201,16 @@ async function upsertProduct(
       inventory_unit_id,purchase_unit_id,purchase_conversion,presentations,
       min_stock,max_stock,replenishment_method,
       intelligence_mode,target_days,safety_days,
-      supplier_id,active,created_at,updated_at
+      supplier_id,
+      manual_procurement_requested,
+      manual_procurement_requested_at,
+      manual_procurement_requested_by,
+      manual_procurement_requested_source,
+      active,created_at,updated_at
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9::jsonb,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,
-      COALESCE($18,'SEED'),COALESCE($19,7),COALESCE($20,0),$21,$22,$23,$24
+      COALESCE($18,'SEED'),COALESCE($19,7),COALESCE($20,0),$21,
+      COALESCE($22,false),$23,$24,$25,$26,$27,$28
     )
     ON CONFLICT (workspace_id,id) DO UPDATE SET
       saint_code=EXCLUDED.saint_code,
@@ -226,6 +232,23 @@ async function upsertProduct(
       target_days=COALESCE($19,products.target_days),
       safety_days=COALESCE($20,products.safety_days),
       supplier_id=EXCLUDED.supplier_id,
+      manual_procurement_requested=
+        COALESCE($22,products.manual_procurement_requested),
+      manual_procurement_requested_at=
+        CASE WHEN $22 IS NULL
+          THEN products.manual_procurement_requested_at
+          ELSE $23
+        END,
+      manual_procurement_requested_by=
+        CASE WHEN $22 IS NULL
+          THEN products.manual_procurement_requested_by
+          ELSE $24
+        END,
+      manual_procurement_requested_source=
+        CASE WHEN $22 IS NULL
+          THEN products.manual_procurement_requested_source
+          ELSE $25
+        END,
       active=EXCLUDED.active,
       updated_at=EXCLUDED.updated_at`,
     [
@@ -250,6 +273,10 @@ async function upsertProduct(
       p.targetDays ?? null,
       p.safetyDays ?? null,
       p.supplierId || null,
+      p.manualProcurementRequested ?? null,
+      p.manualProcurementRequestedAt || null,
+      p.manualProcurementRequestedBy || null,
+      p.manualProcurementRequestedSource || null,
       p.active !== false,
       p.createdAt,
       p.updatedAt
