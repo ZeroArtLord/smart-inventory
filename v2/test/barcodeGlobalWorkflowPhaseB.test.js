@@ -50,3 +50,16 @@ test('lector USB no puede convertir accidentalmente un barcode en cantidad de Co
   assert.match(app, /operationQuantity[\s\S]*isStrongBarcodeInput/);
   assert.match(count, /v5CountValue[\s\S]*isStrongBarcodeInput/);
 });
+
+
+test('cámara Barcode Intelligence se reutiliza en Catálogo y Conteo', async () => {
+  const [app, count] = await Promise.all([
+    read('../src/ui/app.js'),
+    read('../src/ui/countWorkflowUi.js')
+  ]);
+
+  assert.match(app, /catalogLocalSearch[\s\S]*open-barcode-scanner/);
+  assert.match(app, /vigia:barcode-resolved/);
+  assert.match(count, /open-barcode-scanner/);
+  assert.match(count, /vigia:barcode-resolved/);
+});
