@@ -15,6 +15,19 @@ export function isLikelyBarcodeInput(value) {
   return /^[A-Za-z0-9._\-/]+$/.test(code);
 }
 
+export function isStrongBarcodeInput(value) {
+  const code = normalizeScannedCode(value);
+
+  if (/^\d{8,18}$/.test(code)) {
+    return true;
+  }
+
+  return (
+    code.length >= 8 &&
+    isLikelyBarcodeInput(code)
+  );
+}
+
 export function resolveProductByBarcode(products, code) {
   const target = normalizeScannedCode(code);
   if (!target) return null;
