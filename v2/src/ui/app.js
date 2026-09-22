@@ -106,6 +106,7 @@ import {
 } from '../replenishment/replenishmentService.js';
 import {
   isLikelyBarcodeInput,
+  isStrongBarcodeInput,
   resolveProductByBarcode,
   supportsCameraBarcodeScanner,
   startCameraBarcodeScanner
@@ -3845,6 +3846,33 @@ async function handleKeydown(event) {
   }
 
   if (event.target.id === 'operationQuantity') {
+    const raw = String(
+      event.target.value || ''
+    ).trim();
+
+    const exactBarcode =
+      resolveProductByBarcode(
+        state.products,
+        raw
+      );
+
+    if (
+      exactBarcode ||
+      isStrongBarcodeInput(raw)
+    ) {
+      event.preventDefault();
+
+      if (exactBarcode) {
+        return selectBarcodeMatch(
+          exactBarcode
+        );
+      }
+
+      return associateUnknownBarcode(
+        raw
+      );
+    }
+
     event.preventDefault();
     return addOperationLine(state.activeDocumentType);
   }
