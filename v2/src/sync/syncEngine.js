@@ -23,8 +23,16 @@ import {
 } from './workspaceCache.js';
 
 const listeners = new Set();
+const ENTITY_CONFLICT_CODES = new Set([
+  'SYNC_CONFLICT',
+  'BARCODE_DUPLICATE'
+]);
 let syncing = false;
 let syncIdleWaiters = [];
+
+function isEntityConflictCode(code) {
+  return ENTITY_CONFLICT_CODES.has(String(code || ''));
+}
 
 export function onSyncStatus(listener) {
   listeners.add(listener);
@@ -80,7 +88,7 @@ export async function syncNow({
     try {
       pushed = await pushPending(config);
     } catch (error) {
-      if (error?.code !== 'SYNC_CONFLICT') throw error;
+      if (!isEntityConflictCode(error?.code)) throw error;
 
       const pulled = await pullRemote(config);
       await pruneSyncedOperations();
@@ -122,7 +130,7 @@ export async function syncNow({
     };
   } catch (error) {
     emit({
-      state: error?.code === 'SYNC_CONFLICT'
+      state: isEntityConflictCode(error?.code)
         ? 'conflict'
         : 'error',
       message: error?.message || String(error),
@@ -249,13 +257,17 @@ async function pushPending(config) {
       error.code = data.code || 'SYNC_PUSH_FAILED';
       error.details = data.details || null;
 
-      if (response.status === 409 && data.code === 'SYNC_CONFLICT') {
+      if (
+        response.status === 409 &&
+        isEntityConflictCode(data.code)
+      ) {
         const conflictId = data.details?.eventId || null;
 
         for (const item of batch) {
           if (item.id === conflictId) {
             await markConflict(item.id, {
               ...(data.details || {}),
+              reason: data.code,
               message: error.message
             });
           } else {
@@ -265,6 +277,12 @@ async function pushPending(config) {
             );
           }
         }
+
+        error.details = {
+          ...(data.details || {}),
+          reason: data.code
+        };
+        error.code = 'SYNC_CONFLICT';
       } else {
         for (const item of batch) {
           await markFailed(item.id, error);
