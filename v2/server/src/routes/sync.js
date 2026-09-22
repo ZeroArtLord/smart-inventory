@@ -72,7 +72,17 @@ syncRouter.post('/push', async (req, res, next) => {
           { beforeApply: true }
         );
 
-        await applyEvent(client, req.auth, event);
+        try {
+          await applyEvent(client, req.auth, event);
+        } catch (error) {
+          error.details = {
+            ...(error?.details || {}),
+            eventId: event.id,
+            entityType: event.entityType,
+            entityId: event.entityId
+          };
+          throw error;
+        }
 
         // Después del upsert volvemos a leer PostgreSQL para que el evento que
         // descargan otros dispositivos contenga los valores canónicos.
