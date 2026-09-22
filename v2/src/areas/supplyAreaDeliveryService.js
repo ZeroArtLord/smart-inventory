@@ -11,6 +11,7 @@ import {
   normalizeOperationalDate,
   operationalDateToEffectiveAt
 } from '../documents/operationalDate.js';
+import { SYNC_STATUS } from '../sync/localQueue.js';
 
 const EPSILON = 0.000001;
 const draftSyncChains = new Map();
@@ -212,6 +213,24 @@ export async function getLastAreaPattern(productId) {
   return [];
 }
 
+export async function canRefreshAreaDraftsRemotely(parentCartId) {
+  const cartId = clean(parentCartId);
+  if (!cartId) return false;
+
+  const parentCreateEvents = (await getAll(STORES.SYNC_QUEUE))
+    .filter(item =>
+      item?.entityType === 'document' &&
+      item?.entityId === cartId &&
+      item?.operation === 'CREATE'
+    );
+
+  if (!parentCreateEvents.length) return true;
+
+  return parentCreateEvents.every(
+    item => item.status === SYNC_STATUS.SYNCED
+  );
+}
+
 export async function loadAreaAllocationDrafts(
   parentCartId,
   { refresh = true } = {}
@@ -219,7 +238,12 @@ export async function loadAreaAllocationDrafts(
   const cartId = clean(parentCartId);
   if (!cartId) return [];
 
-  if (refresh && isOnline()) {
+  const remoteReady =
+    refresh &&
+    isOnline() &&
+    await canRefreshAreaDraftsRemotely(cartId);
+
+  if (remoteReady) {
     await syncPendingAreaDrafts(cartId).catch(() => null);
 
     try {
