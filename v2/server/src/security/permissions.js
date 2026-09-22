@@ -50,6 +50,29 @@ export function assertEventPermission(auth, event) {
     return 'role:GOD';
   }
 
+  if (event?.entityType === 'manualProcurementRequest') {
+    const allowed =
+      hasPermission(
+        auth,
+        PERMISSIONS.COUNT_WRITE
+      ) ||
+      hasPermission(
+        auth,
+        PERMISSIONS.PURCHASE_WRITE
+      );
+
+    if (!allowed) {
+      const error = new Error(
+        'Permiso requerido: count.write o purchases.write'
+      );
+      error.code = 'PERMISSION_DENIED';
+      error.statusCode = 403;
+      throw error;
+    }
+
+    return 'count.write | purchases.write';
+  }
+
   if (event?.entityType === 'initialLoad') {
     const required = [
       PERMISSIONS.CATALOG_WRITE,
