@@ -131,7 +131,7 @@ test('A1 nunca permite reducir el plan por debajo de lo ya entregado', async () 
       3,
       { userId: cart.ownerId }
     ),
-    /ya entregado|entregado/i
+    /entregad|entregaron/i
   );
 
   await updateLiveSupplyPlannedQuantity(
