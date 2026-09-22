@@ -32,6 +32,16 @@ export async function applyRemoteEvents(events = []) {
       continue;
     }
 
+    if (
+      event.entityType === 'manualProcurementRequest' &&
+      event.payload?.productId
+    ) {
+      applied += await applyManualProcurementRequestRemoteEvent(
+        event
+      );
+      continue;
+    }
+
     const storeName = ENTITY_STORES[event.entityType];
     if (!storeName || !event.payload?.id) continue;
 
@@ -53,6 +63,53 @@ export async function applyRemoteEvents(events = []) {
   }
 
   return applied;
+}
+
+async function applyManualProcurementRequestRemoteEvent(event) {
+  const productId = String(
+    event.payload?.productId || ''
+  ).trim();
+
+  if (!productId) return 0;
+
+  const current = await get(
+    STORES.PRODUCTS,
+    productId
+  );
+
+  if (!current) return 0;
+
+  const requested =
+    event.payload?.requested === true;
+
+  const next = {
+    ...current,
+    manualProcurementRequested:
+      requested,
+    manualProcurementRequestedAt:
+      requested
+        ? (event.payload?.requestedAt || null)
+        : null,
+    manualProcurementRequestedBy:
+      requested
+        ? (event.payload?.requestedBy || null)
+        : null,
+    manualProcurementRequestedSource:
+      requested
+        ? (event.payload?.source || 'COUNT')
+        : null
+  };
+
+  await runTransaction(
+    STORES.PRODUCTS,
+    'readwrite',
+    store =>
+      requestToPromise(
+        store.put(next)
+      )
+  );
+
+  return 1;
 }
 
 async function applyInitialLoadRemoteEvent(event) {

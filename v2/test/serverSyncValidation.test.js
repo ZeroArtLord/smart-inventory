@@ -259,3 +259,37 @@ test('servidor rechaza presentaciones duplicadas por código', () => {
     payload: product
   }), /Presentación duplicada/i);
 });
+
+
+test('acepta marca Comprar manual válida', () => {
+  const payload = {
+    id: 'prd_flag',
+    productId: 'prd_flag',
+    requested: true,
+    requestedAt: '2026-09-22T20:00:00.000Z',
+    requestedBy: 'user-1',
+    source: 'COUNT'
+  };
+
+  assert.doesNotThrow(() => validateSyncEvent({
+    entityType: 'manualProcurementRequest',
+    entityId: payload.id,
+    operation: 'UPDATE',
+    payload
+  }));
+});
+
+test('rechaza marca Comprar si requested no es boolean', () => {
+  const payload = {
+    id: 'prd_flag_bad',
+    productId: 'prd_flag_bad',
+    requested: 'YES'
+  };
+
+  assert.throws(() => validateSyncEvent({
+    entityType: 'manualProcurementRequest',
+    entityId: payload.id,
+    operation: 'UPDATE',
+    payload
+  }), /boolean/i);
+});

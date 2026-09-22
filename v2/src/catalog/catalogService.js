@@ -27,6 +27,11 @@ import {
   deriveLegacyPurchaseFields,
   normalizePresentations
 } from './presentationModel.js';
+import {
+  barcodeKey,
+  barcodeSearchTerms,
+  normalizeProductBarcodes
+} from './barcodeModel.js';
 
 export async function seedDefaultUnits() {
   const existing = await getAll(STORES.UNITS);
@@ -150,9 +155,20 @@ export async function createProduct(data = {}) {
     inventoryUnitId
   );
 
+  const barcodes = normalizeProductBarcodes(
+    data.barcodes,
+    { legacyBarcode: data.barcode }
+  );
+  const legacyBarcode =
+    normalizeText(data.barcode) ||
+    barcodes[0]?.code ||
+    '';
+
   await assertProductIdentityAvailable({
     saintCode,
-    sku
+    sku,
+    barcode: legacyBarcode,
+    barcodes
   });
 
   const now = new Date().toISOString();
@@ -165,7 +181,8 @@ export async function createProduct(data = {}) {
     aliases: Array.isArray(data.aliases)
       ? data.aliases.map(normalizeText).filter(Boolean)
       : [],
-    barcode: normalizeText(data.barcode),
+    barcode: legacyBarcode,
+    barcodes,
     categoryId: data.categoryId || null,
     inventoryUnitId,
     purchaseUnitId: legacyPurchase.purchaseUnitId,
@@ -178,6 +195,14 @@ export async function createProduct(data = {}) {
     targetDays,
     safetyDays,
     supplierId: data.supplierId || null,
+    manualProcurementRequested:
+      data.manualProcurementRequested === true,
+    manualProcurementRequestedAt:
+      data.manualProcurementRequestedAt || null,
+    manualProcurementRequestedBy:
+      data.manualProcurementRequestedBy || null,
+    manualProcurementRequestedSource:
+      data.manualProcurementRequestedSource || null,
     active: data.active !== false,
     version: initialEntityVersion(),
     createdAt: now,
@@ -249,7 +274,31 @@ export async function updateProduct(productId, patch = {}) {
         next.saintCode
       );
   }
-  if (patch.barcode !== undefined) next.barcode = normalizeText(patch.barcode);
+  if (
+    patch.barcode !== undefined ||
+    patch.barcodes !== undefined
+  ) {
+    const legacyBarcode = patch.barcode !== undefined
+      ? normalizeText(patch.barcode)
+      : normalizeText(current.barcode);
+
+    next.barcodes = normalizeProductBarcodes(
+      patch.barcodes !== undefined
+        ? patch.barcodes
+        : current.barcodes,
+      { legacyBarcode }
+    );
+
+    next.barcode =
+      legacyBarcode ||
+      next.barcodes[0]?.code ||
+      '';
+  } else if (!Array.isArray(next.barcodes)) {
+    next.barcodes = normalizeProductBarcodes(
+      [],
+      { legacyBarcode: next.barcode }
+    );
+  }
 
   if (patch.minStock !== undefined) {
     next.minStock = assertNonNegativeNumber(patch.minStock, 'Stock mínimo');
@@ -328,7 +377,9 @@ export async function updateProduct(productId, patch = {}) {
   await assertProductIdentityAvailable({
     productId,
     saintCode: next.saintCode,
-    sku: next.sku
+    sku: next.sku,
+    barcode: next.barcode,
+    barcodes: next.barcodes
   });
 
   await writeEntityWithSync(STORES.PRODUCTS, 'product', next, 'UPDATE');
@@ -354,6 +405,7 @@ export async function searchProducts(query, { limit = 30 } = {}) {
       normalizeSearchText(product.saintCode),
       normalizeSearchText(product.sku),
       normalizeSearchText(product.barcode),
+      ...barcodeSearchTerms(product).map(normalizeSearchText),
       ...(product.aliases || []).map(normalizeSearchText)
     ].join(' ');
 
@@ -366,16 +418,26 @@ export async function searchProducts(query, { limit = 30 } = {}) {
 async function assertProductIdentityAvailable({
   productId = null,
   saintCode = '',
-  sku = ''
+  sku = '',
+  barcode = '',
+  barcodes = []
 } = {}) {
   const normalizedSaintCode =
     normalizeSearchText(saintCode);
   const normalizedSku =
     normalizeSearchText(sku);
+  const candidateBarcodes = normalizeProductBarcodes(
+    barcodes,
+    { legacyBarcode: barcode }
+  );
+  const candidateBarcodeKeys = new Set(
+    candidateBarcodes.map(item => barcodeKey(item.code))
+  );
 
   if (
     !normalizedSaintCode &&
-    !normalizedSku
+    !normalizedSku &&
+    candidateBarcodeKeys.size === 0
   ) {
     return;
   }
@@ -416,6 +478,27 @@ async function assertProductIdentityAvailable({
       );
       error.code =
         'SMART_SKU_DUPLICATE';
+      throw error;
+    }
+
+    const otherBarcodeKeys = new Set(
+      normalizeProductBarcodes(
+        product.barcodes,
+        { legacyBarcode: product.barcode }
+      ).map(item => barcodeKey(item.code))
+    );
+
+    const duplicateBarcode = [...candidateBarcodeKeys]
+      .find(key => otherBarcodeKeys.has(key));
+
+    if (duplicateBarcode) {
+      const duplicate = candidateBarcodes.find(
+        item => barcodeKey(item.code) === duplicateBarcode
+      );
+      const error = new Error(
+        `El código de barras "${duplicate?.code || duplicateBarcode}" ya pertenece a otro producto`
+      );
+      error.code = 'BARCODE_DUPLICATE';
       throw error;
     }
   }

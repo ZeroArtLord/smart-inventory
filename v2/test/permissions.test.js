@@ -148,3 +148,36 @@ test('carga inicial SAINT exige catálogo y ajustes', () => {
     event
   ));
 });
+
+
+test('marca Comprar desde Conteo permite count.write o purchases.write', () => {
+  const event = {
+    entityType: 'manualProcurementRequest',
+    operation: 'UPDATE',
+    payload: {
+      id: 'prd_flag',
+      productId: 'prd_flag',
+      requested: true
+    }
+  };
+
+  assert.doesNotThrow(() => assertEventPermission(
+    { permissions: [PERMISSIONS.COUNT_WRITE] },
+    event
+  ));
+
+  assert.doesNotThrow(() => assertEventPermission(
+    { permissions: [PERMISSIONS.PURCHASE_WRITE] },
+    event
+  ));
+
+  assert.throws(
+    () => assertEventPermission(
+      { permissions: [PERMISSIONS.CATALOG_VIEW] },
+      event
+    ),
+    error =>
+      error?.code === 'PERMISSION_DENIED' &&
+      error?.statusCode === 403
+  );
+});

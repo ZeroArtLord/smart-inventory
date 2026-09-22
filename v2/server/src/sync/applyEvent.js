@@ -83,6 +83,17 @@ export async function applyEvent(client, auth, event) {
         payload
       );
       break;
+    case 'manualProcurementRequest':
+      if (operation !== 'UPDATE') {
+        throw new Error('La marca Comprar solo admite UPDATE');
+      }
+      result = await updateManualProcurementRequest(
+        client,
+        workspaceId,
+        userId,
+        payload
+      );
+      break;
     default:
       throw new Error(`Entidad no soportada: ${entityType}`);
   }
@@ -106,6 +117,10 @@ async function upsertProduct(
     String(
       p.saintCode || ''
     ).trim();
+  const barcodes = normalizeServerBarcodes(
+    p.barcodes,
+    p.barcode
+  );
 
   if (saintCode) {
     const duplicateSaintCode =
@@ -136,6 +151,13 @@ async function upsertProduct(
       throw error;
     }
   }
+
+  await assertProductBarcodeAvailability(
+    client,
+    workspaceId,
+    p.id,
+    barcodes
+  );
 
   if (operation === 'UPDATE') {
     const current = await client.query(
@@ -186,14 +208,20 @@ async function upsertProduct(
 
   await client.query(
     `INSERT INTO products (
-      workspace_id,id,saint_code,sku,name,name_normalized,aliases,barcode,category_id,
+      workspace_id,id,saint_code,sku,name,name_normalized,aliases,barcode,barcodes,category_id,
       inventory_unit_id,purchase_unit_id,purchase_conversion,presentations,
       min_stock,max_stock,replenishment_method,
       intelligence_mode,target_days,safety_days,
-      supplier_id,active,created_at,updated_at
+      supplier_id,
+      manual_procurement_requested,
+      manual_procurement_requested_at,
+      manual_procurement_requested_by,
+      manual_procurement_requested_source,
+      active,created_at,updated_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,
-      COALESCE($17,'SEED'),COALESCE($18,7),COALESCE($19,0),$20,$21,$22,$23
+      $1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9::jsonb,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,
+      COALESCE($18,'SEED'),COALESCE($19,7),COALESCE($20,0),$21,
+      COALESCE($22,false),$23,$24,$25,$26,$27,$28
     )
     ON CONFLICT (workspace_id,id) DO UPDATE SET
       saint_code=EXCLUDED.saint_code,
@@ -202,6 +230,7 @@ async function upsertProduct(
       name_normalized=EXCLUDED.name_normalized,
       aliases=EXCLUDED.aliases,
       barcode=EXCLUDED.barcode,
+      barcodes=EXCLUDED.barcodes,
       category_id=EXCLUDED.category_id,
       inventory_unit_id=EXCLUDED.inventory_unit_id,
       purchase_unit_id=EXCLUDED.purchase_unit_id,
@@ -210,10 +239,27 @@ async function upsertProduct(
       min_stock=EXCLUDED.min_stock,
       max_stock=EXCLUDED.max_stock,
       replenishment_method=EXCLUDED.replenishment_method,
-      intelligence_mode=COALESCE($17,products.intelligence_mode),
-      target_days=COALESCE($18,products.target_days),
-      safety_days=COALESCE($19,products.safety_days),
+      intelligence_mode=COALESCE($18,products.intelligence_mode),
+      target_days=COALESCE($19,products.target_days),
+      safety_days=COALESCE($20,products.safety_days),
       supplier_id=EXCLUDED.supplier_id,
+      manual_procurement_requested=
+        COALESCE($22,products.manual_procurement_requested),
+      manual_procurement_requested_at=
+        CASE WHEN $22 IS NULL
+          THEN products.manual_procurement_requested_at
+          ELSE $23
+        END,
+      manual_procurement_requested_by=
+        CASE WHEN $22 IS NULL
+          THEN products.manual_procurement_requested_by
+          ELSE $24
+        END,
+      manual_procurement_requested_source=
+        CASE WHEN $22 IS NULL
+          THEN products.manual_procurement_requested_source
+          ELSE $25
+        END,
       active=EXCLUDED.active,
       updated_at=EXCLUDED.updated_at`,
     [
@@ -224,7 +270,8 @@ async function upsertProduct(
       p.name,
       p.nameNormalized || null,
       JSON.stringify(p.aliases || []),
-      p.barcode || null,
+      p.barcode || barcodes[0]?.code || null,
+      JSON.stringify(barcodes),
       p.categoryId || null,
       p.inventoryUnitId || null,
       p.purchaseUnitId || null,
@@ -237,11 +284,242 @@ async function upsertProduct(
       p.targetDays ?? null,
       p.safetyDays ?? null,
       p.supplierId || null,
+      p.manualProcurementRequested ?? null,
+      p.manualProcurementRequestedAt || null,
+      p.manualProcurementRequestedBy || null,
+      p.manualProcurementRequestedSource || null,
       p.active !== false,
       p.createdAt,
       p.updatedAt
     ]
   );
+}
+
+function normalizeServerBarcodes(source, legacyBarcode = '') {
+  const list = Array.isArray(source)
+    ? source
+    : [];
+  const normalized = [];
+  const seen = new Set();
+
+  for (const raw of list) {
+    const item = typeof raw === 'string'
+      ? { code: raw }
+      : (raw || {});
+    const code = String(item.code || '').trim();
+    if (!code) {
+      throw barcodeError(
+        'BARCODE_INVALID',
+        'Cada código de barras requiere un código',
+        400
+      );
+    }
+
+    const key = code.toLowerCase();
+    if (seen.has(key)) {
+      throw barcodeError(
+        'BARCODE_DUPLICATE',
+        `Código de barras duplicado dentro del producto: ${code}`,
+        409
+      );
+    }
+
+    const conversion = Number(item.conversion ?? 1);
+    if (!Number.isFinite(conversion) || conversion <= 0) {
+      throw barcodeError(
+        'BARCODE_INVALID',
+        `La conversión del código ${code} debe ser mayor que cero`,
+        400
+      );
+    }
+
+    seen.add(key);
+    normalized.push({
+      code,
+      label: String(item.label || item.name || code).trim() || code,
+      conversion,
+      active: item.active !== false
+    });
+  }
+
+  const legacy = String(legacyBarcode || '').trim();
+  if (legacy && !seen.has(legacy.toLowerCase())) {
+    normalized.unshift({
+      code: legacy,
+      label: 'Código principal',
+      conversion: 1,
+      active: true
+    });
+  }
+
+  if (normalized.length > 32) {
+    throw barcodeError(
+      'BARCODE_INVALID',
+      'Un producto no puede tener más de 32 códigos de barras',
+      400
+    );
+  }
+
+  return normalized;
+}
+
+async function assertProductBarcodeAvailability(
+  client,
+  workspaceId,
+  productId,
+  barcodes
+) {
+  const codes = [...new Set(
+    barcodes
+      .filter(item => item.active !== false)
+      .map(item => String(item.code || '').trim().toLowerCase())
+      .filter(Boolean)
+  )];
+
+  if (!codes.length) return;
+
+  const duplicate = await client.query(
+    `SELECT id,name
+     FROM products
+     WHERE workspace_id = $1
+       AND id <> $2
+       AND (
+         (
+           barcode IS NOT NULL
+           AND lower(barcode) = ANY($3::text[])
+         )
+         OR EXISTS (
+           SELECT 1
+           FROM jsonb_array_elements(
+             COALESCE(barcodes, '[]'::jsonb)
+           ) AS item
+           WHERE lower(
+             COALESCE(item->>'code', '')
+           ) = ANY($3::text[])
+         )
+       )
+     LIMIT 1`,
+    [workspaceId, productId, codes]
+  );
+
+  if (duplicate.rowCount > 0) {
+    throw barcodeError(
+      'BARCODE_DUPLICATE',
+      'Ese código de barras ya pertenece a otro producto',
+      409,
+      {
+        productId: duplicate.rows[0].id,
+        productName: duplicate.rows[0].name
+      }
+    );
+  }
+}
+
+function barcodeError(
+  code,
+  message,
+  statusCode,
+  details = null
+) {
+  const error = new Error(message);
+  error.code = code;
+  error.statusCode = statusCode;
+  error.details = details;
+  return error;
+}
+
+async function updateManualProcurementRequest(
+  client,
+  workspaceId,
+  userId,
+  payload
+) {
+  const productId = String(
+    payload?.productId ||
+    payload?.id ||
+    ''
+  ).trim();
+
+  if (!productId) {
+    const error = new Error(
+      'La marca Comprar requiere producto'
+    );
+    error.code = 'MANUAL_PROCUREMENT_PRODUCT_REQUIRED';
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const requested = payload?.requested === true;
+  const requestedAt = requested
+    ? (payload?.requestedAt || new Date().toISOString())
+    : null;
+  const requestedBy = requested
+    ? (
+        String(
+          payload?.requestedBy ||
+          userId ||
+          ''
+        ).trim() ||
+        null
+      )
+    : null;
+  const source = requested
+    ? (
+        String(
+          payload?.source ||
+          'COUNT'
+        ).trim() ||
+        'COUNT'
+      )
+    : null;
+
+  const result = await client.query(
+    `UPDATE products
+     SET
+       manual_procurement_requested = $3,
+       manual_procurement_requested_at = $4,
+       manual_procurement_requested_by = $5,
+       manual_procurement_requested_source = $6,
+       updated_at = GREATEST(
+         updated_at,
+         COALESCE($4::timestamptz, now())
+       )
+     WHERE workspace_id = $1
+       AND id = $2
+     RETURNING id`,
+    [
+      workspaceId,
+      productId,
+      requested,
+      requestedAt,
+      requestedBy,
+      source
+    ]
+  );
+
+  if (result.rowCount !== 1) {
+    const error = new Error(
+      'Producto no encontrado para marcar Comprar'
+    );
+    error.code = 'MANUAL_PROCUREMENT_PRODUCT_NOT_FOUND';
+    error.statusCode = 409;
+    throw error;
+  }
+
+  payload.id = productId;
+  payload.productId = productId;
+  payload.requested = requested;
+  payload.requestedAt = requestedAt;
+  payload.requestedBy = requestedBy;
+  payload.source = source;
+
+  return {
+    productId,
+    requested,
+    requestedAt,
+    requestedBy,
+    source
+  };
 }
 
 async function upsertCategory(client, workspaceId, p) {

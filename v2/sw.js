@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-58';
+const CACHE_NAME = 'smart-inventory-v2-shell-61';
 
 const APP_SHELL = [
   './',
@@ -27,6 +27,7 @@ const APP_SHELL = [
   './css/v8-reports.css',
   './css/v8-god-oversight.css',
   './css/v8-8-phase-a.css',
+  './css/v8-9-phase-b.css',
   './vendor/xlsx.full.min.js',
   './src/ui/app.js',
   './src/ui/godOperationalOversightUi.js',
@@ -39,6 +40,8 @@ const APP_SHELL = [
   './src/ui/countReconciliationBulkUi.js',
   './src/ui/liveSupplyUi.js',
   './src/ui/supplyChecklistUi.js',
+  './src/ui/barcodeAssociationUi.js',
+  './src/ui/barcodeIntelligenceController.js',
   './src/ui/supplyAreaUi.js',
   './src/ui/quickSupplyAreaUi.js',
   './src/ui/areaWorkspaceUi.js',
@@ -64,6 +67,7 @@ const APP_SHELL = [
   './src/core/movementTypes.js',
   './src/core/versioning.js',
   './src/catalog/catalogService.js',
+  './src/catalog/barcodeModel.js',
   './src/catalog/catalogExcel.js',
   './src/catalog/presentationModel.js',
   './src/catalog/catalogUi.js',
@@ -90,6 +94,7 @@ const APP_SHELL = [
   './src/replenishment/replenishmentService.js',
   './src/replenishment/warehouseProcurementService.js',
   './src/replenishment/procurementListService.js',
+  './src/replenishment/manualProcurementRequestService.js',
   './src/scanner/barcodeScanner.js',
   './src/export/exportService.js',
   './src/export/saintSupplyExport.js',

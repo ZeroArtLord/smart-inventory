@@ -79,7 +79,7 @@ function renderReplenish({ visibleRows, manualRows, drafts, productsById, query,
     </div>
 
     ${manualRows.length ? `
-      <div class="v6p-section-head v6p-manual-heading"><div><h3>Agregados manualmente</h3><p>Productos que tú decidiste incluir aunque VIGÍA no los recomendó.</p></div></div>
+      <div class="v6p-section-head v6p-manual-heading"><div><h3>Agregados manualmente</h3><p>Incluye productos marcados durante Conteo aunque VIGÍA no los haya recomendado.</p></div></div>
       <div class="v6p-products">${manualRows.map(row => productRow(row, drafts.get(row.productId), productsById.get(row.productId))).join('')}</div>
     ` : ''}
 
@@ -103,7 +103,7 @@ function productRow(row, draft, product) {
         <strong>${esc(product.name)}</strong>
         <small>${esc(draft.meta)}</small>
         ${draft.note ? `<em>(${esc(draft.note)})</em>` : ''}
-        <div class="v6p-pills"><span class="v6p-pill ${risk === 'CRITICAL' ? 'is-critical' : 'is-low'}">${risk === 'CRITICAL' ? 'CRÍTICO' : 'BAJO'}</span>${confidence === 'NONE' || confidence === 'INSUFFICIENT' ? '<span class="v6p-pill">Sin historial</span>' : ''}${draft.manual ? '<span class="v6p-pill is-manual">Manual</span>' : ''}</div>
+        <div class="v6p-pills"><span class="v6p-pill ${risk === 'CRITICAL' ? 'is-critical' : 'is-low'}">${risk === 'CRITICAL' ? 'CRÍTICO' : 'BAJO'}</span>${confidence === 'NONE' || confidence === 'INSUFFICIENT' ? '<span class="v6p-pill">Sin historial</span>' : ''}${draft.countFlag ? '<span class="v6p-pill is-manual">🛒 Marcado en conteo</span>' : draft.manual ? '<span class="v6p-pill is-manual">Manual</span>' : ''}</div>
       </div>
       <div class="v6p-suggest"><small>VIGÍA sugiere</small><strong>${esc(draft.suggestedBaseText)}</strong><span>${esc(draft.suggestedHumanText)}</span></div>
       <div class="v6p-quantity"><small>Yo quiero</small><div><button data-v6p-action="step-qty" data-step="-1" type="button">−</button><input data-v6p-field="displayQuantity" value="${esc(draft.displayQuantity)}" inputmode="decimal"><button data-v6p-action="step-qty" data-step="1" type="button">+</button><select data-v6p-field="displayUnit">${draft.unitOptionsHtml}</select></div></div>

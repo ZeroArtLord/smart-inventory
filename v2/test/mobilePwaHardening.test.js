@@ -18,7 +18,7 @@ async function readBinary(relativePath) {
 test('PWA V8.7 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
-  assert.match(sw, /smart-inventory-v2-shell-58/);
+  assert.match(sw, /smart-inventory-v2-shell-61/);
   assert.doesNotMatch(sw, /smart-inventory-v2-shell-56/);
 
   const requiredAssets = [

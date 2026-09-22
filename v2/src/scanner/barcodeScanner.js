@@ -1,14 +1,62 @@
+import {
+  barcodeKey,
+  normalizeProductBarcodes
+} from '../catalog/barcodeModel.js';
+
 export function normalizeScannedCode(value) {
   return String(value ?? '').trim();
 }
 
-export function findProductByBarcode(products, code) {
+export function isLikelyBarcodeInput(value) {
+  const code = normalizeScannedCode(value);
+  if (code.length < 6 || code.length > 64) return false;
+  if (/\s/.test(code)) return false;
+  if (!/[0-9]/.test(code)) return false;
+  return /^[A-Za-z0-9._\-/]+$/.test(code);
+}
+
+export function isStrongBarcodeInput(value) {
+  const code = normalizeScannedCode(value);
+
+  if (/^\d{8,18}$/.test(code)) {
+    return true;
+  }
+
+  return (
+    code.length >= 8 &&
+    isLikelyBarcodeInput(code)
+  );
+}
+
+export function resolveProductByBarcode(products, code) {
   const target = normalizeScannedCode(code);
   if (!target) return null;
+  const key = barcodeKey(target);
 
-  return (Array.isArray(products) ? products : []).find(product =>
-    normalizeScannedCode(product.barcode) === target
-  ) || null;
+  for (const product of Array.isArray(products) ? products : []) {
+    const mappings = normalizeProductBarcodes(
+      product?.barcodes,
+      { legacyBarcode: product?.barcode }
+    );
+
+    const barcode = mappings.find(item =>
+      item.active !== false &&
+      barcodeKey(item.code) === key
+    );
+
+    if (barcode) {
+      return {
+        product,
+        barcode
+      };
+    }
+  }
+
+  return null;
+}
+
+export function findProductByBarcode(products, code) {
+  return resolveProductByBarcode(products, code)?.product || null;
 }
 
 export function supportsCameraBarcodeScanner() {

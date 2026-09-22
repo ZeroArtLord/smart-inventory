@@ -105,10 +105,19 @@ import {
   REPLENISHMENT_STATUS
 } from '../replenishment/replenishmentService.js';
 import {
-  findProductByBarcode,
+  isLikelyBarcodeInput,
+  isStrongBarcodeInput,
+  resolveProductByBarcode,
   supportsCameraBarcodeScanner,
   startCameraBarcodeScanner
 } from '../scanner/barcodeScanner.js';
+import {
+  barcodeSearchTerms,
+  normalizeProductBarcodes
+} from '../catalog/barcodeModel.js';
+import {
+  resolveOrAssociateBarcode
+} from './barcodeIntelligenceController.js';
 import {
   buildDocumentExportRows,
   downloadCsv,
@@ -2191,6 +2200,15 @@ async function renderCatalog() {
               autocomplete="off"
             >
           </label>
+          <button
+            class="secondary scanner-button"
+            data-action="open-barcode-scanner"
+            type="button"
+            ${supportsCameraBarcodeScanner() ? '' : 'disabled'}
+            title="${supportsCameraBarcodeScanner()
+              ? 'Escanear y asociar producto'
+              : 'La cámara requiere HTTPS y navegador compatible'}"
+          >▣ Escanear</button>
           <span class="badge">${inventoryRows.length}</span>
         </div>
 
@@ -2227,7 +2245,13 @@ async function renderCatalog() {
                     return `
                       <tr
                         data-catalog-filter="${escapeHtml(
-                          [product.name, product.saintCode, product.sku, product.barcode]
+                          [
+                            product.name,
+                            product.saintCode,
+                            product.sku,
+                            product.barcode,
+                            ...barcodeSearchTerms(product)
+                          ]
                             .filter(Boolean)
                             .join(' ')
                             .toLowerCase()
@@ -2298,12 +2322,25 @@ async function renderCatalog() {
                   : status === 'low'
                     ? 'Bajo'
                     : 'Normal';
+                const productBarcodes = normalizeProductBarcodes(
+                  product.barcodes,
+                  { legacyBarcode: product.barcode }
+                );
+                const categoryName = product.categoryId
+                  ? categoryById.get(product.categoryId)?.name || 'Categoría desconocida'
+                  : 'Sin categoría';
 
                 return `
                   <article
                     class="catalog-mobile-card"
                     data-catalog-filter="${escapeHtml(
-                      [product.name, product.saintCode, product.sku, product.barcode]
+                      [
+                        product.name,
+                        product.saintCode,
+                        product.sku,
+                        product.barcode,
+                        ...barcodeSearchTerms(product)
+                      ]
                         .filter(Boolean)
                         .join(' ')
                         .toLowerCase()
@@ -2319,20 +2356,11 @@ async function renderCatalog() {
                         <small>${product.sku
                           ? 'SKU ' + escapeHtml(product.sku)
                           : 'SKU —'}</small>
-                        <small>${escapeHtml(
-                          product.categoryId
-                            ? categoryById.get(product.categoryId)?.name || 'Categoría desconocida'
-                            : 'Sin categoría'
-                        )}</small>
+                        <span class="catalog-mobile-category">${escapeHtml(categoryName)}</span>
                         <small>${escapeHtml(catalogPresentationSummary(product))}</small>
-                        ${canWriteCatalog ? `
-                          <button
-                            class="catalog-edit-link"
-                            data-action="edit-product"
-                            data-product-id="${escapeHtml(product.id)}"
-                            type="button"
-                          >Editar</button>
-                        ` : ''}
+                        <small class="catalog-mobile-barcode-count">
+                          ▥ ${productBarcodes.length} código${productBarcodes.length === 1 ? '' : 's'}
+                        </small>
                       </div>
                       <span class="catalog-status ${status}"><span></span>${statusLabel}</span>
                     </div>
@@ -2341,9 +2369,19 @@ async function renderCatalog() {
                       <div><small>Mín.</small>${renderCatalogQuantity(product, product.minStock || 0)}</div>
                       <div><small>Máx.</small>${product.maxStock ? renderCatalogQuantity(product, product.maxStock) : '<strong>—</strong>'}</div>
                     </div>
-                    <div class="product-meta">
-                      ${escapeHtml(catalogUnitCode(product))} ·
-                      ${escapeHtml(replenishmentLabel(product.replenishmentMethod))}
+                    <div class="catalog-mobile-footer">
+                      <div class="product-meta">
+                        ${escapeHtml(catalogUnitCode(product))} ·
+                        ${escapeHtml(replenishmentLabel(product.replenishmentMethod))}
+                      </div>
+                      ${canWriteCatalog ? `
+                        <button
+                          class="secondary catalog-mobile-primary-action"
+                          data-action="edit-product"
+                          data-product-id="${escapeHtml(product.id)}"
+                          type="button"
+                        >Editar producto</button>
+                      ` : ''}
                     </div>
                   </article>
                 `;
@@ -2429,6 +2467,61 @@ async function renderCatalog() {
           Boolean(query) &&
           !haystack.includes(query);
       });
+  });
+
+  catalogSearch?.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+
+    const raw = String(event.target.value || '').trim();
+    const known = resolveProductByBarcode(
+      state.products,
+      raw
+    );
+
+    if (!known && !isLikelyBarcodeInput(raw)) {
+      return;
+    }
+
+    event.preventDefault();
+
+    resolveOrAssociateBarcode({
+      code: raw,
+      products: state.products,
+      allowAssociate:
+        canWriteCatalog,
+      onAssociated: async () => {
+        await refreshProducts();
+        scheduleSync(100);
+      }
+    })
+      .then(async result => {
+        if (result.status === 'unknown') {
+          showToast(
+            `Código ${raw} no reconocido. No tienes permiso para asociarlo.`
+          );
+          return;
+        }
+
+        if (!result.product) return;
+
+        await refreshProducts();
+
+        if (canWriteCatalog) {
+          state.editingProductId =
+            result.product.id;
+        }
+
+        showToast(
+          result.status === 'associated'
+            ? `Código asociado: ${result.product.name}`
+            : `Código reconocido: ${result.product.name}`
+        );
+
+        await renderCatalog();
+      })
+      .catch(error =>
+        showToast(error.message || String(error))
+      );
   });
 }
 
@@ -3455,6 +3548,97 @@ async function exportClosedDocument(documentId, format) {
   throw new Error('Formato de exportación no soportado');
 }
 
+async function selectBarcodeMatch(match, {
+  associated = false
+} = {}) {
+  if (!match?.product) return;
+
+  const message = associated
+    ? `Código asociado: ${match.product.name}`
+    : `Escaneado: ${match.product.name} · ${match.barcode?.label || match.barcode?.code || ''}`;
+
+  if (state.view === 'count') {
+    showToast(message);
+
+    document.dispatchEvent(
+      new CustomEvent(
+        'vigia:barcode-resolved',
+        {
+          detail: {
+            product: match.product,
+            barcode: match.barcode || null,
+            associated
+          }
+        }
+      )
+    );
+    return;
+  }
+
+  if (state.view === 'catalog') {
+    state.editingProductId =
+      match.product.id;
+    showToast(message);
+    await render();
+    return;
+  }
+
+  state.selectedProductId = match.product.id;
+  state.searchResults = [];
+
+  showToast(message);
+
+  await render();
+
+  const quantityInput =
+    document.getElementById('operationQuantity');
+
+  if (quantityInput) {
+    quantityInput.value = String(
+      match.barcode?.conversion || 1
+    );
+    quantityInput.focus();
+    quantityInput.select();
+  }
+}
+
+async function associateUnknownBarcode(code) {
+  const scannedCode = String(code || '').trim();
+  if (!scannedCode) return null;
+
+  const allowAssociate =
+    hasClientPermission('catalog.write');
+
+  const result = await resolveOrAssociateBarcode({
+    code: scannedCode,
+    products: state.products,
+    allowAssociate,
+    onAssociated: async () => {
+      await refreshProducts();
+      scheduleSync(100);
+    }
+  });
+
+  if (result.status === 'unknown') {
+    showToast(
+      `Código ${scannedCode} no reconocido. No tienes permiso para asociarlo.`
+    );
+    return null;
+  }
+
+  if (!result.product) return null;
+
+  await selectBarcodeMatch(
+    result,
+    {
+      associated:
+        result.status === 'associated'
+    }
+  );
+
+  return result;
+}
+
 async function openBarcodeScanner() {
   closeBarcodeScanner();
 
@@ -3495,21 +3679,19 @@ async function openBarcodeScanner() {
     barcodeScannerSession = await startCameraBarcodeScanner({
       videoElement: video,
       onCode: async code => {
-        const product = findProductByBarcode(state.products, code);
+        const match = resolveProductByBarcode(
+          state.products,
+          code
+        );
 
-        if (!product) {
-          if (status) {
-            status.textContent = `Código ${code} no existe en el catálogo.`;
-            status.className = 'status-warning';
-          }
+        closeBarcodeScanner();
+
+        if (match) {
+          await selectBarcodeMatch(match);
           return;
         }
 
-        state.selectedProductId = product.id;
-        state.searchResults = [];
-        closeBarcodeScanner();
-        showToast(`Escaneado: ${product.name}`);
-        await render();
+        await associateUnknownBarcode(code);
       },
       onError: error => {
         if (status) {
@@ -3699,15 +3881,60 @@ async function handleKeydown(event) {
   }
 
   if (event.target.id === 'operationQuantity') {
+    const raw = String(
+      event.target.value || ''
+    ).trim();
+
+    const exactBarcode =
+      resolveProductByBarcode(
+        state.products,
+        raw
+      );
+
+    if (
+      exactBarcode ||
+      isStrongBarcodeInput(raw)
+    ) {
+      event.preventDefault();
+
+      if (exactBarcode) {
+        return selectBarcodeMatch(
+          exactBarcode
+        );
+      }
+
+      return associateUnknownBarcode(
+        raw
+      );
+    }
+
     event.preventDefault();
     return addOperationLine(state.activeDocumentType);
   }
 
-  if (event.target.id === 'productSearch' && state.searchResults.length) {
-    event.preventDefault();
-    state.selectedProductId = state.searchResults[0].id;
-    state.searchResults = [];
-    return render();
+  if (event.target.id === 'productSearch') {
+    const raw = String(event.target.value || '').trim();
+    const exactBarcode = resolveProductByBarcode(
+      state.products,
+      raw
+    );
+
+    if (exactBarcode) {
+      event.preventDefault();
+      return selectBarcodeMatch(exactBarcode);
+    }
+
+    if (isLikelyBarcodeInput(raw)) {
+      event.preventDefault();
+      return associateUnknownBarcode(raw);
+    }
+
+    if (state.searchResults.length) {
+      event.preventDefault();
+      state.selectedProductId = state.searchResults[0].id;
+      state.searchResults = [];
+      return render();
+    }
   }
 }
 
