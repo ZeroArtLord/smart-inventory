@@ -743,16 +743,13 @@ async function signInWithGoogle() {
         uid: state.authUser.uid
       });
 
-    state.availableWorkspaces =
-      access.workspaces || [];
-    state.workspaceReady =
-      Boolean(access.selectedWorkspace);
-    state.authAccessOffline =
-      Boolean(access.offline);
+    applyFirebaseAccessState(access);
 
-    updateAuthUi();
-    updateNavigationUi();
-    showToast('Sesión iniciada');
+    showToast(
+      access.offline
+        ? 'Sesión local disponible · servidor pendiente'
+        : 'Sesión iniciada'
+    );
 
     if (!access.selectedWorkspace) {
       renderWorkspaceGate();
