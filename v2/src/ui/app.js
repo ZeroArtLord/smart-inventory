@@ -71,6 +71,7 @@ import {
 import {
   discoverServerAuthMode,
   bootstrapFirebaseAccess,
+  getCachedFirebaseAccess,
   selectFirebaseWorkspace
 } from '../auth/authBootstrap.js';
 import {
@@ -80,6 +81,15 @@ import {
   refreshFirebaseToken,
   firebaseUserSummary
 } from '../auth/firebaseClient.js';
+import {
+  clearOfflineAccessSnapshot,
+  setOfflineLogoutLock,
+  getOfflineLogoutLock,
+  clearOfflineLogoutLock
+} from '../auth/offlineAccess.js';
+import {
+  getSyncConfig
+} from '../sync/syncSettings.js';
 import {
   listSyncConflicts
 } from '../sync/localQueue.js';
