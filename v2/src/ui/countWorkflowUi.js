@@ -111,6 +111,17 @@ if (appRoot) {
         showLocalError(error);
       });
   });
+
+  document.addEventListener(
+    'vigia:barcode-resolved',
+    event => {
+      handleResolvedCountBarcode(
+        event.detail
+      ).catch(error =>
+        showLocalError(error)
+      );
+    }
+  );
 }
 
 function installStyles() {
@@ -319,6 +330,11 @@ function renderOverallHeader(
           ${workflow.activeCategoryId || workflow.mode === COUNT_WORKFLOW_MODES.PENDING
             ? '<button class="secondary" data-v5-count-action="categories" type="button">← Categorías</button>'
             : ''}
+          <button
+            class="secondary"
+            data-action="open-barcode-scanner"
+            type="button"
+          >▣ Escanear</button>
           <button class="secondary v5-count-pending-button" data-v5-count-action="pending" type="button">
             Pendientes · ${pendingCount}
           </button>
@@ -928,24 +944,34 @@ async function handleCountBarcodeSearch(input) {
     return true;
   }
 
+  await handleResolvedCountBarcode({
+    product: result.product,
+    barcode: result.barcode || null,
+    associated:
+      result.status === 'associated'
+  });
+
+  return true;
+}
+
+async function handleResolvedCountBarcode(detail) {
+  const product = detail?.product;
+  if (!product?.id) return false;
+
   const documentId =
     appRoot.dataset.v5CountDocumentId;
 
-  if (!documentId) {
-    throw new Error(
-      'No se pudo identificar el conteo activo'
-    );
-  }
+  if (!documentId) return false;
 
   appRoot.dataset.v5CountForcedProductId =
-    result.product.id;
+    product.id;
 
   await updateCountWorkflow(
     documentId,
     {
       mode: COUNT_WORKFLOW_MODES.CATEGORY,
       activeCategoryId:
-        result.product.categoryId ||
+        product.categoryId ||
         '__UNCATEGORIZED__'
     }
   );
