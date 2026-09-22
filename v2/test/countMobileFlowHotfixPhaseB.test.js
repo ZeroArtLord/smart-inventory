@@ -17,7 +17,7 @@ test('hotfix móvil mantiene identidad del producto visible y compacta Conteo', 
     '.v5-count-product-card .math-pad',
     'grid-template-columns:repeat(6,minmax(0,1fr))',
     '.v89-count-buy-flag small{display:none}',
-    '.v5-count-actions{grid-template-columns:1fr 1fr}'
+    '.v5-count-actions{grid-template-columns:1fr 1fr;gap:7px}'
   ]) {
     assert.ok(
       ui.includes(text),
