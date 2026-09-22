@@ -61,7 +61,7 @@ async function renderAreaSettings() {
       <div>
         <div class="v7-area-eyebrow">CONSUMO INTERNO</div>
         <h3>Áreas del negocio</h3>
-        <p>Define los destinos usados en Surtido. Desactivar conserva todo el histórico.</p>
+        <p>Define los destinos usados en Surtido. Puedes asignar un atajo Alt+letra/número a cada área.</p>
       </div>
       <span class="badge">${areas.filter(area => area.active !== false).length} activa(s)</span>
     </div>
@@ -111,6 +111,20 @@ function renderAreaSettingRow(area, index, writable) {
       <label>
         Orden
         <input data-area-setting-order inputmode="numeric" value="${Number(area.sortOrder || 0)}" ${writable ? '' : 'disabled'}>
+      </label>
+      <label>
+        Atajo
+        <span class="v88-area-shortcut-input">
+          <strong>Alt+</strong>
+          <input
+            data-area-setting-shortcut
+            maxlength="1"
+            autocomplete="off"
+            value="${escapeHtml(area.shortcutKey || '')}"
+            placeholder="C"
+            ${writable ? '' : 'disabled'}
+          >
+        </span>
       </label>
       <label class="v7-area-active-toggle">
         <input data-area-setting-active type="checkbox" ${area.active !== false ? 'checked' : ''} ${writable ? '' : 'disabled'}>
@@ -251,6 +265,7 @@ async function handleAreaWorkspaceClick(event) {
         await updateArea(row.dataset.areaSettingId, {
           name: row.querySelector('[data-area-setting-name]').value.trim(),
           sortOrder: Number(row.querySelector('[data-area-setting-order]').value || 0),
+          shortcutKey: row.querySelector('[data-area-setting-shortcut]').value.trim(),
           active: row.querySelector('[data-area-setting-active]').checked
         });
         showWorkspaceToast('Área actualizada.', 'success');
