@@ -16,7 +16,7 @@ areasRouter.get('/', async (req, res, next) => {
     );
 
     const result = await pool.query(
-      `SELECT id,name,active,sort_order,created_at,updated_at
+      `SELECT id,name,active,sort_order,shortcut_key,created_at,updated_at
        FROM areas
        WHERE workspace_id = $1
          AND ($2::boolean OR active = true)
@@ -326,6 +326,7 @@ areasRouter.post(
     try {
       const name = normalizeName(req.body?.name);
       const sortOrder = normalizeSortOrder(req.body?.sortOrder);
+      const shortcutKey = normalizeShortcutKey(req.body?.shortcutKey);
       const id = `area_${randomUUID()}`;
       const normalized = normalizeSearchText(name);
 
@@ -333,26 +334,23 @@ areasRouter.post(
         try {
           const result = await client.query(
             `INSERT INTO areas (
-               workspace_id,id,name,name_normalized,active,sort_order
-             ) VALUES ($1,$2,$3,$4,true,$5)
-             RETURNING id,name,active,sort_order,created_at,updated_at`,
-            [req.auth.workspaceId, id, name, normalized, sortOrder]
+               workspace_id,id,name,name_normalized,active,sort_order,shortcut_key
+             ) VALUES ($1,$2,$3,$4,true,$5,$6)
+             RETURNING id,name,active,sort_order,shortcut_key,created_at,updated_at`,
+            [req.auth.workspaceId, id, name, normalized, sortOrder, shortcutKey]
           );
 
           await writeAuditEvent(client, req.auth, {
             action: 'AREA_CREATED',
             entityType: 'area',
             entityId: id,
-            metadata: { name, sortOrder }
+            metadata: { name, sortOrder, shortcutKey }
           });
 
           return mapAreaRow(result.rows[0]);
         } catch (error) {
           if (error?.code === '23505') {
-            const duplicate = new Error('Ya existe un área con ese nombre');
-            duplicate.code = 'AREA_NAME_DUPLICATE';
-            duplicate.statusCode = 409;
-            throw duplicate;
+            throw duplicateAreaError(error);
           }
           throw error;
         }
@@ -384,8 +382,9 @@ areasRouter.patch(
       const hasName = Object.prototype.hasOwnProperty.call(req.body || {}, 'name');
       const hasActive = Object.prototype.hasOwnProperty.call(req.body || {}, 'active');
       const hasSortOrder = Object.prototype.hasOwnProperty.call(req.body || {}, 'sortOrder');
+      const hasShortcutKey = Object.prototype.hasOwnProperty.call(req.body || {}, 'shortcutKey');
 
-      if (!hasName && !hasActive && !hasSortOrder) {
+      if (!hasName && !hasActive && !hasSortOrder && !hasShortcutKey) {
         const error = new Error('No hay cambios para aplicar');
         error.code = 'AREA_INVALID';
         error.statusCode = 400;
@@ -394,7 +393,7 @@ areasRouter.patch(
 
       const area = await withTransaction(async client => {
         const current = await client.query(
-          `SELECT id,name,active,sort_order
+          `SELECT id,name,active,sort_order,shortcut_key
            FROM areas
            WHERE workspace_id = $1 AND id = $2
            FOR UPDATE`,
@@ -414,6 +413,9 @@ areasRouter.patch(
         const sortOrder = hasSortOrder
           ? normalizeSortOrder(req.body.sortOrder)
           : Number(previous.sort_order || 0);
+        const shortcutKey = hasShortcutKey
+          ? normalizeShortcutKey(req.body.shortcutKey)
+          : (previous.shortcut_key || null);
 
         try {
           const updated = await client.query(
@@ -422,16 +424,18 @@ areasRouter.patch(
                  name_normalized = $4,
                  active = $5,
                  sort_order = $6,
+                 shortcut_key = $7,
                  updated_at = now()
              WHERE workspace_id = $1 AND id = $2
-             RETURNING id,name,active,sort_order,created_at,updated_at`,
+             RETURNING id,name,active,sort_order,shortcut_key,created_at,updated_at`,
             [
               req.auth.workspaceId,
               areaId,
               name,
               normalizeSearchText(name),
               active,
-              sortOrder
+              sortOrder,
+              shortcutKey
             ]
           );
 
@@ -443,19 +447,17 @@ areasRouter.patch(
               before: {
                 name: previous.name,
                 active: previous.active,
-                sortOrder: Number(previous.sort_order || 0)
+                sortOrder: Number(previous.sort_order || 0),
+                shortcutKey: previous.shortcut_key || null
               },
-              after: { name, active, sortOrder }
+              after: { name, active, sortOrder, shortcutKey }
             }
           });
 
           return mapAreaRow(updated.rows[0]);
         } catch (error) {
           if (error?.code === '23505') {
-            const duplicate = new Error('Ya existe un área con ese nombre');
-            duplicate.code = 'AREA_NAME_DUPLICATE';
-            duplicate.statusCode = 409;
-            throw duplicate;
+            throw duplicateAreaError(error);
           }
           throw error;
         }
@@ -696,6 +698,7 @@ function mapAreaRow(row) {
     name: row.name,
     active: row.active !== false,
     sortOrder: Number(row.sort_order || 0),
+    shortcutKey: row.shortcut_key || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -719,6 +722,32 @@ function normalizeSortOrder(value) {
     throw error;
   }
   return number;
+}
+
+function normalizeShortcutKey(value) {
+  const key = String(value ?? '').trim().toUpperCase();
+  if (!key) return null;
+  if (!/^[A-Z0-9]$/.test(key)) {
+    const error = new Error('El atajo del área debe ser una sola letra o número');
+    error.code = 'AREA_INVALID';
+    throw error;
+  }
+  return key;
+}
+
+function duplicateAreaError(error) {
+  const isShortcut = String(error?.constraint || '')
+    .includes('areas_workspace_shortcut_unique');
+  const duplicate = new Error(
+    isShortcut
+      ? 'Ese atajo ya pertenece a otra área'
+      : 'Ya existe un área con ese nombre'
+  );
+  duplicate.code = isShortcut
+    ? 'AREA_SHORTCUT_DUPLICATE'
+    : 'AREA_NAME_DUPLICATE';
+  duplicate.statusCode = 409;
+  return duplicate;
 }
 
 function normalizeSearchText(value) {
