@@ -168,12 +168,33 @@ function installStyles() {
     .v89-count-buy-flag span{display:grid;gap:2px}
     .v89-count-buy-flag strong{font-size:14px;color:#7c4a00}
     .v89-count-buy-flag small{color:var(--muted,#64748b);font-size:12px}
+    .v5-count-expression-help{color:var(--muted,#64748b)}
     @media(max-width:760px){
-      .v5-count-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
-      .v5-count-actions{grid-template-columns:1fr}
+      .v5-count-shell{gap:10px}
+      .v5-count-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+      .v5-count-kpi{padding:8px 10px}
+      .v5-count-kpi strong{font-size:17px}
       .v5-count-category-grid{grid-template-columns:1fr 1fr}
+      .v5-count-product-card{padding:12px;gap:9px;border-radius:14px;scroll-margin-top:8px}
+      .v5-count-product-head{gap:8px}
+      .v5-count-product-head h2{margin:1px 0;font-size:19px;line-height:1.12}
+      .v5-count-product-head .product-meta{font-size:11px;line-height:1.2}
+      .v89-count-buy-flag{padding:7px 9px;gap:7px;border-radius:10px;align-items:center}
+      .v89-count-buy-flag input{width:18px;height:18px;flex-basis:18px}
+      .v89-count-buy-flag strong{font-size:13px;line-height:1.1}
+      .v89-count-buy-flag small{display:none}
+      .v5-count-input{min-height:54px;font-size:26px!important}
+      .v5-count-expression-help{display:none}
+      .v5-count-product-card .math-pad{grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+      .v5-count-product-card .math-pad button{min-height:44px;padding:7px 4px;font-size:18px}
+      .v5-count-actions{grid-template-columns:1fr 1fr;gap:7px}
+      .v5-count-actions button{min-height:46px;padding:8px 10px}
     }
-    @media(max-width:430px){.v5-count-category-grid{grid-template-columns:1fr}}
+    @media(max-width:430px){
+      .v5-count-category-grid{grid-template-columns:1fr}
+      .v5-count-product-head h2{font-size:17px}
+      .v5-count-actions{grid-template-columns:1fr}
+    }
   `;
   document.head.appendChild(style);
 }
@@ -291,11 +312,7 @@ async function renderV5Count(documentId) {
     `;
 
     requestAnimationFrame(() => {
-      const input = document.getElementById('v5CountValue');
-      input?.focus();
-      if (input?.dataset.editing === 'true') {
-        input.select();
-      }
+      focusCurrentCountInput();
     });
   } finally {
     rendering = false;
@@ -689,7 +706,7 @@ function renderProductCard(product, wasPending, existingLine = null) {
           id="v5CountValue"
           class="numeric-input v5-count-input"
           inputmode="decimal"
-          enterkeyhint="done"
+          enterkeyhint="next"
           autocomplete="off"
           data-product-id="${escapeHtml(product.id)}"
           data-editing="${editing ? 'true' : 'false'}"
@@ -697,7 +714,7 @@ function renderProductCard(product, wasPending, existingLine = null) {
           value="${editing ? escapeHtml(String(existingLine.countedStock)) : ''}"
         >
       </label>
-      <div class="product-meta">Admite expresiones: 12+3, 24/2, (10+5)*2, 12,5. En teléfono usa los operadores inferiores sin perder el teclado numérico.</div>
+      <div class="product-meta v5-count-expression-help">Admite expresiones: 12+3, 24/2, (10+5)*2, 12,5. En teléfono usa los operadores inferiores sin perder el teclado numérico.</div>
 
       ${renderCountMathPad('v5CountValue')}
 
@@ -735,6 +752,48 @@ function countMathButton(target, symbol, label) {
       aria-label="${escapeHtml(label)}"
     >${escapeHtml(label)}</button>
   `;
+}
+
+function focusCurrentCountInput() {
+  const input = document.getElementById(
+    'v5CountValue'
+  );
+
+  if (!input) return;
+
+  try {
+    input.focus({
+      preventScroll: true
+    });
+  } catch (_) {
+    input.focus();
+  }
+
+  input.select();
+
+  if (
+    globalThis.matchMedia?.(
+      '(max-width: 760px)'
+    )?.matches
+  ) {
+    revealCurrentCountProduct();
+
+    setTimeout(() => {
+      revealCurrentCountProduct();
+    }, 120);
+  }
+}
+
+function revealCurrentCountProduct() {
+  const card = appRoot.querySelector(
+    '.v5-count-product-card'
+  );
+
+  card?.scrollIntoView({
+    block: 'start',
+    inline: 'nearest',
+    behavior: 'auto'
+  });
 }
 
 async function handleV5CountAction(button) {
