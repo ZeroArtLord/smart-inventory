@@ -1124,7 +1124,21 @@ function hasAnyClientPermission(permissions = []) {
   );
 }
 
+function isOfflineServerRequiredView(view) {
+  return [
+    'users',
+    'audit'
+  ].includes(view);
+}
+
 function canOpenView(view) {
+  if (
+    state.authAccessOffline &&
+    isOfflineServerRequiredView(view)
+  ) {
+    return false;
+  }
+
   switch (view) {
     case 'home':
     case 'conflicts':
@@ -1187,15 +1201,22 @@ function permissionForDocumentTypeClient(type) {
 }
 
 function renderAccessDenied(view) {
+  const offlineBlocked =
+    state.authAccessOffline &&
+    isOfflineServerRequiredView(view);
+
   appRoot.innerHTML = `
     <section class="hero">
-      <h2>Acceso restringido</h2>
-      <p>No tienes permiso para abrir esta sección.</p>
+      <h2>${offlineBlocked ? 'Requiere conexión' : 'Acceso restringido'}</h2>
+      <p>${offlineBlocked
+        ? 'Esta sección necesita validar datos directamente con el servidor.'
+        : 'No tienes permiso para abrir esta sección.'}</p>
     </section>
 
     <section class="card stack">
       <div class="status-warning">
         Vista solicitada: <strong>${escapeHtml(view || '—')}</strong>
+        ${offlineBlocked ? ' · Modo offline autorizado' : ''}
       </div>
       <button
         class="primary"
