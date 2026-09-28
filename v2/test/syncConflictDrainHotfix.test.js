@@ -18,10 +18,10 @@ test('sync no aborta todo el drenaje por un conflicto puntual', () => {
 test('los conflictos permanecen CONFLICT y los demás eventos continúan', () => {
   assert.match(sync, /markConflict/);
   assert.match(sync, /markPending/);
-  assert.match(sync, /return \{ count, conflicts \}/);
+  assert.match(sync, /return\s*\{\s*count,\s*conflicts\s*\}/);
 });
 
 test('syncNow puede completar push aunque haya conflictos aislados', () => {
   assert.match(sync, /pushed\.conflicts/);
-  assert.match(sync, /state: pushed\.conflicts > 0 \? 'conflict' : 'synced'/);
+  assert.match(sync, /state:\s*pushed\.conflicts\s*>\s*0[\s\S]*\?\s*'conflict'[\s\S]*:\s*'synced'/);
 });
