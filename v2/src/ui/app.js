@@ -146,6 +146,7 @@ import {
 } from '../admin/adminClient.js';
 const appRoot = document.getElementById('app');
 const saveStatus = document.getElementById('saveStatus');
+const CLIENT_BUILD = 'shell-64';
 
 const state = {
   view: readInitialView(),
@@ -169,7 +170,12 @@ const state = {
   workspaceReady: false,
   authAccessOffline: false,
   offlineAuthError: null,
-  offlineVerifiedAt: null
+  offlineVerifiedAt: null,
+  lastSyncState: 'idle',
+  lastSyncError: null,
+  lastSyncAt: null,
+  lastSyncPushed: 0,
+  lastSyncPulled: 0
 };
 
 const devOwnerId = getLocalOwnerId();
@@ -187,7 +193,7 @@ async function init() {
     await seedDefaultUnits();
     bindGlobalEvents();
     bindInstallPrompt();
-    registerServiceWorker();
+    await registerServiceWorker();
     bindSyncLifecycle();
 
     const authState = await initializeApplicationAuth();
@@ -1505,8 +1511,18 @@ async function renderHome() {
           <div class="status-tile">
             <div class="status-tile-icon">☁</div>
             <div>
-              <strong>${navigator.onLine ? 'Conectado al servidor' : 'Trabajando offline'}</strong>
-              <small>${snapshot.pendingSyncCount ? snapshot.pendingSyncCount + ' cambio(s) pendiente(s)' : 'Sin cambios pendientes'}</small>
+              <strong>${
+                !navigator.onLine
+                  ? 'Trabajando offline'
+                  : state.authAccessOffline
+                    ? 'Autorización offline activa'
+                    : 'Conectado y autorizado'
+              }</strong>
+              <small>${
+                snapshot.pendingSyncCount
+                  ? snapshot.pendingSyncCount + ' cambio(s) pendiente(s)'
+                  : 'Sin cambios pendientes'
+              }</small>
             </div>
           </div>
 
@@ -1531,6 +1547,27 @@ async function renderHome() {
             <div>
               <strong>${snapshot.syncConflictCount ? snapshot.syncConflictCount + ' conflicto(s)' : 'Sin conflictos'}</strong>
               <small>Los cambios nunca se sobrescriben en silencio</small>
+            </div>
+          </div>
+
+          <div class="status-tile">
+            <div class="status-tile-icon">⚙</div>
+            <div style="min-width:0">
+              <strong>Sync · ${escapeHtml(CLIENT_BUILD)}</strong>
+              <small>
+                Último sync: ${escapeHtml(state.lastSyncState || 'idle')}
+                · ↑ ${state.lastSyncPushed || 0}
+                · ↓ ${state.lastSyncPulled || 0}
+              </small>
+              ${state.lastSyncError
+                ? `<small class="status-danger" style="display:block;overflow-wrap:anywhere">${escapeHtml(state.lastSyncError)}</small>`
+                : ''}
+              <button
+                class="secondary"
+                data-action="retry-sync"
+                type="button"
+                style="margin-top:8px"
+              >↻ Reintentar sincronización</button>
             </div>
           </div>
         </div>
@@ -3688,6 +3725,8 @@ async function handleClick(event) {
         return saveMemberPermissions(button.dataset.userId);
       case 'install-pwa':
         return installPwa();
+      case 'retry-sync':
+        return retrySyncNow();
       case 'reverse-adjustment':
         return reverseAdjustment(button.dataset.id);
       case 'login-google':
@@ -5585,6 +5624,44 @@ function showToast(message) {
 
 function bindSyncLifecycle() {
   onSyncStatus(status => {
+    state.lastSyncState =
+      status.state || 'unknown';
+    state.lastSyncAt =
+      new Date().toISOString();
+
+    if (
+      status.state === 'error'
+    ) {
+      state.lastSyncError =
+        status.message || 'Error de sincronización';
+    } else if (
+      [
+        'synced',
+        'conflict',
+        'syncing'
+      ].includes(status.state)
+    ) {
+      state.lastSyncError = null;
+    }
+
+    if (
+      Number.isFinite(
+        Number(status.pushed)
+      )
+    ) {
+      state.lastSyncPushed =
+        Number(status.pushed || 0);
+    }
+
+    if (
+      Number.isFinite(
+        Number(status.pulled)
+      )
+    ) {
+      state.lastSyncPulled =
+        Number(status.pulled || 0);
+    }
+
     if (!saveStatus) return;
 
     switch (status.state) {
@@ -5601,7 +5678,7 @@ function bindSyncLifecycle() {
         saveStatus.textContent = '✓ Guardado local · sync desactivado';
         break;
       case 'conflict':
-        saveStatus.textContent = '⚠ Conflicto pendiente de revisión';
+        saveStatus.textContent = '⚠ Sincronizado con conflictos pendientes';
         break;
       case 'error':
         saveStatus.textContent = '✓ Guardado local · servidor pendiente';
@@ -5645,6 +5722,20 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
       await revalidateOfflineAccessBeforeSync();
 
     if (!revalidation.ok) {
+      state.lastSyncState =
+        revalidation.confirmedInvalid
+          ? 'access-revoked'
+          : 'auth-offline';
+      state.lastSyncAt =
+        new Date().toISOString();
+      state.lastSyncError =
+        revalidation.error?.message ||
+        (
+          revalidation.confirmedInvalid
+            ? 'Acceso revocado'
+            : 'La autorización online aún no pudo revalidarse'
+        );
+
       if (saveStatus) {
         saveStatus.textContent =
           revalidation.confirmedInvalid
@@ -5774,6 +5865,24 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
   await refreshSaveStatus();
   updateAuthUi();
   updateNavigationUi();
+  return result;
+}
+
+async function retrySyncNow() {
+  state.lastSyncError = null;
+  state.lastSyncState = 'manual-retry';
+
+  if (saveStatus) {
+    saveStatus.textContent =
+      '↻ Reintentando sincronización…';
+  }
+
+  const result = await syncAndRefresh({
+    renderAfter: true
+  });
+
+  await render();
+
   return result;
 }
 
@@ -6025,13 +6134,40 @@ async function installPwa() {
   await render();
 }
 
-function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
-  if (!window.isSecureContext) return;
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return null;
+  if (!window.isSecureContext) return null;
 
-  navigator.serviceWorker.register('./sw.js').catch(error => {
-    console.warn('Service Worker no disponible:', error);
-  });
+  let reloading = false;
+
+  navigator.serviceWorker.addEventListener(
+    'controllerchange',
+    () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    }
+  );
+
+  try {
+    const registration =
+      await navigator.serviceWorker.register(
+        './sw.js',
+        {
+          updateViaCache: 'none'
+        }
+      );
+
+    await registration.update();
+
+    return registration;
+  } catch (error) {
+    console.warn(
+      'Service Worker no disponible:',
+      error
+    );
+    return null;
+  }
 }
 
 function renderFatal(error) {
