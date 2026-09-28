@@ -8,7 +8,7 @@ const sw = await fs.readFile(
 );
 
 test('Fase C precachea módulos de autorización offline y shell 62', () => {
-  assert.match(sw, /smart-inventory-v2-shell-63/);
+  assert.match(sw, /smart-inventory-v2-shell-64/);
   assert.match(sw, /\.\/src\/auth\/offlineAccess\.js/);
   assert.match(sw, /\.\/src\/auth\/authBootstrap\.js/);
   assert.match(sw, /\.\/src\/auth\/firebaseClient\.js/);
