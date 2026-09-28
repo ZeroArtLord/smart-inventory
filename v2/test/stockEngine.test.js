@@ -41,3 +41,17 @@ test('calcula días de cobertura', () => {
   assert.equal(calculateCoverageDays(12, 3), 4);
   assert.equal(calculateCoverageDays(12, 0), Infinity);
 });
+
+
+test('normaliza residuos de precisión de stock cercanos a cero', () => {
+  const fractional = [
+    { id: 'eps-1', productId: 'refresco', type: MOVEMENT_TYPES.ENTRY, quantity: 0.3 },
+    { id: 'eps-2', productId: 'refresco', type: MOVEMENT_TYPES.SUPPLY, quantity: 0.1 },
+    { id: 'eps-3', productId: 'refresco', type: MOVEMENT_TYPES.SUPPLY, quantity: 0.2 }
+  ];
+
+  assert.equal(calculateStock(fractional, 'refresco'), 0);
+
+  const stocks = calculateStocksByProduct(fractional);
+  assert.equal(stocks.get('refresco'), 0);
+});

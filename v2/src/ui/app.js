@@ -71,6 +71,7 @@ import {
 import {
   discoverServerAuthMode,
   bootstrapFirebaseAccess,
+  getCachedFirebaseAccess,
   selectFirebaseWorkspace
 } from '../auth/authBootstrap.js';
 import {
@@ -80,6 +81,16 @@ import {
   refreshFirebaseToken,
   firebaseUserSummary
 } from '../auth/firebaseClient.js';
+import {
+  clearOfflineAccessSnapshot,
+  readOfflineAccessSnapshot,
+  setOfflineLogoutLock,
+  getOfflineLogoutLock,
+  clearOfflineLogoutLock
+} from '../auth/offlineAccess.js';
+import {
+  getSyncConfig
+} from '../sync/syncSettings.js';
 import {
   listSyncConflicts
 } from '../sync/localQueue.js';
@@ -135,6 +146,7 @@ import {
 } from '../admin/adminClient.js';
 const appRoot = document.getElementById('app');
 const saveStatus = document.getElementById('saveStatus');
+const CLIENT_BUILD = 'shell-64';
 
 const state = {
   view: readInitialView(),
@@ -156,7 +168,14 @@ const state = {
   authUser: null,
   availableWorkspaces: [],
   workspaceReady: false,
-  authAccessOffline: false
+  authAccessOffline: false,
+  offlineAuthError: null,
+  offlineVerifiedAt: null,
+  lastSyncState: 'idle',
+  lastSyncError: null,
+  lastSyncAt: null,
+  lastSyncPushed: 0,
+  lastSyncPulled: 0
 };
 
 const devOwnerId = getLocalOwnerId();
@@ -174,7 +193,7 @@ async function init() {
     await seedDefaultUnits();
     bindGlobalEvents();
     bindInstallPrompt();
-    registerServiceWorker();
+    await registerServiceWorker();
     bindSyncLifecycle();
 
     const authState = await initializeApplicationAuth();
@@ -187,6 +206,11 @@ async function init() {
     if (authState === 'workspace-required') {
       updateAuthUi();
       return renderWorkspaceGate();
+    }
+
+    if (authState === 'offline-locked') {
+      updateAuthUi();
+      return renderOfflineAuthGate();
     }
 
     await startAuthenticatedApp();
@@ -362,55 +386,236 @@ async function initializeApplicationAuth() {
     state.availableWorkspaces = [];
     state.workspaceReady = true;
     state.authAccessOffline = false;
+    state.offlineAuthError = null;
+    state.offlineVerifiedAt = null;
     updateAuthUi();
     updateNavigationUi();
     return 'authenticated';
   }
 
-  const user = await initializeFirebaseClient({
-    onUserChanged:
-      handleFirebaseAuthStateChanged
-  });
+  const logoutLock =
+    await getOfflineLogoutLock();
 
-  state.authUser = firebaseUserSummary(user);
-  authLifecycleReady = true;
-  updateAuthUi();
+  if (!navigator.onLine) {
+    if (logoutLock) {
+      state.offlineAuthError = new Error(
+        'La sesión fue cerrada en este dispositivo. Conéctate para iniciar sesión otra vez.'
+      );
+      return 'offline-locked';
+    }
 
-  if (!state.authUser) {
+    return initializeOfflineApplicationAuth({
+      workspaceId: config.workspaceId
+    });
+  }
+
+  try {
+    authTransitionInProgress = true;
+
+    const user = await initializeFirebaseClient({
+      onUserChanged:
+        handleFirebaseAuthStateChanged
+    });
+
+    authLifecycleReady = true;
+
+    if (logoutLock) {
+      if (user) {
+        await logoutFirebase()
+          .catch(() => {});
+      }
+
+      await clearOfflineAccessSnapshot();
+      await clearOfflineLogoutLock();
+
+      state.authUser = null;
+      state.availableWorkspaces = [];
+      state.workspaceReady = false;
+      state.authAccessOffline = false;
+      state.offlineAuthError = null;
+      updateAuthUi();
+      updateNavigationUi();
+      return 'signed-out';
+    }
+
+    state.authUser =
+      firebaseUserSummary(user);
+    updateAuthUi();
+
+    if (!state.authUser) {
+      state.availableWorkspaces = [];
+      state.workspaceReady = false;
+      state.authAccessOffline = false;
+      state.offlineAuthError = null;
+      updateNavigationUi();
+      return 'signed-out';
+    }
+
+    const access = await bootstrapFirebaseAccess({
+      uid: state.authUser.uid
+    });
+
+    applyFirebaseAccessState(access);
+
+    return access.selectedWorkspace
+      ? 'authenticated'
+      : 'workspace-required';
+  } catch (error) {
+    if (!canFallbackToOfflineAccess(error)) {
+      throw error;
+    }
+
+    return initializeOfflineApplicationAuth({
+      workspaceId: config.workspaceId,
+      cause: error
+    });
+  } finally {
+    authTransitionInProgress = false;
+  }
+}
+
+async function initializeOfflineApplicationAuth({
+  workspaceId = null,
+  cause = null
+} = {}) {
+  try {
+    const logoutLock =
+      await getOfflineLogoutLock();
+
+    if (logoutLock) {
+      const error = new Error(
+        'La sesión fue cerrada en este dispositivo. Conéctate para iniciar sesión otra vez.'
+      );
+      error.code = 'OFFLINE_AUTH_LOGGED_OUT';
+      throw error;
+    }
+
+    const access =
+      await getCachedFirebaseAccess({
+        workspaceId
+      });
+
+    state.authUser =
+      cachedAuthUserFromAccess(access);
+    state.availableWorkspaces =
+      access.workspaces || [];
+    state.workspaceReady =
+      Boolean(access.selectedWorkspace);
+    state.authAccessOffline = true;
+    state.offlineAuthError = cause || null;
+    state.offlineVerifiedAt =
+      access.verifiedAt ||
+      access.cachedAt ||
+      null;
+    state.session =
+      sessionFromCachedAccess(access);
+
+    updateAuthUi();
+    updateNavigationUi();
+
+    return access.selectedWorkspace
+      ? 'authenticated'
+      : 'offline-locked';
+  } catch (error) {
+    state.authUser = null;
+    state.session = null;
     state.availableWorkspaces = [];
     state.workspaceReady = false;
     state.authAccessOffline = false;
+    state.offlineAuthError = error;
+    state.offlineVerifiedAt = null;
+    updateAuthUi();
     updateNavigationUi();
-    return 'signed-out';
+    return 'offline-locked';
+  }
+}
+
+function cachedAuthUserFromAccess(access) {
+  const user = access?.user || {};
+  const uid =
+    user.externalAuthId ||
+    user.uid ||
+    user.id ||
+    null;
+
+  if (!uid) return null;
+
+  return {
+    uid,
+    email: user.email || null,
+    displayName:
+      user.displayName ||
+      user.email ||
+      'Usuario offline',
+    photoURL: user.photoURL || null,
+    cachedOffline: true
+  };
+}
+
+function applyFirebaseAccessState(access) {
+  state.availableWorkspaces =
+    access?.workspaces || [];
+  state.workspaceReady =
+    Boolean(access?.selectedWorkspace);
+  state.authAccessOffline =
+    Boolean(access?.offline);
+  state.offlineVerifiedAt =
+    access?.verifiedAt ||
+    access?.cachedAt ||
+    null;
+  state.offlineAuthError = null;
+
+  if (access?.selectedWorkspace) {
+    state.session =
+      sessionFromCachedAccess(
+        access,
+        {
+          cachedOffline:
+            Boolean(access.offline)
+        }
+      );
   }
 
-  const access = await bootstrapFirebaseAccess({
-    uid: state.authUser.uid
-  });
-
-  state.availableWorkspaces = access.workspaces || [];
-  state.workspaceReady = Boolean(access.selectedWorkspace);
-  state.authAccessOffline = Boolean(access.offline);
-
-  if (access.offline && access.selectedWorkspace) {
-    state.session = sessionFromCachedAccess(access);
-  }
-
+  updateAuthUi();
   updateNavigationUi();
+}
 
-  return access.selectedWorkspace
-    ? 'authenticated'
-    : 'workspace-required';
+function canFallbackToOfflineAccess(error) {
+  const code = String(error?.code || '');
+
+  return ![
+    'FIREBASE_PROJECT_MISMATCH',
+    'AUTH_SECURE_CONTEXT_REQUIRED',
+    'AUTH_TOKEN_INVALID',
+    'NO_ACTIVE_WORKSPACE',
+    'WORKSPACE_ACCESS_DENIED',
+    'auth/user-disabled',
+    'auth/user-token-expired',
+    'auth/invalid-user-token',
+    'auth/user-not-found'
+  ].includes(code);
 }
 
 async function startAuthenticatedApp() {
   await refreshProducts();
-  await syncAndRefresh({ renderAfter: false });
-  await refreshProducts();
 
-  if (navigator.onLine) {
-    await refreshSession({ silent: true });
-    state.authAccessOffline = false;
+  if (
+    !state.authAccessOffline &&
+    navigator.onLine
+  ) {
+    await syncAndRefresh({
+      renderAfter: false
+    });
+    await refreshProducts();
+
+    const liveSession =
+      await refreshSession({
+        silent: true
+      });
+
+    if (liveSession) {
+      state.authAccessOffline = false;
+    }
   }
 
   updateAuthUi();
@@ -438,6 +643,35 @@ function renderAuthGate() {
 
         <div class="product-meta">
           El acceso al inventario y a la sincronización se valida otra vez en el servidor.
+        </div>
+      </article>
+    </section>
+  `;
+}
+
+function renderOfflineAuthGate() {
+  const message =
+    state.offlineAuthError?.message ||
+    'No hay una autorización offline válida en este dispositivo.';
+
+  appRoot.innerHTML = `
+    <section class="auth-gate" data-offline-auth-gate>
+      <article class="card auth-card stack">
+        <div class="auth-mark">S2</div>
+        <div>
+          <h1>Sin conexión</h1>
+          <p class="product-meta">
+            ${escapeHtml(message)}
+          </p>
+        </div>
+
+        <div class="status-warning">
+          Conéctate una vez para validar tu cuenta y este almacén.
+          Después VIGÍA podrá abrir offline durante la vigencia segura del acceso guardado.
+        </div>
+
+        <div class="product-meta">
+          Por seguridad no se permite iniciar una cuenta nueva mientras el servidor o Internet no estén disponibles.
         </div>
       </article>
     </section>
@@ -484,6 +718,12 @@ function renderWorkspaceGate() {
 }
 
 async function signInWithGoogle() {
+  if (!navigator.onLine) {
+    throw new Error(
+      'Sin conexión. No se puede iniciar una cuenta nueva offline.'
+    );
+  }
+
   authTransitionInProgress = true;
 
   try {
@@ -510,16 +750,13 @@ async function signInWithGoogle() {
         uid: state.authUser.uid
       });
 
-    state.availableWorkspaces =
-      access.workspaces || [];
-    state.workspaceReady =
-      Boolean(access.selectedWorkspace);
-    state.authAccessOffline =
-      Boolean(access.offline);
+    applyFirebaseAccessState(access);
 
-    updateAuthUi();
-    updateNavigationUi();
-    showToast('Sesión iniciada');
+    showToast(
+      access.offline
+        ? 'Sesión local disponible · servidor pendiente'
+        : 'Sesión iniciada'
+    );
 
     if (!access.selectedWorkspace) {
       renderWorkspaceGate();
@@ -533,6 +770,15 @@ async function signInWithGoogle() {
 }
 
 async function chooseWorkspace(workspaceId) {
+  if (
+    state.authAccessOffline ||
+    !navigator.onLine
+  ) {
+    throw new Error(
+      'Cambiar de almacén requiere conexión para validar el acceso.'
+    );
+  }
+
   const allowed = state.availableWorkspaces.some(
     workspace => workspace.id === workspaceId
   );
@@ -578,10 +824,29 @@ async function handleAuthButton() {
     return signInWithGoogle();
   }
 
+  const uid =
+    state.authUser?.uid || null;
+
   authTransitionInProgress = true;
 
   try {
-    await logoutFirebase();
+    if (
+      state.authAccessOffline ||
+      !navigator.onLine
+    ) {
+      await setOfflineLogoutLock({
+        uid
+      });
+
+      await clearOfflineAccessSnapshot();
+
+      await logoutFirebase()
+        .catch(() => {});
+    } else {
+      await logoutFirebase();
+      await clearOfflineAccessSnapshot();
+      await clearOfflineLogoutLock();
+    }
   } finally {
     authTransitionInProgress = false;
   }
@@ -591,13 +856,24 @@ async function handleAuthButton() {
   state.availableWorkspaces = [];
   state.workspaceReady = false;
   state.authAccessOffline = false;
+  state.offlineAuthError = null;
+  state.offlineVerifiedAt = null;
   state.products = [];
   state.activeDocumentId = null;
   state.activeDocumentType = null;
   state.selectedProductId = null;
   updateAuthUi();
+  updateNavigationUi();
   showToast('Sesión cerrada');
-  renderAuthGate();
+
+  if (navigator.onLine) {
+    renderAuthGate();
+  } else {
+    state.offlineAuthError = new Error(
+      'La sesión fue cerrada en este dispositivo. Conéctate para iniciar sesión otra vez.'
+    );
+    renderOfflineAuthGate();
+  }
 }
 
 function handleFirebaseAuthStateChanged(user) {
@@ -652,20 +928,7 @@ async function handleFirebaseAccountTransition(
       uid: user.uid
     });
 
-  state.availableWorkspaces =
-    access.workspaces || [];
-  state.workspaceReady =
-    Boolean(access.selectedWorkspace);
-  state.authAccessOffline =
-    Boolean(access.offline);
-
-  if (
-    access.offline &&
-    access.selectedWorkspace
-  ) {
-    state.session =
-      sessionFromCachedAccess(access);
-  }
+  applyFirebaseAccessState(access);
 
   if (!access.selectedWorkspace) {
     updateNavigationUi();
@@ -729,8 +992,15 @@ function updateAuthUi() {
           ? ' · ' + state.session.roleCode
           : '';
 
+    const offlineLabel =
+      state.authAccessOffline
+        ? ' · Modo offline autorizado'
+        : '';
+
     userStatus.textContent =
-      identityLabel + roleLabel;
+      identityLabel +
+      roleLabel +
+      offlineLabel;
 
     const avatar =
       document.getElementById('profileAvatar');
@@ -762,7 +1032,12 @@ function updateAuthUi() {
   }
 }
 
-function sessionFromCachedAccess(access) {
+function sessionFromCachedAccess(
+  access,
+  {
+    cachedOffline = true
+  } = {}
+) {
   const workspace = access?.selectedWorkspace;
   if (!workspace) return null;
 
@@ -784,7 +1059,7 @@ function sessionFromCachedAccess(access) {
     roleCode: workspace.roleCode || null,
     permissions: workspace.permissions || [],
     authMode: 'firebase',
-    cachedOffline: true
+    cachedOffline
   };
 }
 
@@ -849,7 +1124,21 @@ function hasAnyClientPermission(permissions = []) {
   );
 }
 
+function isOfflineServerRequiredView(view) {
+  return [
+    'users',
+    'audit'
+  ].includes(view);
+}
+
 function canOpenView(view) {
+  if (
+    state.authAccessOffline &&
+    isOfflineServerRequiredView(view)
+  ) {
+    return false;
+  }
+
   switch (view) {
     case 'home':
     case 'conflicts':
@@ -912,15 +1201,22 @@ function permissionForDocumentTypeClient(type) {
 }
 
 function renderAccessDenied(view) {
+  const offlineBlocked =
+    state.authAccessOffline &&
+    isOfflineServerRequiredView(view);
+
   appRoot.innerHTML = `
     <section class="hero">
-      <h2>Acceso restringido</h2>
-      <p>No tienes permiso para abrir esta sección.</p>
+      <h2>${offlineBlocked ? 'Requiere conexión' : 'Acceso restringido'}</h2>
+      <p>${offlineBlocked
+        ? 'Esta sección necesita validar datos directamente con el servidor.'
+        : 'No tienes permiso para abrir esta sección.'}</p>
     </section>
 
     <section class="card stack">
       <div class="status-warning">
         Vista solicitada: <strong>${escapeHtml(view || '—')}</strong>
+        ${offlineBlocked ? ' · Modo offline autorizado' : ''}
       </div>
       <button
         class="primary"
@@ -1018,7 +1314,8 @@ async function renderHome() {
         <p>Visión operativa del almacén en tiempo real, calculada desde movimientos y lotes.</p>
       </div>
       <div class="dashboard-sync">
-        ${state.availableWorkspaces.length > 1
+        ${state.availableWorkspaces.length > 1 &&
+          !state.authAccessOffline
           ? '<button class="secondary" data-action="show-workspace-picker" type="button">Cambiar almacén</button>'
           : ''}
         ${installPromptEvent
@@ -1028,9 +1325,12 @@ async function renderHome() {
           ? `<button class="secondary status-warning" data-open-view="conflicts" type="button">⚠ ${snapshot.syncConflictCount} conflicto(s)</button>`
           : snapshot.pendingSyncCount
             ? `<span class="badge status-warning">${snapshot.pendingSyncCount} pendientes</span>`
-            : navigator.onLine
+            : (
+                navigator.onLine &&
+                !state.authAccessOffline
+              )
               ? '<span class="badge status-good">● Todo sincronizado</span>'
-              : '<span class="badge status-warning">Modo offline</span>'}
+              : '<span class="badge status-warning">Modo offline autorizado</span>'}
         <button class="primary" data-open-view="count" type="button">＋ Nuevo conteo</button>
       </div>
     </section>
@@ -1211,8 +1511,18 @@ async function renderHome() {
           <div class="status-tile">
             <div class="status-tile-icon">☁</div>
             <div>
-              <strong>${navigator.onLine ? 'Conectado al servidor' : 'Trabajando offline'}</strong>
-              <small>${snapshot.pendingSyncCount ? snapshot.pendingSyncCount + ' cambio(s) pendiente(s)' : 'Sin cambios pendientes'}</small>
+              <strong>${
+                !navigator.onLine
+                  ? 'Trabajando offline'
+                  : state.authAccessOffline
+                    ? 'Autorización offline activa'
+                    : 'Conectado y autorizado'
+              }</strong>
+              <small>${
+                snapshot.pendingSyncCount
+                  ? snapshot.pendingSyncCount + ' cambio(s) pendiente(s)'
+                  : 'Sin cambios pendientes'
+              }</small>
             </div>
           </div>
 
@@ -1237,6 +1547,27 @@ async function renderHome() {
             <div>
               <strong>${snapshot.syncConflictCount ? snapshot.syncConflictCount + ' conflicto(s)' : 'Sin conflictos'}</strong>
               <small>Los cambios nunca se sobrescriben en silencio</small>
+            </div>
+          </div>
+
+          <div class="status-tile">
+            <div class="status-tile-icon">⚙</div>
+            <div style="min-width:0">
+              <strong>Sync · ${escapeHtml(CLIENT_BUILD)}</strong>
+              <small>
+                Último sync: ${escapeHtml(state.lastSyncState || 'idle')}
+                · ↑ ${state.lastSyncPushed || 0}
+                · ↓ ${state.lastSyncPulled || 0}
+              </small>
+              ${state.lastSyncError
+                ? `<small class="status-danger" style="display:block;overflow-wrap:anywhere">${escapeHtml(state.lastSyncError)}</small>`
+                : ''}
+              <button
+                class="secondary"
+                data-action="retry-sync"
+                type="button"
+                style="margin-top:8px"
+              >↻ Reintentar sincronización</button>
             </div>
           </div>
         </div>
@@ -3394,6 +3725,8 @@ async function handleClick(event) {
         return saveMemberPermissions(button.dataset.userId);
       case 'install-pwa':
         return installPwa();
+      case 'retry-sync':
+        return retrySyncNow();
       case 'reverse-adjustment':
         return reverseAdjustment(button.dataset.id);
       case 'login-google':
@@ -5164,6 +5497,14 @@ async function refreshProducts() {
 
 async function refreshSaveStatus() {
   const pending = await getPendingSyncCount();
+
+  if (state.authAccessOffline) {
+    saveStatus.textContent = pending
+      ? `✓ Modo offline autorizado · ${pending} pendientes`
+      : '✓ Modo offline autorizado';
+    return;
+  }
+
   saveStatus.textContent = pending
     ? `✓ Local · ${pending} pendientes de servidor`
     : '✓ Guardado local';
@@ -5283,6 +5624,44 @@ function showToast(message) {
 
 function bindSyncLifecycle() {
   onSyncStatus(status => {
+    state.lastSyncState =
+      status.state || 'unknown';
+    state.lastSyncAt =
+      new Date().toISOString();
+
+    if (
+      status.state === 'error'
+    ) {
+      state.lastSyncError =
+        status.message || 'Error de sincronización';
+    } else if (
+      [
+        'synced',
+        'conflict',
+        'syncing'
+      ].includes(status.state)
+    ) {
+      state.lastSyncError = null;
+    }
+
+    if (
+      Number.isFinite(
+        Number(status.pushed)
+      )
+    ) {
+      state.lastSyncPushed =
+        Number(status.pushed || 0);
+    }
+
+    if (
+      Number.isFinite(
+        Number(status.pulled)
+      )
+    ) {
+      state.lastSyncPulled =
+        Number(status.pulled || 0);
+    }
+
     if (!saveStatus) return;
 
     switch (status.state) {
@@ -5299,7 +5678,7 @@ function bindSyncLifecycle() {
         saveStatus.textContent = '✓ Guardado local · sync desactivado';
         break;
       case 'conflict':
-        saveStatus.textContent = '⚠ Conflicto pendiente de revisión';
+        saveStatus.textContent = '⚠ Sincronizado con conflictos pendientes';
         break;
       case 'error':
         saveStatus.textContent = '✓ Guardado local · servidor pendiente';
@@ -5335,7 +5714,54 @@ function scheduleSync(delay = 350) {
 }
 
 async function syncAndRefresh({ renderAfter = false } = {}) {
-  const result = await syncNow({
+  if (
+    state.authMode === 'firebase' &&
+    state.authAccessOffline
+  ) {
+    const revalidation =
+      await revalidateOfflineAccessBeforeSync();
+
+    if (!revalidation.ok) {
+      state.lastSyncState =
+        revalidation.confirmedInvalid
+          ? 'access-revoked'
+          : 'auth-offline';
+      state.lastSyncAt =
+        new Date().toISOString();
+      state.lastSyncError =
+        revalidation.error?.message ||
+        (
+          revalidation.confirmedInvalid
+            ? 'Acceso revocado'
+            : 'La autorización online aún no pudo revalidarse'
+        );
+
+      if (saveStatus) {
+        saveStatus.textContent =
+          revalidation.confirmedInvalid
+            ? 'Acceso bloqueado · requiere conexión'
+            : '✓ Guardado local · Modo offline autorizado';
+      }
+
+      if (
+        revalidation.confirmedInvalid &&
+        renderAfter
+      ) {
+        renderAuthGate();
+      }
+
+      return {
+        ok: false,
+        skipped:
+          revalidation.confirmedInvalid
+            ? 'access-revoked'
+            : 'offline-auth',
+        error: revalidation.error || null
+      };
+    }
+  }
+
+  let result = await syncNow({
     localUserId: currentOwnerId(),
     displayName:
       state.authUser?.displayName ||
@@ -5369,6 +5795,7 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
 
     if (recovery.confirmedInvalid) {
       lockAuthenticatedUi();
+      await clearOfflineAccessSnapshot();
       await logoutFirebase().catch(() => {});
       state.authUser = null;
       updateAuthUi();
@@ -5391,6 +5818,7 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
     state.authMode === 'firebase' &&
     result?.error?.code === 'WORKSPACE_ACCESS_DENIED'
   ) {
+    await clearOfflineAccessSnapshot();
     lockAuthenticatedUi();
 
     if (renderAfter) {
@@ -5402,7 +5830,10 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
   }
 
   if (result?.ok) {
-    if (state.authMode === 'firebase' && navigator.onLine) {
+    if (
+      state.authMode === 'firebase' &&
+      navigator.onLine
+    ) {
       const liveSession = await refreshSession({
         silent: true
       });
@@ -5415,15 +5846,186 @@ async function syncAndRefresh({ renderAfter = false } = {}) {
     if (result.pulled > 0) {
       await refreshProducts();
 
-      const reconciled = await reconcileReplenishmentReceipts();
-      if (reconciled.length > 0) scheduleSync(100);
+      const reconciled =
+        await reconcileReplenishmentReceipts();
 
-      if (renderAfter && canAutoRefresh()) await render();
+      if (reconciled.length > 0) {
+        scheduleSync(100);
+      }
+
+      if (
+        renderAfter &&
+        canAutoRefresh()
+      ) {
+        await render();
+      }
     }
   }
 
   await refreshSaveStatus();
+  updateAuthUi();
+  updateNavigationUi();
   return result;
+}
+
+async function retrySyncNow() {
+  state.lastSyncError = null;
+  state.lastSyncState = 'manual-retry';
+
+  if (saveStatus) {
+    saveStatus.textContent =
+      '↻ Reintentando sincronización…';
+  }
+
+  const result = await syncAndRefresh({
+    renderAfter: true
+  });
+
+  await render();
+
+  return result;
+}
+
+async function revalidateOfflineAccessBeforeSync() {
+  if (!state.authAccessOffline) {
+    return {
+      ok: true,
+      revalidated: false
+    };
+  }
+
+  const expectedUid =
+    state.authUser?.uid || null;
+  const requiredWorkspaceId =
+    state.session?.workspaceId || null;
+
+  try {
+    await readOfflineAccessSnapshot({
+      uid: expectedUid,
+      workspaceId:
+        requiredWorkspaceId
+    });
+  } catch (error) {
+    await clearOfflineAccessSnapshot();
+    lockAuthenticatedUi();
+    state.offlineAuthError = error;
+
+    return {
+      ok: false,
+      confirmedInvalid: true,
+      error
+    };
+  }
+
+  if (!navigator.onLine) {
+    return {
+      ok: false,
+      offline: true
+    };
+  }
+
+  authTransitionInProgress = true;
+
+  try {
+    const user =
+      await initializeFirebaseClient({
+        onUserChanged:
+          handleFirebaseAuthStateChanged
+      });
+
+    authLifecycleReady = true;
+
+    const liveUser =
+      firebaseUserSummary(user);
+
+    if (!liveUser) {
+      const error = new Error(
+        'La sesión online ya no está disponible. Inicia sesión otra vez.'
+      );
+      error.code =
+        'AUTH_REVALIDATION_REQUIRED';
+      throw error;
+    }
+
+    if (
+      expectedUid &&
+      liveUser.uid !== expectedUid
+    ) {
+      const error = new Error(
+        'La cuenta online no coincide con la autorización offline guardada.'
+      );
+      error.code =
+        'AUTH_ACCOUNT_MISMATCH';
+      throw error;
+    }
+
+    const access =
+      await bootstrapFirebaseAccess({
+        uid: liveUser.uid,
+        requireWorkspaceId:
+          requiredWorkspaceId
+      });
+
+    if (access.offline) {
+      return {
+        ok: false,
+        offline: true
+      };
+    }
+
+    state.authUser = liveUser;
+    applyFirebaseAccessState(access);
+    state.authAccessOffline = false;
+    state.offlineVerifiedAt =
+      access.cachedAt || null;
+    state.offlineAuthError = null;
+
+    await clearOfflineLogoutLock();
+
+    return {
+      ok: true,
+      revalidated: true
+    };
+  } catch (error) {
+    if (isDefinitiveAccessRevocation(error)) {
+      await clearOfflineAccessSnapshot();
+      lockAuthenticatedUi();
+      state.offlineAuthError = error;
+
+      return {
+        ok: false,
+        confirmedInvalid: true,
+        error
+      };
+    }
+
+    state.authAccessOffline = true;
+    state.offlineAuthError = error;
+
+    return {
+      ok: false,
+      offline: true,
+      error
+    };
+  } finally {
+    authTransitionInProgress = false;
+  }
+}
+
+function isDefinitiveAccessRevocation(error) {
+  return [
+    'AUTH_TOKEN_INVALID',
+    'AUTH_REVALIDATION_REQUIRED',
+    'AUTH_ACCOUNT_MISMATCH',
+    'NO_ACTIVE_WORKSPACE',
+    'WORKSPACE_ACCESS_DENIED',
+    'auth/user-disabled',
+    'auth/user-token-expired',
+    'auth/invalid-user-token',
+    'auth/user-not-found'
+  ].includes(
+    String(error?.code || '')
+  );
 }
 
 async function recoverFirebaseSessionAfterTokenError() {
@@ -5532,13 +6134,40 @@ async function installPwa() {
   await render();
 }
 
-function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
-  if (!window.isSecureContext) return;
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return null;
+  if (!window.isSecureContext) return null;
 
-  navigator.serviceWorker.register('./sw.js').catch(error => {
-    console.warn('Service Worker no disponible:', error);
-  });
+  let reloading = false;
+
+  navigator.serviceWorker.addEventListener(
+    'controllerchange',
+    () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    }
+  );
+
+  try {
+    const registration =
+      await navigator.serviceWorker.register(
+        './sw.js',
+        {
+          updateViaCache: 'none'
+        }
+      );
+
+    await registration.update();
+
+    return registration;
+  } catch (error) {
+    console.warn(
+      'Service Worker no disponible:',
+      error
+    );
+    return null;
+  }
 }
 
 function renderFatal(error) {

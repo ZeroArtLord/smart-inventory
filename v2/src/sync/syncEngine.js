@@ -27,6 +27,8 @@ const ENTITY_CONFLICT_CODES = new Set([
   'SYNC_CONFLICT',
   'BARCODE_DUPLICATE'
 ]);
+
+const MAX_CONFLICT_PEELS_PER_SYNC = 250;
 let syncing = false;
 let syncIdleWaiters = [];
 
@@ -83,48 +85,27 @@ export async function syncNow({
       }
     );
 
-    let pushed;
-
-    try {
-      pushed = await pushPending(config);
-    } catch (error) {
-      if (!isEntityConflictCode(error?.code)) throw error;
-
-      const pulled = await pullRemote(config);
-      await pruneSyncedOperations();
-
-      emit({
-        state: 'conflict',
-        message: error.message,
-        details: error.details || null,
-        pulled: pulled.count,
-        cursor: pulled.cursor
-      });
-
-      return {
-        ok: false,
-        conflict: true,
-        error,
-        pushed: 0,
-        pulled: pulled.count,
-        cursor: pulled.cursor
-      };
-    }
-
+    const pushed = await pushPending(config);
     const pulled = await pullRemote(config);
 
     await pruneSyncedOperations();
 
     emit({
-      state: 'synced',
+      state:
+        pushed.conflicts > 0
+          ? 'conflict'
+          : 'synced',
       pushed: pushed.count,
+      conflicts: pushed.conflicts,
       pulled: pulled.count,
       cursor: pulled.cursor
     });
 
     return {
       ok: true,
+      conflict: pushed.conflicts > 0,
       pushed: pushed.count,
+      conflicts: pushed.conflicts,
       pulled: pulled.count,
       cursor: pulled.cursor
     };
@@ -214,99 +195,201 @@ async function ensureServerIdentity(config, { localUserId, displayName }) {
 
 async function pushPending(config) {
   const pending = await listPendingOperations();
-  if (pending.length === 0) return { count: 0 };
+  if (pending.length === 0) {
+    return {
+      count: 0,
+      conflicts: 0
+    };
+  }
 
   let count = 0;
+  let conflicts = 0;
+  let conflictPeels = 0;
 
-  for (let offset = 0; offset < pending.length; offset += 100) {
-    const batch = pending.slice(offset, offset + 100);
+  for (
+    let offset = 0;
+    offset < pending.length;
+    offset += 100
+  ) {
+    let remainingBatch =
+      pending.slice(offset, offset + 100);
 
-    for (const item of batch) {
-      await markSyncing(item.id);
-    }
+    while (remainingBatch.length > 0) {
+      for (const item of remainingBatch) {
+        await markSyncing(item.id);
+      }
 
-    let response;
-    let data;
+      let response;
+      let data;
 
-    try {
-      ({
-        response,
-        data
-      } = await authenticatedSyncFetch(
-        config,
-        buildApiUrl(
-          config.apiBaseUrl,
-          '/api/v1/sync/push'
-        ),
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            events: batch
-          })
+      try {
+        ({
+          response,
+          data
+        } = await authenticatedSyncFetch(
+          config,
+          buildApiUrl(
+            config.apiBaseUrl,
+            '/api/v1/sync/push'
+          ),
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              events: remainingBatch
+            })
+          }
+        ));
+      } catch (error) {
+        for (const item of remainingBatch) {
+          await markFailed(item.id, error);
         }
-      ));
-    } catch (error) {
-      for (const item of batch) await markFailed(item.id, error);
-      throw error;
-    }
+        throw error;
+      }
 
-    if (!response.ok || !data.ok) {
+      if (response.ok && data.ok) {
+        const acknowledged = new Set(
+          (data.applied || [])
+            .map(item => item.id)
+        );
+
+        for (const item of remainingBatch) {
+          if (acknowledged.has(item.id)) {
+            await markSynced(item.id);
+            count += 1;
+          } else {
+            await markFailed(
+              item.id,
+              'Servidor no confirmó el evento'
+            );
+          }
+        }
+
+        remainingBatch = [];
+        continue;
+      }
+
       const error = new Error(
-        data.message || 'Error enviando cambios al servidor'
+        data.message ||
+        'Error enviando cambios al servidor'
       );
-      error.code = data.code || 'SYNC_PUSH_FAILED';
-      error.details = data.details || null;
+      error.code =
+        data.code || 'SYNC_PUSH_FAILED';
+      error.details =
+        data.details || null;
 
       if (
         response.status === 409 &&
         isEntityConflictCode(data.code)
       ) {
-        const conflictId = data.details?.eventId || null;
+        const conflictId =
+          data.details?.eventId || null;
 
-        for (const item of batch) {
-          if (item.id === conflictId) {
-            await markConflict(item.id, {
-              ...(data.details || {}),
-              reason: data.code,
-              message: error.message
-            });
-          } else {
+        if (!conflictId) {
+          for (const item of remainingBatch) {
             await markPending(
               item.id,
-              'Lote revertido por conflicto en otro evento.'
+              'Conflicto sin eventId; requiere revisión.'
             );
           }
+
+          throw error;
         }
 
-        error.details = {
-          ...(data.details || {}),
-          reason: data.code
-        };
-        error.code = 'SYNC_CONFLICT';
-      } else {
-        for (const item of batch) {
-          await markFailed(item.id, error);
+        conflictPeels += 1;
+
+        if (
+          conflictPeels >
+          MAX_CONFLICT_PEELS_PER_SYNC
+        ) {
+          for (const item of remainingBatch) {
+            await markPending(
+              item.id,
+              'Límite de conflictos alcanzado; se continuará en el próximo ciclo.'
+            );
+          }
+
+          return {
+            count,
+            conflicts
+          };
         }
+
+        remainingBatch =
+          await continueAfterConflict({
+            batch: remainingBatch,
+            conflictId,
+            details: data.details || {},
+            code: data.code,
+            message: error.message
+          });
+
+        conflicts += 1;
+        continue;
+      }
+
+      for (const item of remainingBatch) {
+        await markFailed(item.id, error);
       }
 
       throw error;
     }
-
-    const acknowledged = new Set(
-      (data.applied || []).map(item => item.id)
-    );
-
-    for (const item of batch) {
-      if (acknowledged.has(item.id)) {
-        await markSynced(item.id);
-        count += 1;
-      } else {
-        await markFailed(item.id, 'Servidor no confirmó el evento');
-      }
-    }
   }
 
-  return { count };
+  return {
+    count,
+    conflicts
+  };
+}
+
+async function continueAfterConflict({
+  batch,
+  conflictId,
+  details,
+  code,
+  message
+}) {
+  const conflictItem =
+    batch.find(
+      item => item.id === conflictId
+    );
+
+  if (!conflictItem) {
+    for (const item of batch) {
+      await markPending(
+        item.id,
+        'Conflicto reportado fuera del lote actual.'
+      );
+    }
+
+    const error = new Error(
+      'El servidor reportó un conflicto que no pertenece al lote actual'
+    );
+    error.code = 'SYNC_CONFLICT_INVALID_EVENT';
+    throw error;
+  }
+
+  await markConflict(
+    conflictItem.id,
+    {
+      ...details,
+      reason: code,
+      message
+    }
+  );
+
+  const remainingBatch =
+    batch.filter(
+      item => item.id !== conflictId
+    );
+
+  for (const item of remainingBatch) {
+    await markPending(
+      item.id,
+      'Lote reintentado sin el evento en conflicto.'
+    );
+  }
+
+  return remainingBatch;
 }
 
 async function pullRemote(config) {

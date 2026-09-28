@@ -8,16 +8,13 @@ import {
   buildApiUrl
 } from '../sync/syncSettings.js';
 import {
-  STORES,
-  get,
-  put
-} from '../storage/database.js';
+  saveOfflineAccessSnapshot,
+  readOfflineAccessSnapshot
+} from './offlineAccess.js';
 import {
   ensureWorkspaceCache,
   switchWorkspaceCacheAndConfig
 } from '../sync/workspaceCache.js';
-
-const CACHED_ACCESS_KEY = 'auth.firebase.cachedAccess';
 
 export async function discoverServerAuthMode() {
   const current = await getSyncConfig();
@@ -94,29 +91,30 @@ export async function discoverServerAuthMode() {
 }
 
 export async function bootstrapFirebaseAccess({
-  uid = null
+  uid = null,
+  requireWorkspaceId = null
 } = {}) {
   const config = await getSyncConfig();
 
   if (!navigator.onLine) {
     return getCachedFirebaseAccess({
       uid,
-      workspaceId: config.workspaceId
+      workspaceId:
+        requireWorkspaceId ||
+        config.workspaceId
     });
   }
 
   const execute = async ({
     forceRefresh = false
   } = {}) => {
-    const token = await getAuthToken({
-      required: true,
-      forceRefresh
-    });
-
-    let response;
-
     try {
-      response = await fetch(
+      const token = await getAuthToken({
+        required: true,
+        forceRefresh
+      });
+
+      const response = await fetch(
         buildApiUrl(
           config.apiBaseUrl,
           '/api/v1/auth/bootstrap'
@@ -130,21 +128,23 @@ export async function bootstrapFirebaseAccess({
           body: '{}'
         }
       );
+
+      const data = await readJson(response);
+
+      return {
+        response,
+        data
+      };
     } catch (error) {
-      if (!navigator.onLine) {
-        return {
-          offlineFallback: true
-        };
+      if (isDefinitiveAuthError(error)) {
+        throw error;
       }
-      throw error;
+
+      return {
+        offlineFallback: true,
+        networkError: error
+      };
     }
-
-    const data = await readJson(response);
-
-    return {
-      response,
-      data
-    };
   };
 
   let result = await execute();
@@ -152,7 +152,9 @@ export async function bootstrapFirebaseAccess({
   if (result.offlineFallback) {
     return getCachedFirebaseAccess({
       uid,
-      workspaceId: config.workspaceId
+      workspaceId:
+        requireWorkspaceId ||
+        config.workspaceId
     });
   }
 
@@ -163,6 +165,15 @@ export async function bootstrapFirebaseAccess({
   ) {
     result = await execute({
       forceRefresh: true
+    });
+  }
+
+  if (result.offlineFallback) {
+    return getCachedFirebaseAccess({
+      uid,
+      workspaceId:
+        requireWorkspaceId ||
+        config.workspaceId
     });
   }
 
@@ -184,15 +195,44 @@ export async function bootstrapFirebaseAccess({
     ? data.workspaces
     : [];
 
+  const requiredWorkspace =
+    String(requireWorkspaceId || '').trim();
+
   const currentWorkspace = workspaces.find(
-    workspace => workspace.id === config.workspaceId
+    workspace =>
+      workspace.id ===
+      (
+        requiredWorkspace ||
+        config.workspaceId
+      )
   );
 
-  const selectedWorkspace = currentWorkspace ||
-    (workspaces.length === 1 ? workspaces[0] : null);
+  if (
+    requiredWorkspace &&
+    !currentWorkspace
+  ) {
+    const error = new Error(
+      'Tu cuenta ya no tiene acceso al almacén local.'
+    );
+    error.code =
+      'WORKSPACE_ACCESS_DENIED';
+    error.status = 403;
+    throw error;
+  }
+
+  const selectedWorkspace =
+    currentWorkspace ||
+    (
+      !requiredWorkspace &&
+      workspaces.length === 1
+        ? workspaces[0]
+        : null
+    );
 
   if (selectedWorkspace) {
-    await selectFirebaseWorkspace(selectedWorkspace.id);
+    await selectFirebaseWorkspace(
+      selectedWorkspace.id
+    );
   }
 
   const access = {
@@ -203,7 +243,7 @@ export async function bootstrapFirebaseAccess({
     cachedAt: new Date().toISOString()
   };
 
-  await cacheFirebaseAccess(access);
+  await saveOfflineAccessSnapshot(access);
 
   return access;
 }
@@ -212,73 +252,17 @@ export async function getCachedFirebaseAccess({
   uid = null,
   workspaceId = null
 } = {}) {
-  const record = await get(
-    STORES.SETTINGS,
-    CACHED_ACCESS_KEY
-  );
-
-  const cached = record?.value || null;
-
-  if (!cached?.user || !Array.isArray(cached.workspaces)) {
-    throw offlineAccessError(
-      'No hay una autorización offline guardada para este dispositivo.'
-    );
-  }
-
-  const cachedUid =
-    cached.user.externalAuthId ||
-    cached.user.uid ||
-    null;
-
-  if (uid && cachedUid && uid !== cachedUid) {
-    throw offlineAccessError(
-      'La sesión offline pertenece a otra cuenta.'
-    );
-  }
-
-  const selectedWorkspace =
-    cached.workspaces.find(
-      workspace => workspace.id === workspaceId
-    ) ||
-    (cached.workspaces.length === 1
-      ? cached.workspaces[0]
-      : null);
-
-  if (!selectedWorkspace) {
-    throw offlineAccessError(
-      'Selecciona el almacén una vez con conexión antes de usarlo offline.'
-    );
-  }
+  const access =
+    await readOfflineAccessSnapshot({
+      uid,
+      workspaceId
+    });
 
   await ensureWorkspaceCache(
-    selectedWorkspace.id
+    access.selectedWorkspace.id
   );
 
-  return {
-    user: cached.user,
-    workspaces: cached.workspaces,
-    selectedWorkspace,
-    offline: true,
-    cachedAt: cached.cachedAt || null
-  };
-}
-
-async function cacheFirebaseAccess(access) {
-  await put(STORES.SETTINGS, {
-    key: CACHED_ACCESS_KEY,
-    value: {
-      user: access.user,
-      workspaces: access.workspaces,
-      cachedAt: access.cachedAt
-    },
-    updatedAt: access.cachedAt
-  });
-}
-
-function offlineAccessError(message) {
-  const error = new Error(message);
-  error.code = 'OFFLINE_AUTH_CACHE_MISSING';
-  return error;
+  return access;
 }
 
 export async function selectFirebaseWorkspace(workspaceId) {
@@ -296,6 +280,19 @@ export async function selectFirebaseWorkspace(workspaceId) {
   );
 
   return result.config;
+}
+
+function isDefinitiveAuthError(error) {
+  return [
+    'AUTH_TOKEN_INVALID',
+    'AUTH_SESSION_MISSING',
+    'auth/user-disabled',
+    'auth/user-token-expired',
+    'auth/invalid-user-token',
+    'auth/user-not-found'
+  ].includes(
+    String(error?.code || '')
+  );
 }
 
 async function readJson(response) {
