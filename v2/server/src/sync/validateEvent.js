@@ -38,6 +38,7 @@ const INTELLIGENCE_MODES = new Set([
 ]);
 
 const UPSERT_OPERATIONS = new Set(['CREATE', 'UPDATE']);
+const COUNT_NUMERIC_EPSILON = 1e-9;
 
 export function validateSyncEvent(event) {
   if (!event || typeof event !== 'object') {
@@ -247,8 +248,20 @@ function validateDocumentLine(line) {
   }
 
   if (hasCount) {
-    finiteNonNegative(line.countedStock, 'Existencia contada');
-    finiteNonNegative(line.expectedStock, 'Existencia esperada');
+    const countedStock = finiteNonNegative(
+      normalizeCountNumber(line.countedStock),
+      'Existencia contada'
+    );
+    const expectedStock = finiteNonNegative(
+      normalizeCountNumber(line.expectedStock),
+      'Existencia esperada'
+    );
+
+    line.countedStock = countedStock;
+    line.expectedStock = expectedStock;
+    line.difference = normalizeCountNumber(
+      countedStock - expectedStock
+    );
   }
 
   if (hasQuantity) {
@@ -476,6 +489,14 @@ function requireUpsert(operation) {
   if (!UPSERT_OPERATIONS.has(operation)) {
     throw new Error('Operación de sincronización no permitida');
   }
+}
+
+function normalizeCountNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return number;
+  return Math.abs(number) <= COUNT_NUMERIC_EPSILON
+    ? 0
+    : number;
 }
 
 function finiteNonNegative(value, fieldName) {
