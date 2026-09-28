@@ -95,6 +95,7 @@ const APP_SHELL = [
   './src/replenishment/replenishmentService.js',
   './src/replenishment/warehouseProcurementService.js',
   './src/replenishment/procurementListService.js',
+  './src/replenishment/procurementWorkspaceDraft.js',
   './src/replenishment/manualProcurementRequestService.js',
   './src/scanner/barcodeScanner.js',
   './src/export/exportService.js',
