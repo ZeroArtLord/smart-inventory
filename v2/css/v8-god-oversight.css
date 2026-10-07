@@ -1,0 +1,82 @@
+/* VIGÍA V8.2 · Supervisión operativa GOD
+   El contenido de Entradas/Surtidos se mantiene oculto hasta que el módulo
+   aplica la política owner/GOD. Conteo queda liberado inmediatamente por JS. */
+
+.draft-list-v2:not([data-v82-access-ready="1"]),
+.document-history-list:not([data-v82-access-ready="1"]) {
+  visibility: hidden;
+}
+
+.v82-operational-row {
+  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+}
+
+.v82-operational-row.v82-god-foreign {
+  border-color: #d9cdfd;
+  background: linear-gradient(90deg, #fbf9ff 0%, #ffffff 52%);
+  box-shadow: inset 3px 0 0 #7c4dff;
+}
+
+.v82-document-copy {
+  min-width: 0;
+}
+
+.v82-document-copy strong,
+.v82-document-copy small,
+.v82-owner-line {
+  display: block;
+}
+
+.v82-owner-line {
+  margin-top: 3px;
+  color: #6d5aad;
+  font-size: .72rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.v82-god-badge {
+  display: inline-flex;
+  margin-top: 9px;
+  background: #f1edff;
+  color: #6a42db;
+  border: 1px solid #ded3ff;
+}
+
+.v82-oversight-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 300;
+  max-width: min(520px, calc(100vw - 28px));
+  padding: 11px 15px;
+  border-radius: 12px;
+  background: #111827;
+  color: #fff;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, .24);
+  font-weight: 750;
+  font-size: .82rem;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 18px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+
+.v82-oversight-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.v82-oversight-toast[data-tone="danger"] {
+  background: #991b1b;
+}
+
+@media (max-width: 760px) {
+  .v82-operational-row.v82-god-foreign {
+    box-shadow: inset 2px 0 0 #7c4dff;
+  }
+
+  .v82-owner-line {
+    font-size: .68rem;
+  }
+}

@@ -1,8 +1,68 @@
 import { apiRequest } from '../api/apiClient.js';
+import { getAuthToken } from '../auth/authProvider.js';
+import { getSyncConfig } from '../sync/syncSettings.js';
 
-export async function getCurrentSession() {
-  const data = await apiRequest('/api/v1/session');
-  return data.session;
+const SESSION_CACHE_MS = 60000;
+let sessionInFlight = null;
+let cachedSession = null;
+let cachedSessionKey = '';
+let cachedSessionAt = 0;
+
+export async function getCurrentSession({ force = false } = {}) {
+  const key = await currentSessionKey();
+  const now = Date.now();
+
+  if (
+    !force &&
+    cachedSession &&
+    cachedSessionKey === key &&
+    now - cachedSessionAt < SESSION_CACHE_MS
+  ) {
+    return cachedSession;
+  }
+
+  if (sessionInFlight?.key === key) {
+    return sessionInFlight.promise;
+  }
+
+  const promise = apiRequest('/api/v1/session')
+    .then(data => {
+      if (!data?.session) {
+        const error = new Error('El servidor no devolvió una sesión válida');
+        error.code = 'SESSION_INVALID';
+        throw error;
+      }
+
+      cachedSession = data.session;
+      cachedSessionKey = key;
+      cachedSessionAt = Date.now();
+      return cachedSession;
+    })
+    .catch(error => {
+      if (
+        error?.status === 429 &&
+        cachedSession &&
+        cachedSessionKey === key
+      ) {
+        return cachedSession;
+      }
+
+      throw error;
+    })
+    .finally(() => {
+      if (sessionInFlight?.promise === promise) {
+        sessionInFlight = null;
+      }
+    });
+
+  sessionInFlight = { key, promise };
+  return promise;
+}
+
+export function invalidateCurrentSessionCache() {
+  cachedSession = null;
+  cachedSessionKey = '';
+  cachedSessionAt = 0;
 }
 
 export async function listWorkspaceMembers() {
@@ -43,6 +103,7 @@ export async function updateWorkspaceMember(userId, {
     }
   );
 
+  invalidateCurrentSessionCache();
   return data.member;
 }
 
@@ -53,7 +114,6 @@ export function can(session, permission) {
 
   return permissions.includes('*') || permissions.includes(permission);
 }
-
 
 export const ROLE_OPTIONS = Object.freeze([
   { code: 'GOD', label: 'DIOS · Cuenta maestra' },
@@ -78,3 +138,19 @@ export const PERMISSION_OPTIONS = Object.freeze([
   { code: 'audit.view', label: 'Ver auditoría' },
   { code: 'saint.send', label: 'Enviar a SAINT' }
 ]);
+
+async function currentSessionKey() {
+  const config = await getSyncConfig();
+  const workspaceId = String(config.workspaceId || '');
+
+  if (config.authMode === 'firebase') {
+    const token = await getAuthToken({
+      required: true,
+      forceRefresh: false
+    });
+
+    return `firebase:${workspaceId}:${token}`;
+  }
+
+  return `dev:${workspaceId}:${String(config.serverUserId || '')}`;
+}

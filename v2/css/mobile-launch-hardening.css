@@ -1,0 +1,245 @@
+/* VIGÍA V5 · Mobile/PWA launch hardening
+   Scope: presentation, touch ergonomics, safe areas and mobile overflow only.
+   No inventory/business logic lives here. */
+
+:root {
+  --vigia-touch-min: 44px;
+  --vigia-touch-primary: 48px;
+}
+
+@media (display-mode: standalone) {
+  html,
+  body {
+    min-height: 100dvh;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .card:hover,
+  .action-card:hover,
+  .v5-count-category:hover {
+    transform: none !important;
+  }
+}
+
+@media (max-width: 760px) {
+  html,
+  body,
+  .si-layout,
+  .main-frame,
+  .app-shell {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+    overscroll-behavior-y: contain;
+  }
+
+  .topbar {
+    min-height: calc(64px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .sidebar {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .app-shell {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  button,
+  .mobile-menu,
+  .icon-button,
+  .ghost-button,
+  .primary,
+  .secondary,
+  .success,
+  .danger,
+  .draft-actions-v2 button,
+  .replenishment-actions button,
+  .replenishment-buttons button,
+  .document-export-actions button,
+  .report-actions button,
+  .alert-row-v2 button,
+  .v5-count-toolbar-actions button,
+  .v5-count-actions button,
+  .v5-procurement-result,
+  .v5-add-manual,
+  .v5-add-extra,
+  .v5-recon-line-actions button,
+  .v5-recon-finalize button,
+  .v5-live-batch-actions button,
+  .v5-live-row-actions button,
+  .v5-live-finalize-button,
+  .v5-saint-export-button {
+    min-height: var(--vigia-touch-min);
+  }
+
+  .count-save-button,
+  .count-close-button,
+  .document-close-button,
+  .document-add-line,
+  .v5-add-manual,
+  .v5-add-extra,
+  .v5-live-finalize-button {
+    min-height: 52px;
+  }
+
+  .v5-live-select input,
+  .permission-option input,
+  .user-active-toggle input {
+    width: 22px;
+    height: 22px;
+  }
+
+  .product-meta,
+  .dashboard-metric .product-meta,
+  .dashboard-list-row small,
+  .dashboard-list-end small,
+  .action-card span,
+  .catalog-mobile-head small,
+  .catalog-mobile-stats small,
+  .draft-row-v2 small,
+  .history-doc-title small,
+  .document-line-v2 small,
+  .selected-product-v2 small,
+  .replenish-suggestion-card small,
+  .replenishment-card-head-v2 small,
+  .replenishment-progress-v2 small,
+  .alert-row-v2 small,
+  .system-status-list-v2 small,
+  .settings-row-v2 small,
+  .report-expiry-row small,
+  .report-bar-label small,
+  .v5-live-product small,
+  .v5-live-history-row small,
+  .v5-recon-case-main small,
+  .v5-recon-line-head small,
+  .v5-recon-history-row small {
+    font-size: max(.72rem, 12px);
+    line-height: 1.4;
+  }
+
+  .bottom-nav button > small {
+    font-size: max(.62rem, 10px);
+  }
+
+  .report-table-wrap,
+  .catalog-table-wrap-v2 {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
+  }
+
+  .report-table {
+    min-width: 680px !important;
+  }
+
+  .v5-count-input,
+  .count-input-v2,
+  .document-quantity-input,
+  .numeric-input {
+    font-size: clamp(2rem, 10vw, 2.75rem) !important;
+  }
+
+  .v5-count-pending-row,
+  .v5-count-jump-row,
+  .closed-document-row,
+  .audit-row,
+  .audit-adjustment-row {
+    min-width: 0;
+  }
+
+  .v5-count-pending-row > *,
+  .v5-count-jump-row > *,
+  .closed-document-row > *,
+  .audit-row > *,
+  .audit-adjustment-row > * {
+    min-width: 0;
+  }
+
+  .v5-toast,
+  .toast {
+    max-width: calc(100vw - 24px);
+  }
+}
+
+@media (max-width: 520px) {
+  .topbar {
+    gap: 7px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .global-search-wrap {
+    min-width: 0;
+  }
+
+  .global-search {
+    min-width: 0;
+  }
+
+  .report-table {
+    min-width: 640px !important;
+  }
+
+  .v5-procurement-result,
+  .v5-selected-product,
+  .v5-recon-case-main,
+  .v5-recon-line-head {
+    align-items: flex-start;
+  }
+
+  .v5-count-category,
+  .v5-procurement-result,
+  .v5-recon-case,
+  .v5-recon-line,
+  .v5-live-row {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 370px) {
+  .bottom-nav {
+    padding-left: 3px;
+    padding-right: 3px;
+  }
+
+  .bottom-nav button {
+    min-height: 60px;
+  }
+
+  .bottom-nav button > small {
+    font-size: 10px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) and (max-width: 900px) {
+  .topbar {
+    min-height: calc(56px + env(safe-area-inset-top));
+  }
+
+  .bottom-nav button {
+    min-height: 50px;
+  }
+}

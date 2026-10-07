@@ -21,6 +21,9 @@ export const WORKSPACE_OPERATIONAL_STORES = Object.freeze([
   STORES.CATEGORIES,
   STORES.SUPPLIERS,
   STORES.LOCATIONS,
+  STORES.AREAS,
+  STORES.SUPPLY_AREA_DELIVERIES,
+  STORES.SUPPLY_AREA_DRAFTS,
   STORES.MOVEMENTS,
   STORES.DOCUMENTS,
   STORES.DOCUMENT_LINES,
@@ -39,11 +42,39 @@ export async function getWorkspaceCacheBinding() {
 }
 
 export async function listWorkspaceSwitchBlockers() {
-  const queue = await getAll(STORES.SYNC_QUEUE);
+  const [queue, areaDeliveries, areaDrafts] = await Promise.all([
+    getAll(STORES.SYNC_QUEUE),
+    getAll(STORES.SUPPLY_AREA_DELIVERIES),
+    getAll(STORES.SUPPLY_AREA_DRAFTS)
+  ]);
 
-  return queue.filter(item =>
+  const queueBlockers = queue.filter(item =>
     item.status !== SYNC_STATUS.SYNCED
   );
+
+  const deliveryBlockers = areaDeliveries
+    .filter(item => item.syncStatus && item.syncStatus !== 'SYNCED')
+    .map(item => ({
+      ...item,
+      entityType: 'supplyAreaDelivery',
+      entityId: item.id || item.deliveryToken,
+      status: item.syncStatus
+    }));
+
+  const draftBlockers = areaDrafts
+    .filter(item => item.syncStatus && item.syncStatus !== 'SYNCED')
+    .map(item => ({
+      ...item,
+      entityType: 'supplyAreaDraft',
+      entityId: item.id,
+      status: item.syncStatus
+    }));
+
+  return [
+    ...queueBlockers,
+    ...deliveryBlockers,
+    ...draftBlockers
+  ];
 }
 
 export async function ensureWorkspaceCache(

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VIGÍA">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f6fed"/>
+      <stop offset="1" stop-color="#5b8cff"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#g)"/>
+  <rect x="72" y="72" width="368" height="368" rx="92" fill="rgba(255,255,255,.08)"/>
+  <path d="M145 155h58l53 150 53-150h58l-82 202h-58L145 155Z" fill="#fff"/>
+  <circle cx="356" cy="148" r="25" fill="#22a559" stroke="#fff" stroke-width="10"/>
+</svg>

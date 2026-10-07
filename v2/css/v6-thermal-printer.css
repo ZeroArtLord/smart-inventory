@@ -1,0 +1,202 @@
+/* V6 thermal printer settings and calibration.
+ * Loaded after procurement hardening so printer calibration can tune tickets
+ * without changing inventory/procurement semantics.
+ */
+
+/* Comprar/Pedir V6 already exposes the same intelligence on demand.
+ * Hide the old expanded VIGÍA explanation panel to avoid duplicate content.
+ */
+[data-vigia-intelligence-panel="replenishment"] {
+  display: none !important;
+}
+
+.v6t-printer-settings {
+  grid-column: 1 / -1;
+}
+
+.v6t-printer-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.v6t-printer-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.v6t-printer-form label > input,
+.v6t-inline-control {
+  width: 100%;
+}
+
+.v6t-printer-form input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--text);
+  padding: 10px 11px;
+  font-size: 16px;
+}
+
+.v6t-printer-form small {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.v6t-wide {
+  grid-column: 1 / -1;
+}
+
+.v6t-inline-control {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.v6t-inline-control span {
+  min-width: 34px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.v6t-printer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.v6t-printer-note,
+.v6t-test-warning {
+  margin-top: 12px;
+  border: 1px solid #cfe0ff;
+  border-radius: 12px;
+  background: #f7faff;
+  padding: 10px 12px;
+  color: #334760;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.v6p-print-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.v6p-printer-hint {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.v6p-ticket {
+  font-size: var(--vigia-ticket-font-size, 10px);
+  line-height: var(--vigia-ticket-line-height, 1.25);
+  padding: var(--vigia-ticket-padding, 2mm) !important;
+}
+
+.v6p-ticket-head small {
+  font-size: .9em !important;
+}
+
+.v6p-ticket-head > strong {
+  font-size: 1.45em !important;
+  line-height: 1.15;
+}
+
+.v6p-ticket-head > b {
+  font-size: 1.15em !important;
+}
+
+.v6p-ticket-head > span {
+  font-size: .9em !important;
+}
+
+.v6p-ticket-meta {
+  font-size: .9em !important;
+  line-height: inherit !important;
+}
+
+.v6p-ticket-legend {
+  font-size: .8em !important;
+}
+
+.v6p-ticket-category h4 {
+  font-size: 1em !important;
+}
+
+.v6p-ticket-row {
+  font-size: .95em !important;
+  line-height: inherit;
+}
+
+.v6p-ticket-row span,
+.v6p-ticket-row small {
+  font-size: .88em !important;
+  line-height: inherit;
+}
+
+.v6p-ticket-notes,
+.v6p-ticket footer {
+  font-size: .88em !important;
+  line-height: inherit;
+}
+
+.v6t-ruler,
+.v6t-symbols {
+  width: 100%;
+  overflow: hidden;
+  color: #000;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: .82em;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.v6t-symbols {
+  margin-top: 3px;
+  white-space: normal;
+}
+
+@media (max-width: 760px) {
+  .v6t-printer-form {
+    grid-template-columns: 1fr;
+  }
+
+  .v6t-wide {
+    grid-column: 1;
+  }
+
+  .v6t-printer-actions {
+    flex-direction: column;
+  }
+
+  .v6t-printer-actions button {
+    width: 100%;
+  }
+
+  .v6p-print-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media print {
+  .v6t-test-warning {
+    display: none !important;
+  }
+}
