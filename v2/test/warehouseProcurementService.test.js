@@ -192,7 +192,7 @@ test('lista de producto puede editar cantidad, tipo y nota antes de recibir', as
   assert.equal(updated.requestedQuantity, 25);
   assert.equal(updated.pendingQuantity, 25);
   assert.equal(updated.method, 'ORDER');
-  assert.equal(updated.notes, 'Se corrigió después de revisar almacén');
+  assert.equal(updated.notes, 'Se corrigio despues de revisar almacen');
   assert.equal(updated.sourceSuggestion.lastEditedBy, 'god-v5b2');
 
   const queue = await getAll(STORES.SYNC_QUEUE);
