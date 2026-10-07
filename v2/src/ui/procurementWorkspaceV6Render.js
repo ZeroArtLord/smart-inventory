@@ -190,7 +190,7 @@ export function renderListModal(model) {
     <div class="v6p-modal-head"><div><div class="v6p-eyebrow">${list.kind === 'ORDER' ? 'PEDIDO' : 'COMPRA'}</div><h3>${esc(list.code)}</h3><p>${esc(list.dateLabel)} · ${esc(list.ownerLabel || 'Usuario VIGÍA')}</p></div><button class="v6p-ghost" data-v6p-action="close-list" type="button">Cerrar</button></div>
     <div class="v6p-modal-body">
       ${editable ? '<div class="v6p-empty" style="margin-bottom:12px">Lista ABIERTA · puedes entrar y salir, agregar productos, cambiar cantidades o quitar renglones hasta marcarla realizada.</div>' : ''}
-      <div class="v6p-list-lines">${list.items.map(item => listLine(item, editable)).join('')}</div>
+      <div class="v6p-list-lines">${(list.activeItems || []).length ? (list.activeItems || []).map(item => listLine(item, editable)).join('') : '<div class="v6p-empty">No quedan renglones activos en esta lista.</div>'}</div>
       <div class="v6p-review-actions">
         ${editable ? `<button class="v6p-ghost" data-v6p-action="add-list-product" data-list-id="${esc(list.id)}" type="button">＋ Agregar producto</button><button class="v6p-primary" data-v6p-action="save-list-edits" type="button">Guardar cambios</button>` : ''}
         <button class="v6p-ghost" data-v6p-action="open-print" data-list-id="${esc(list.id)}" type="button">👁 Vista 80mm</button>

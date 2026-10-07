@@ -333,3 +333,45 @@ test('modal para agregar producto deja claro que conserva la misma lista', () =>
   assert.ok(html.includes('Guardar en esta lista'));
   assert.ok(html.includes('TOMATE'));
 });
+
+
+test('renglones cancelados no reaparecen en una lista abierta', () => {
+  const active = ticketItem({
+    id: 'active-line',
+    name: 'TOMATE',
+    method: 'PURCHASE',
+    quantity: 5,
+    unit: 'KG',
+    category: 'VERDURAS'
+  });
+
+  const cancelled = ticketItem({
+    id: 'cancelled-line',
+    name: 'NO DEBE VERSE',
+    method: 'PURCHASE',
+    quantity: 2,
+    unit: 'KG',
+    category: 'VERDURAS',
+    status: 'CANCELLED'
+  });
+
+  const html = renderListModal({
+    list: {
+      id: 'buy-list-cancel-filter',
+      code: 'COM-CANCEL',
+      kind: 'PURCHASE',
+      status: 'DRAFT',
+      dateLabel: '07/10/2026',
+      ownerLabel: 'Armando',
+      items: [active, cancelled],
+      activeItems: [active]
+    }
+  });
+
+  assert.ok(html.includes('TOMATE'));
+  assert.equal(html.includes('NO DEBE VERSE'), false);
+  assert.equal(
+    (html.match(/data-v6p-action="cancel-list-line"/g) || []).length,
+    1
+  );
+});

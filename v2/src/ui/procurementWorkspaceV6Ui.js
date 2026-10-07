@@ -566,8 +566,39 @@ async function saveListEdits() {
 }
 
 async function cancelLine(id) {
-  if(!id||!confirm('¿Quitar este renglón? Quedará CANCELADO en auditoría.'))return;
-  await changeReplenishmentStatus(id,REPLENISHMENT_STATUS.CANCELLED,{userId:state.session?.userId||null});await attemptSync();await reload();paint();if(state.listModalId)openList(state.listModalId,false);
+  if(!id)return;
+
+  const item=state.lists
+    .flatMap(list=>list.items||[])
+    .find(row=>row.id===id);
+
+  if(!item){
+    await reload();
+    paint();
+    if(state.listModalId)openList(state.listModalId,false);
+    return;
+  }
+
+  if(item.status===REPLENISHMENT_STATUS.CANCELLED){
+    await reload();
+    paint();
+    if(state.listModalId)openList(state.listModalId,false);
+    return;
+  }
+
+  if(!confirm('¿Quitar este renglón? Quedará CANCELADO en auditoría.'))return;
+
+  await changeReplenishmentStatus(
+    id,
+    REPLENISHMENT_STATUS.CANCELLED,
+    {userId:state.session?.userId||null}
+  );
+
+  await attemptSync();
+  await reload();
+  paint();
+  if(state.listModalId)openList(state.listModalId,false);
+  toast('Renglón quitado de la lista.');
 }
 
 async function transitionList(id,status) {
