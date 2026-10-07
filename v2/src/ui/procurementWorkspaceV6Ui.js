@@ -5,7 +5,7 @@ import { getPrimaryPresentation, normalizePresentations, quantityFromBase, quant
 import { STORES, getAll } from '../storage/database.js';
 import { buildInventoryReport } from '../reporting/reportingEngine.js';
 import { calculatePendingInboundByProduct, changeReplenishmentStatus, REPLENISHMENT_STATUS } from '../replenishment/replenishmentService.js';
-import { createProcurementLists, listProcurementLists, procurementDisplayQuantity, updateDraftProcurementLine } from '../replenishment/procurementListService.js';
+import { createProcurementLists, appendProcurementListItems, reopenProcurementList, listProcurementLists, procurementDisplayQuantity, updateDraftProcurementLine } from '../replenishment/procurementListService.js';
 import {
   saveProcurementWorkspaceDraft,
   loadProcurementWorkspaceDraft,
@@ -19,7 +19,7 @@ import { createDocument } from '../documents/documentService.js';
 import { DOCUMENT_TYPES } from '../documents/documentTypes.js';
 import { getCurrentSession, can } from '../admin/adminClient.js';
 import { syncNow } from '../sync/syncEngine.js';
-import { renderWorkspace, renderReviewModal, renderManualModal, renderListModal, esc } from './procurementWorkspaceV6Render.js';
+import { renderWorkspace, renderReviewModal, renderManualModal, renderListModal, renderAddToListModal, esc } from './procurementWorkspaceV6Render.js';
 import { renderPrintModal } from './procurementWorkspaceV6Print.js';
 
 const BUSINESS_NAME_KEY = 'vigia.procurement.businessName';
@@ -30,6 +30,7 @@ const state = {
   rows:[], rowsById:new Map(), drafts:new Map(), pendingExtras:[],
   lists:[], session:null, manualResults:[], manualProduct:null,
   listModalId:null, printListId:null,
+  addListId:null, addListResults:[], addListProduct:null,
   draftRestoreNoticeShown:false
 };
 
@@ -263,6 +264,11 @@ async function handleClick(event) {
     if(action==='confirm-lists'){await confirmLists();return;}
     if(action==='open-list'){openList(button.dataset.listId);return;}
     if(action==='close-list'){close('v6pListModal');state.listModalId=null;return;}
+    if(action==='add-list-product'){openListAdd(button.dataset.listId);return;}
+    if(action==='choose-list-add-product'){chooseListAddProduct(button.dataset.productId);return;}
+    if(action==='confirm-list-add-product'){await confirmListAddProduct();return;}
+    if(action==='close-list-add'){closeListAdd();return;}
+    if(action==='reopen-list'){await reopenList(button.dataset.listId);return;}
     if(action==='open-print'){openPrint(button.dataset.listId);return;}
     if(action==='close-print'){close('v6pPrintModal');state.printListId=null;return;}
     if(action==='save-business-name'){saveBusinessName();return;}
@@ -292,6 +298,9 @@ async function handleInput(event) {
   if(event.target.id==='v6pSearch'){state.query=event.target.value;paint();document.getElementById('v6pSearch')?.focus();return;}
   if(event.target.id==='v6pManualSearch'){
     const q=String(event.target.value||'').trim();state.manualResults=q.length>=2?(await searchProducts(q,{limit:8})).filter(p=>p.active!==false):[];openManual(false);const input=document.getElementById('v6pManualSearch');if(input){input.value=q;input.focus();}return;
+  }
+  if(event.target.id==='v6pListAddSearch'){
+    const q=String(event.target.value||'').trim();state.addListResults=q.length>=2?(await searchProducts(q,{limit:8})).filter(p=>p.active!==false):[];openListAdd(state.addListId,false);const input=document.getElementById('v6pListAddSearch');if(input){input.value=q;input.focus();}return;
   }
   const field=event.target.dataset.v6pField;if(!field)return;
   const draft=draftFromNode(event.target);if(!draft)return;
@@ -348,7 +357,44 @@ async function confirmLists() {
     const requested=quantityToBase(Number(d.displayQuantity||0),{conversion:Number(d.displayConversion||1)});if(!(requested>0))throw new Error(`Cantidad inválida: ${product?.name||'producto'}`);
     return {productId:d.productId,method:d.method,requestedQuantity:requested,displayQuantity:Number(d.displayQuantity),displayUnit:d.displayUnit,displayConversion:Number(d.displayConversion||1),notes:d.note,reason:d.note,source:d.source,categoryName:categoryName(product?.categoryId),vigiaSuggestedQuantity:Number(row.suggestedQuantity||0),stockAtDecision:Number(row.stock||0),pendingInboundAtDecision:Number(row.pendingInbound||0)};
   });
-  const result=await createProcurementLists({lines,extras:state.pendingExtras.map(e=>({...e})),ownerId:state.session?.userId||null,ownerLabel:actorLabel()});
+  const extras=state.pendingExtras.map(e=>({...e}));
+  const ownerId=state.session?.userId||null;
+  const ownerLabel=actorLabel();
+  const kinds=['PURCHASE','ORDER'];
+  const newLines=[];
+  const newExtras=[];
+  let updatedLists=0;
+
+  for(const kind of kinds){
+    const kindLines=lines.filter(line=>line.method===kind);
+    const kindExtras=extras.filter(extra=>(extra.method||'PURCHASE')===kind);
+    if(!kindLines.length&&!kindExtras.length)continue;
+
+    const openList=state.lists.find(list=>list.kind===kind&&list.status==='DRAFT');
+    if(openList){
+      await appendProcurementListItems(openList.id,{
+        lines:kindLines,
+        extras:kindExtras,
+        ownerId,
+        ownerLabel
+      });
+      updatedLists+=1;
+    } else {
+      newLines.push(...kindLines);
+      newExtras.push(...kindExtras);
+    }
+  }
+
+  let createdLists=0;
+  if(newLines.length||newExtras.length){
+    const result=await createProcurementLists({
+      lines:newLines,
+      extras:newExtras,
+      ownerId,
+      ownerLabel
+    });
+    createdLists=[result.purchaseListId,result.orderListId].filter(Boolean).length;
+  }
 
   const fulfilledCountFlags = selected
     .filter(draft => draft.countFlag === true)
@@ -366,12 +412,141 @@ async function confirmLists() {
 
   const draftContext=procurementDraftContext();
   if(draftContext){await clearProcurementWorkspaceDraft(draftContext);}
-  close('v6pReviewModal');selected.forEach(d=>{d.selected=false;d.dirty=false;});state.pendingExtras=[];await attemptSync();await reload();state.activeTab='lists';paint();toast(`${[result.purchaseListId,result.orderListId].filter(Boolean).length} lista(s) creada(s).`);
+  close('v6pReviewModal');selected.forEach(d=>{d.selected=false;d.dirty=false;});state.pendingExtras=[];await attemptSync();await reload();state.activeTab='lists';paint();
+
+  const messages=[];
+  if(updatedLists)messages.push(`${updatedLists} lista(s) abierta(s) actualizada(s)`);
+  if(createdLists)messages.push(`${createdLists} lista(s) nueva(s)`);
+  toast(messages.join(' · ')||'Listas actualizadas.');
 }
 
 function openList(id,remember=true) {
   const list=state.lists.find(l=>l.id===id);if(!list)return;if(remember)state.listModalId=id;
   const modal=document.getElementById('v6pListModal');if(!modal)return;modal.innerHTML=renderListModal({list});modal.classList.add('is-open');
+}
+
+function openListAdd(id,reset=true) {
+  const list=state.lists.find(l=>l.id===id);
+  if(!list)throw new Error('Lista no encontrada');
+  if(list.status!=='DRAFT')throw new Error('Reabre la lista antes de agregar productos');
+
+  state.addListId=id;
+  if(reset){
+    state.addListResults=[];
+    state.addListProduct=null;
+  }
+
+  close('v6pListModal');
+
+  const modal=document.getElementById('v6pAddToListModal');
+  if(!modal)return;
+
+  let selectedDraft=null;
+  if(state.addListProduct){
+    const product=state.addListProduct;
+    const existing=(list.activeItems||[]).find(item=>!isProcurementExtra(item)&&item.productId===product.id);
+    if(existing){
+      const display=procurementDisplayQuantity(existing);
+      selectedDraft={
+        displayQuantity:display.quantity,
+        displayUnit:display.unit,
+        note:existing.notes||'',
+        unitOptionsHtml:unitOptions(product,display.unit)
+      };
+    } else {
+      const row=state.rowsById.get(product.id)||fallbackRow(product.id);
+      const display=recommendedDisplay(product,Number(row.suggestedQuantity||0));
+      selectedDraft={
+        displayQuantity:Number(display.quantity||0)>0?display.quantity:1,
+        displayUnit:display.unit,
+        note:'',
+        unitOptionsHtml:unitOptions(product,display.unit)
+      };
+    }
+  }
+
+  modal.innerHTML=renderAddToListModal({
+    list,
+    results:state.addListResults,
+    selected:state.addListProduct,
+    selectedDraft
+  });
+  modal.classList.add('is-open');
+}
+
+function chooseListAddProduct(id) {
+  const product=state.productsById.get(id);
+  if(!product)return;
+  state.addListProduct=product;
+  openListAdd(state.addListId,false);
+}
+
+async function confirmListAddProduct() {
+  const list=state.lists.find(l=>l.id===state.addListId);
+  const product=state.addListProduct;
+  if(!list||list.status!=='DRAFT')throw new Error('La lista ya no está abierta');
+  if(!product)throw new Error('Selecciona un producto');
+
+  const qty=evaluateNumericExpression(
+    document.getElementById('v6pListAddQty')?.value||''
+  );
+  if(!(qty>0))throw new Error('La cantidad debe ser mayor que cero');
+
+  const descriptor=presentationDescriptor(
+    product,
+    document.getElementById('v6pListAddUnit')?.value
+  );
+  const row=state.rowsById.get(product.id)||fallbackRow(product.id);
+  const note=String(
+    document.getElementById('v6pListAddNote')?.value||''
+  ).trim().slice(0,180);
+
+  await appendProcurementListItems(list.id,{
+    ownerId:state.session?.userId||null,
+    ownerLabel:actorLabel(),
+    lines:[{
+      productId:product.id,
+      method:list.kind,
+      requestedQuantity:quantityToBase(qty,{conversion:descriptor.conversion}),
+      displayQuantity:qty,
+      displayUnit:descriptor.unit,
+      displayConversion:descriptor.conversion,
+      notes:note,
+      reason:note,
+      source:'MANUAL',
+      categoryName:categoryName(product.categoryId),
+      vigiaSuggestedQuantity:Number(row.suggestedQuantity||0),
+      stockAtDecision:Number(row.stock||0),
+      pendingInboundAtDecision:Number(row.pendingInbound||0)
+    }]
+  });
+
+  const listId=list.id;
+  closeListAdd(false);
+  await attemptSync();
+  await reload();
+  paint();
+  openList(listId);
+  toast(`${product.name} guardado en la misma lista.`);
+}
+
+function closeListAdd(reopen=true) {
+  close('v6pAddToListModal');
+  state.addListResults=[];
+  state.addListProduct=null;
+  const listId=state.addListId;
+  state.addListId=null;
+  if(reopen&&listId)openList(listId,false);
+}
+
+async function reopenList(id) {
+  if(!confirm('¿Reabrir esta lista para agregar, modificar o quitar productos?'))return;
+  await reopenProcurementList(id,{userId:state.session?.userId||null});
+  await attemptSync();
+  await reload();
+  paint();
+  openList(id);
+  toast('Lista reabierta. Puedes editarla nuevamente.');
 }
 
 function openPrint(id,remember=true) {
@@ -429,7 +604,7 @@ function unitOptions(product,current){const base={unit:catalogUnitCode(product),
 function presentationDescriptor(product,unit){const base=catalogUnitCode(product);if(unit===base)return {unit:base,conversion:1};const p=normalizePresentations(product.presentations,{inventoryUnitId:product.inventoryUnitId,purchaseUnitId:product.purchaseUnitId,purchaseConversion:product.purchaseConversion}).find(x=>(x.code||x.name)===unit);return p?{unit,conversion:Number(p.conversion||1)}:{unit:base,conversion:1};}
 function categoryName(id){return state.categoriesById.get(id)?.name||'SIN CATEGORÍA';}
 function listCode(list){const prefix=list.kind==='ORDER'?'PED':'COM';const raw=String(list.id||'').replace(/[^a-zA-Z0-9]/g,'').slice(-6).toUpperCase()||'000001';return `${prefix}-${raw}`;}
-function statusLabel(s){return ({DRAFT:'BORRADOR',ORDERED:'REALIZADO',IN_TRANSIT:'EN CAMINO',PARTIALLY_RECEIVED:'RECIBIDO PARCIAL',RECEIVED:'RECIBIDO',CANCELLED:'CANCELADO'})[s]||s;}
+function statusLabel(s){return ({DRAFT:'ABIERTA',ORDERED:'REALIZADO',IN_TRANSIT:'EN CAMINO',PARTIALLY_RECEIVED:'RECIBIDO PARCIAL',RECEIVED:'RECIBIDO',CANCELLED:'CANCELADO'})[s]||s;}
 function procurementDraftContext(){
   const workspaceId=String(state.session?.workspaceId||state.session?.workspace?.id||'').trim();
   const userId=String(state.session?.userId||'').trim();

@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 const {
   renderWorkspace,
-  renderReviewModal
+  renderReviewModal,
+  renderListModal,
+  renderAddToListModal
 } = await import('../src/ui/procurementWorkspaceV6Render.js');
 
 const {
@@ -249,4 +251,85 @@ test('contrato CSS final protege escritorio, móvil y la impresión térmica rea
   assert.match(css, /size:\s*80mm auto/);
   assert.match(css, /page-break-after:\s*always/);
   assert.equal(css.includes('body>*:not(.v6p-print-host)'), false);
+});
+
+
+test('lista abierta permite agregar, editar y quitar sin crear otra lista', () => {
+  const item = ticketItem({
+    id: 'aguacate-edit',
+    name: 'AGUACATE',
+    method: 'PURCHASE',
+    quantity: 20,
+    unit: 'KG',
+    category: 'VERDURAS'
+  });
+
+  const html = renderListModal({
+    list: {
+      id: 'buy-list-week',
+      code: 'COM-WEEK01',
+      kind: 'PURCHASE',
+      status: 'DRAFT',
+      dateLabel: '05/10/2026',
+      ownerLabel: 'Armando',
+      items: [item],
+      activeItems: [item]
+    }
+  });
+
+  assert.ok(html.includes('Lista ABIERTA'));
+  assert.ok(html.includes('Agregar producto'));
+  assert.ok(html.includes('Guardar cambios'));
+  assert.ok(html.includes('Quitar'));
+});
+
+test('lista realizada sin recepción ofrece reabrir para editar', () => {
+  const item = ticketItem({
+    id: 'aguacate-reopen',
+    name: 'AGUACATE',
+    method: 'PURCHASE',
+    quantity: 20,
+    unit: 'KG',
+    category: 'VERDURAS',
+    status: 'ORDERED'
+  });
+
+  const html = renderListModal({
+    list: {
+      id: 'buy-list-reopen',
+      code: 'COM-WEEK02',
+      kind: 'PURCHASE',
+      status: 'ORDERED',
+      dateLabel: '05/10/2026',
+      ownerLabel: 'Armando',
+      items: [item],
+      activeItems: [item]
+    }
+  });
+
+  assert.ok(html.includes('Reabrir para editar'));
+});
+
+test('modal para agregar producto deja claro que conserva la misma lista', () => {
+  const p = product('p-add', 'TOMATE', '101', 'TOM-01');
+
+  const html = renderAddToListModal({
+    list: {
+      id: 'buy-list-same',
+      code: 'COM-WEEK03',
+      kind: 'PURCHASE'
+    },
+    results: [p],
+    selected: p,
+    selectedDraft: {
+      displayQuantity: 4,
+      displayUnit: 'KG',
+      note: 'para jueves',
+      unitOptionsHtml: '<option value="KG" selected>KG</option>'
+    }
+  });
+
+  assert.ok(html.includes('La lista seguirá siendo la misma'));
+  assert.ok(html.includes('Guardar en esta lista'));
+  assert.ok(html.includes('TOMATE'));
 });

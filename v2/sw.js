@@ -1,4 +1,5 @@
 const CACHE_NAME = 'smart-inventory-v2-shell-64';
+// procurement-weekly-edit-hotfix-2026-10-07
 
 const APP_SHELL = [
   './',

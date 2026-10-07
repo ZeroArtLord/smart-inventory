@@ -50,6 +50,7 @@ export function renderWorkspace(model) {
     <div class="v6p-backdrop" id="v6pReviewModal"></div>
     <div class="v6p-backdrop" id="v6pManualModal"></div>
     <div class="v6p-backdrop" id="v6pListModal"></div>
+    <div class="v6p-backdrop" id="v6pAddToListModal"></div>
     <div class="v6p-backdrop" id="v6pPrintModal"></div>
   `;
 }
@@ -177,11 +178,96 @@ export function renderManualModal(model) {
 export function renderListModal(model) {
   const { list } = model;
   const editable = list.status === 'DRAFT';
+  const canReopen =
+    list.status === 'ORDERED' &&
+    (list.activeItems || []).every(item =>
+      Number(item.receivedQuantity || 0) === 0 &&
+      (item.receiptDocuments || []).length === 0 &&
+      item.status === 'ORDERED'
+    );
+
   return modal(`
     <div class="v6p-modal-head"><div><div class="v6p-eyebrow">${list.kind === 'ORDER' ? 'PEDIDO' : 'COMPRA'}</div><h3>${esc(list.code)}</h3><p>${esc(list.dateLabel)} · ${esc(list.ownerLabel || 'Usuario VIGÍA')}</p></div><button class="v6p-ghost" data-v6p-action="close-list" type="button">Cerrar</button></div>
-    <div class="v6p-modal-body"><div class="v6p-list-lines">${list.items.map(item => listLine(item, editable)).join('')}</div><div class="v6p-review-actions">${editable ? '<button class="v6p-primary" data-v6p-action="save-list-edits" type="button">Guardar cambios</button>' : ''}<button class="v6p-ghost" data-v6p-action="open-print" data-list-id="${esc(list.id)}" type="button">👁 Vista 80mm</button>${list.status === 'DRAFT' ? `<button class="v6p-primary" data-v6p-action="list-ordered" data-list-id="${esc(list.id)}" type="button">Marcar realizada</button>` : ''}${list.status === 'ORDERED' ? `<button class="v6p-primary" data-v6p-action="list-transit" data-list-id="${esc(list.id)}" type="button">Marcar en camino</button>` : ''}</div></div>
+    <div class="v6p-modal-body">
+      ${editable ? '<div class="v6p-empty" style="margin-bottom:12px">Lista ABIERTA · puedes entrar y salir, agregar productos, cambiar cantidades o quitar renglones hasta marcarla realizada.</div>' : ''}
+      <div class="v6p-list-lines">${list.items.map(item => listLine(item, editable)).join('')}</div>
+      <div class="v6p-review-actions">
+        ${editable ? `<button class="v6p-ghost" data-v6p-action="add-list-product" data-list-id="${esc(list.id)}" type="button">＋ Agregar producto</button><button class="v6p-primary" data-v6p-action="save-list-edits" type="button">Guardar cambios</button>` : ''}
+        <button class="v6p-ghost" data-v6p-action="open-print" data-list-id="${esc(list.id)}" type="button">👁 Vista 80mm</button>
+        ${list.status === 'DRAFT' ? `<button class="v6p-primary" data-v6p-action="list-ordered" data-list-id="${esc(list.id)}" type="button">Marcar realizada</button>` : ''}
+        ${canReopen ? `<button class="v6p-ghost" data-v6p-action="reopen-list" data-list-id="${esc(list.id)}" type="button">↶ Reabrir para editar</button>` : ''}
+        ${list.status === 'ORDERED' ? `<button class="v6p-primary" data-v6p-action="list-transit" data-list-id="${esc(list.id)}" type="button">Marcar en camino</button>` : ''}
+      </div>
+    </div>
   `, 'v6p-list-modal');
 }
+
+export function renderAddToListModal({
+  list,
+  results = [],
+  selected = null,
+  selectedDraft = null
+} = {}) {
+  if (!list) return '';
+
+  const kindLabel =
+    list.kind === 'ORDER'
+      ? 'PEDIDO'
+      : 'COMPRA';
+
+  return modal(`
+    <div class="v6p-modal-head">
+      <div>
+        <div class="v6p-eyebrow">AGREGAR A ${kindLabel}</div>
+        <h3>${esc(list.code)}</h3>
+        <p>La lista seguirá siendo la misma; no se creará otra.</p>
+      </div>
+      <button class="v6p-ghost" data-v6p-action="close-list-add" type="button">Cerrar</button>
+    </div>
+    <div class="v6p-modal-body">
+      <label class="v6p-modal-search">Buscar producto
+        <input id="v6pListAddSearch" autocomplete="off" placeholder="Nombre, SAINT o SKU…">
+      </label>
+      <div class="v6p-manual-results">
+        ${results.map(product => `
+          <button
+            data-v6p-action="choose-list-add-product"
+            data-product-id="${esc(product.id)}"
+            type="button"
+          >
+            <span>
+              <strong>${esc(product.name)}</strong>
+              <small>${esc([
+                product.saintCode ? 'SAINT ' + product.saintCode : '',
+                product.sku ? 'SKU ' + product.sku : ''
+              ].filter(Boolean).join(' · '))}</small>
+            </span>
+            <span>Agregar →</span>
+          </button>
+        `).join('')}
+      </div>
+
+      ${selected && selectedDraft ? `
+        <div class="v6p-manual-selected">
+          <strong>${esc(selected.name)}</strong>
+          <div class="v6p-manual-fields">
+            <label>Cantidad
+              <input id="v6pListAddQty" value="${esc(selectedDraft.displayQuantity)}" inputmode="decimal">
+            </label>
+            <label>Unidad
+              <select id="v6pListAddUnit">${selectedDraft.unitOptionsHtml}</select>
+            </label>
+            <label class="is-wide">Observación
+              <input id="v6pListAddNote" maxlength="180" value="${esc(selectedDraft.note || '')}" placeholder="Ej. agregar para la compra del jueves">
+            </label>
+          </div>
+          <button class="v6p-primary" data-v6p-action="confirm-list-add-product" type="button">＋ Guardar en esta lista</button>
+        </div>
+      ` : ''}
+    </div>
+  `, 'v6p-add-list-modal');
+}
+
 
 function listLine(item, editable) {
   const display = procurementDisplayQuantity(item);
