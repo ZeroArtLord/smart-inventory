@@ -88,3 +88,45 @@ test('servidor acepta extra con productId sintético sin convertirlo en producto
     })
   );
 });
+
+
+test('servidor acepta quitar de lista como CANCELLED sin romper el cuadrado de cantidades', () => {
+  const now = new Date().toISOString();
+  const payload = {
+    id: 'rep-cancel-contract-v5b2',
+    productId: 'product-real-002',
+    productName: 'ACEITE',
+    supplierId: null,
+    method: 'PURCHASE',
+    status: 'CANCELLED',
+    requestedQuantity: 12,
+    receivedQuantity: 0,
+    pendingQuantity: 12,
+    expectedAt: null,
+    reference: null,
+    notes: null,
+    ownerId: 'god',
+    sourceSuggestion: {
+      kind: 'PRODUCT',
+      source: 'MANUAL',
+      manualDecision: true,
+      removedFromOperationalList: true
+    },
+    receiptDocuments: [],
+    orderedAt: null,
+    receivedAt: null,
+    cancelledAt: now,
+    version: 2,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  assert.doesNotThrow(() =>
+    validateSyncEvent({
+      entityType: 'replenishment',
+      entityId: payload.id,
+      operation: 'UPDATE',
+      payload
+    })
+  );
+});
