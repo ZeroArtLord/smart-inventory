@@ -13,6 +13,9 @@ import {
   createProcurementExtra,
   completeProcurementExtra,
   cancelProcurementExtra,
+  updateProcurementItem,
+  removeProcurementItem,
+  procurementItemCanEdit,
   isProcurementExtra,
   procurementExtraUnit
 } from '../replenishment/warehouseProcurementService.js';
@@ -22,7 +25,8 @@ const state = {
   selectedProduct: null,
   selectedMetrics: null,
   results: [],
-  enhancing: false
+  enhancing: false,
+  editingItemId: null
 };
 
 const ACTIVE_STATUSES = new Set([
@@ -61,6 +65,7 @@ async function enhanceReplenishmentWorkspace() {
     // Eso evita un ciclo MutationObserver -> innerHTML -> MutationObserver.
     if (root) {
       await patchExtraCards();
+      await patchEditableCards();
       return;
     }
 
@@ -74,6 +79,7 @@ async function enhanceReplenishmentWorkspace() {
 
     await renderManualPanel(root);
     await patchExtraCards();
+    await patchEditableCards();
   } finally {
     state.enhancing = false;
   }
@@ -100,7 +106,7 @@ async function renderManualPanel(root) {
       <div>
         <div class="product-meta v5-eyebrow">V5 · DECISIÓN HUMANA</div>
         <h3>Agregar compra o pedido manual</h3>
-        <p>VIGÍA recomienda; tú decides. Puedes agregar cualquier producto aunque la sugerencia sea 0.</p>
+        <p>VIGÍA recomienda; tú decides. Puedes agregar cualquier producto aunque la sugerencia sea 0 y editar la lista después mientras no tenga recepción física.</p>
       </div>
       <div class="v5-procurement-badges">
         <span class="badge">${products.length} producto(s) activos</span>
@@ -313,10 +319,162 @@ async function handleDocumentClick(event) {
       });
       toast('Extra cancelado');
       refreshReplenishmentView();
+      return;
+    }
+
+    if (action === 'edit-procurement') {
+      event.preventDefault();
+      await openProcurementEditor(actionButton.dataset.id);
+      return;
+    }
+
+    if (action === 'close-procurement-editor') {
+      event.preventDefault();
+      closeProcurementEditor();
+      return;
+    }
+
+    if (action === 'save-procurement-edit') {
+      event.preventDefault();
+      await saveProcurementEdit(actionButton.dataset.id);
+      return;
+    }
+
+    if (action === 'remove-procurement') {
+      event.preventDefault();
+      const id = actionButton.dataset.id;
+      if (!confirm(
+        '¿Quitar este renglón de la lista? Quedará CANCELADO para conservar auditoría; no se borra el historial.'
+      )) return;
+      await removeProcurementItem(id, {
+        userId: await currentUserId()
+      });
+      toast('Renglón quitado de la lista');
+      closeProcurementEditor();
+      refreshReplenishmentView();
+      return;
     }
   } catch (error) {
     toast(error.message || String(error));
   }
+}
+
+async function openProcurementEditor(id) {
+  const items = await listReplenishments();
+  const item = items.find(row => row.id === id);
+  if (!item) throw new Error('Compra/pedido no encontrado');
+  if (!procurementItemCanEdit(item)) {
+    throw new Error('Esta línea ya no admite edición porque avanzó de estado o tiene recepción');
+  }
+
+  state.editingItemId = id;
+  closeProcurementEditor();
+  state.editingItemId = id;
+
+  const extra = isProcurementExtra(item);
+  const modal = document.createElement('div');
+  modal.id = 'v5ProcurementEditModal';
+  modal.className = 'v5-procurement-modal';
+  modal.innerHTML = `
+    <div class="v5-procurement-dialog" role="dialog" aria-modal="true" aria-labelledby="v5EditTitle">
+      <div class="v5-procurement-dialog-head">
+        <div>
+          <div class="product-meta v5-eyebrow">EDITAR LISTA</div>
+          <h3 id="v5EditTitle">${extra ? 'Compra X / Extra' : escapeHtml(item.productName || item.productId)}</h3>
+          <p>Los cambios quedan versionados y sincronizados. No alteran stock.</p>
+        </div>
+        <button class="ghost-button" data-v5-action="close-procurement-editor" type="button">×</button>
+      </div>
+
+      <div class="v5-procurement-edit-grid">
+        ${extra ? `
+          <label class="v5-field v5-field-wide">
+            <span>Descripción</span>
+            <input id="v5EditDescription" autocomplete="off" value="${escapeHtml(item.productName || '')}">
+          </label>
+          <label class="v5-field">
+            <span>Unidad</span>
+            <select id="v5EditUnit">
+              ${['UND','CAJA','PAQ','KG','LT','BULTO','SACO','M','OTRO'].map(unit =>
+                `<option value="${unit}" ${unit === procurementExtraUnit(item) ? 'selected' : ''}>${unit}</option>`
+              ).join('')}
+            </select>
+          </label>
+        ` : `
+          <label class="v5-field">
+            <span>Tipo</span>
+            <select id="v5EditMethod">
+              <option value="PURCHASE" ${item.method === 'PURCHASE' ? 'selected' : ''}>COMPRAR</option>
+              <option value="ORDER" ${item.method === 'ORDER' ? 'selected' : ''}>PEDIR</option>
+            </select>
+          </label>
+        `}
+
+        <label class="v5-field">
+          <span>Cantidad</span>
+          <input id="v5EditQuantity" inputmode="decimal" autocomplete="off" value="${escapeHtml(String(item.requestedQuantity ?? ''))}">
+        </label>
+
+        <label class="v5-field v5-field-wide">
+          <span>Nota</span>
+          <input id="v5EditNotes" autocomplete="off" value="${escapeHtml(item.notes || '')}" placeholder="Nota opcional">
+        </label>
+      </div>
+
+      <div class="v5-procurement-edit-info">
+        <span>Estado: <strong>${escapeHtml(item.status)}</strong></span>
+        <span>Recibido: <strong>${formatNumber(item.receivedQuantity || 0)}</strong></span>
+      </div>
+
+      <div class="v5-procurement-dialog-actions">
+        <button class="danger" data-v5-action="remove-procurement" data-id="${escapeHtml(item.id)}" type="button">Quitar de la lista</button>
+        <div>
+          <button class="secondary" data-v5-action="close-procurement-editor" type="button">Cancelar</button>
+          <button class="primary" data-v5-action="save-procurement-edit" data-id="${escapeHtml(item.id)}" type="button">Guardar cambios</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+function closeProcurementEditor() {
+  document.getElementById('v5ProcurementEditModal')?.remove();
+  state.editingItemId = null;
+}
+
+async function saveProcurementEdit(id) {
+  const items = await listReplenishments();
+  const item = items.find(row => row.id === id);
+  if (!item) throw new Error('Compra/pedido no encontrado');
+
+  const quantity = evaluateNumericExpression(
+    document.getElementById('v5EditQuantity')?.value || ''
+  );
+  if (!(quantity > 0)) throw new Error('La cantidad debe ser mayor que cero');
+
+  const payload = {
+    requestedQuantity: quantity,
+    notes: String(document.getElementById('v5EditNotes')?.value || '').trim()
+  };
+
+  if (isProcurementExtra(item)) {
+    payload.description = String(
+      document.getElementById('v5EditDescription')?.value || ''
+    ).trim();
+    payload.unit = document.getElementById('v5EditUnit')?.value || 'UND';
+  } else {
+    payload.method = document.getElementById('v5EditMethod')?.value || item.method;
+  }
+
+  await updateProcurementItem(id, payload, {
+    userId: await currentUserId()
+  });
+
+  toast('Lista actualizada');
+  closeProcurementEditor();
+  refreshReplenishmentView();
 }
 
 async function addManualProduct() {
@@ -445,9 +603,38 @@ async function patchExtraCards() {
       actions.dataset.v5ExtraPatched = extra.id;
       actions.innerHTML = `
         <button class="success" data-v5-action="complete-extra" data-id="${escapeHtml(extra.id)}" type="button">✓ Comprado</button>
-        <button class="danger" data-v5-action="cancel-extra" data-id="${escapeHtml(extra.id)}" type="button">Cancelar extra</button>
       `;
     }
+  }
+}
+
+async function patchEditableCards() {
+  if (!isReplenishmentView()) return;
+  const items = await listReplenishments();
+
+  for (const item of items) {
+    if (!procurementItemCanEdit(item)) continue;
+
+    let card = [...app.querySelectorAll('.replenishment-card')].find(candidate => {
+      const anyId = candidate.querySelector(`[data-id="${cssEscape(item.id)}"]`);
+      if (anyId) return true;
+      const strong = candidate.querySelector('.replenishment-card-head-v2 strong');
+      return strong?.textContent?.trim() === String(item.productName || '').trim();
+    }) || null;
+
+    if (!card || card.querySelector('.v5-edit-list-actions')) continue;
+    card.dataset.v5ProcurementId = item.id;
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'v5-edit-list-actions';
+    toolbar.innerHTML = `
+      <button class="secondary" data-v5-action="edit-procurement" data-id="${escapeHtml(item.id)}" type="button">✎ Editar</button>
+      <button class="ghost-button" data-v5-action="remove-procurement" data-id="${escapeHtml(item.id)}" type="button">Quitar</button>
+    `;
+
+    const legacyActions = card.querySelector('.replenishment-buttons');
+    if (legacyActions) legacyActions.before(toolbar);
+    else card.appendChild(toolbar);
   }
 }
 
@@ -478,6 +665,7 @@ async function currentUserId() {
 }
 
 function refreshReplenishmentView() {
+  closeProcurementEditor();
   const button = document.querySelector('.app-nav [data-view="replenishment"]');
   if (button) {
     button.click();
