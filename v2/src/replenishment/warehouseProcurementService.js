@@ -27,6 +27,10 @@ export const PROCUREMENT_SOURCE = Object.freeze({
 
 const EXTRA_PREFIX = '__VIGIA_EXTRA__:';
 const ALLOWED_METHODS = new Set(['PURCHASE', 'ORDER']);
+const EDITABLE_STATUSES = new Set([
+  REPLENISHMENT_STATUS.DRAFT,
+  REPLENISHMENT_STATUS.ORDERED
+]);
 const ALLOWED_EXTRA_UNITS = new Set([
   'UND', 'KG', 'LT', 'CAJA', 'BULTO', 'SACO', 'PAQ', 'M', 'OTRO'
 ]);
@@ -144,6 +148,126 @@ export async function createProcurementExtra(data = {}) {
   return item;
 }
 
+export function procurementItemCanEdit(item) {
+  if (!item) return false;
+  return EDITABLE_STATUSES.has(item.status) &&
+    Number(item.receivedQuantity || 0) === 0;
+}
+
+/**
+ * V5-B2: permite corregir una línea ya creada mientras todavía no tenga
+ * recepciones físicas. La edición conserva el mismo id e historial de versión,
+ * recalcula pendiente y genera un UPDATE sincronizable.
+ */
+export async function updateProcurementItem(
+  id,
+  data = {},
+  { userId = null } = {}
+) {
+  const current = await get(STORES.REPLENISHMENTS, id);
+  assertEditableProcurement(current);
+
+  const requestedQuantity = positiveNumber(
+    data.requestedQuantity ?? data.quantity ?? current.requestedQuantity,
+    'Cantidad'
+  );
+  const receivedQuantity = Number(current.receivedQuantity || 0);
+  if (requestedQuantity < receivedQuantity) {
+    throw new Error('La cantidad no puede quedar por debajo de lo ya recibido');
+  }
+
+  const now = new Date().toISOString();
+  const extra = isProcurementExtra(current);
+  const updated = {
+    ...current,
+    requestedQuantity,
+    pendingQuantity: requestedQuantity - receivedQuantity,
+    notes: data.notes !== undefined
+      ? cleanText(data.notes) || null
+      : current.notes || null,
+    reference: data.reference !== undefined
+      ? cleanText(data.reference) || null
+      : current.reference || null,
+    expectedAt: data.expectedAt !== undefined
+      ? normalizeOptionalDate(data.expectedAt)
+      : current.expectedAt || null,
+    updatedBy: userId || null,
+    version: nextEntityVersion(current),
+    updatedAt: now
+  };
+
+  if (extra) {
+    const description = cleanText(
+      data.description ?? data.name ?? current.productName
+    );
+    if (!description) throw new Error('Describe el extra que debes comprar');
+    updated.productName = description;
+    updated.method = 'PURCHASE';
+    updated.sourceSuggestion = {
+      ...(current.sourceSuggestion || {}),
+      kind: PROCUREMENT_KIND.EXTRA,
+      source: PROCUREMENT_SOURCE.EXTRA,
+      manualDecision: true,
+      outsideCatalog: true,
+      unit: normalizeExtraUnit(
+        data.unit ?? current.sourceSuggestion?.unit ?? 'UND'
+      ),
+      lastEditedAt: now,
+      lastEditedBy: userId || null
+    };
+  } else {
+    updated.method = data.method !== undefined
+      ? normalizeSelectedMethod(data.method)
+      : current.method;
+    updated.sourceSuggestion = {
+      ...(current.sourceSuggestion || {}),
+      manualDecision: true,
+      lastEditedAt: now,
+      lastEditedBy: userId || null
+    };
+  }
+
+  await writeReplenishmentWithSync(updated, 'UPDATE');
+  return updated;
+}
+
+/**
+ * Quitar una línea nunca borra historia: la marca CANCELLED. Deja las
+ * cantidades cuadradas para que el contrato del servidor siga siendo válido.
+ */
+export async function removeProcurementItem(
+  id,
+  { userId = null, reason = 'Quitado de la lista operativa' } = {}
+) {
+  const current = await get(STORES.REPLENISHMENTS, id);
+  assertEditableProcurement(current);
+
+  const now = new Date().toISOString();
+  const updated = {
+    ...current,
+    status: REPLENISHMENT_STATUS.CANCELLED,
+    pendingQuantity: Math.max(
+      0,
+      Number(current.requestedQuantity || 0) -
+      Number(current.receivedQuantity || 0)
+    ),
+    cancelledAt: now,
+    updatedBy: userId || null,
+    version: nextEntityVersion(current),
+    updatedAt: now,
+    sourceSuggestion: {
+      ...(current.sourceSuggestion || {}),
+      removedFromOperationalList: true,
+      removedReason: cleanText(reason) || 'Quitado de la lista operativa',
+      removedAt: now,
+      removedBy: userId || null
+    }
+  };
+
+  await writeReplenishmentWithSync(updated, 'UPDATE');
+  return updated;
+}
+
 export async function completeProcurementExtra(id, { userId = null } = {}) {
   const current = await get(STORES.REPLENISHMENTS, id);
   assertExtra(current);
@@ -187,7 +311,11 @@ export async function cancelProcurementExtra(id, { userId = null } = {}) {
   const updated = {
     ...current,
     status: REPLENISHMENT_STATUS.CANCELLED,
-    pendingQuantity: 0,
+    pendingQuantity: Math.max(
+      0,
+      Number(current.requestedQuantity || 0) -
+      Number(current.receivedQuantity || 0)
+    ),
     cancelledAt: now,
     updatedBy: userId || null,
     version: nextEntityVersion(current),
@@ -251,6 +379,15 @@ function createSyncItem(entity, operation) {
     updatedAt: now,
     lastError: null
   };
+}
+
+function assertEditableProcurement(item) {
+  if (!item) throw new Error('Compra/pedido no encontrado');
+  if (!procurementItemCanEdit(item)) {
+    throw new Error(
+      'Esta línea ya está en tránsito, tiene recepción o está cerrada; no se puede editar/quitar'
+    );
+  }
 }
 
 function assertExtra(item) {
