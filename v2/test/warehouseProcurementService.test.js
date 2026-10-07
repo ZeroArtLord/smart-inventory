@@ -22,6 +22,9 @@ const {
   createProcurementExtra,
   completeProcurementExtra,
   cancelProcurementExtra,
+  updateProcurementItem,
+  removeProcurementItem,
+  procurementItemCanEdit,
   isProcurementExtra,
   procurementExtraUnit
 } = await import('../src/replenishment/warehouseProcurementService.js');
@@ -147,12 +150,118 @@ test('extra puede cancelarse sin contaminar inventario', async () => {
   });
 
   assert.equal(cancelled.status, REPLENISHMENT_STATUS.CANCELLED);
-  assert.equal(cancelled.pendingQuantity, 0);
+  assert.equal(cancelled.pendingQuantity, 2);
   assert.ok(cancelled.cancelledAt);
 
   const movements = await getAll(STORES.MOVEMENTS);
   assert.equal(
     movements.some(movement => movement.productId === extra.productId),
     false
+  );
+});
+
+
+test('lista de producto puede editar cantidad, tipo y nota antes de recibir', async () => {
+  const product = await createProduct({
+    name: 'HARINA EDITABLE V5B2',
+    sku: 'V5B2-HARINA',
+    minStock: 0,
+    maxStock: 0,
+    replenishmentMethod: 'BOTH'
+  });
+
+  const item = await createManualProductProcurement({
+    productId: product.id,
+    method: 'PURCHASE',
+    requestedQuantity: 10,
+    reason: 'Lista inicial'
+  });
+
+  assert.equal(procurementItemCanEdit(item), true);
+
+  const updated = await updateProcurementItem(
+    item.id,
+    {
+      requestedQuantity: 25,
+      method: 'ORDER',
+      notes: 'Se corrigió después de revisar almacén'
+    },
+    { userId: 'god-v5b2' }
+  );
+
+  assert.equal(updated.requestedQuantity, 25);
+  assert.equal(updated.pendingQuantity, 25);
+  assert.equal(updated.method, 'ORDER');
+  assert.equal(updated.notes, 'Se corrigió después de revisar almacén');
+  assert.equal(updated.sourceSuggestion.lastEditedBy, 'god-v5b2');
+
+  const queue = await getAll(STORES.SYNC_QUEUE);
+  assert.equal(
+    queue.some(row =>
+      row.entityId === item.id &&
+      row.operation === 'UPDATE' &&
+      row.payload?.requestedQuantity === 25
+    ),
+    true
+  );
+});
+
+test('extra puede editar descripción, cantidad y unidad sin tocar inventario', async () => {
+  const extra = await createProcurementExtra({
+    description: 'TEIPE',
+    requestedQuantity: 1,
+    unit: 'UND'
+  });
+  const beforeMovements = (await getAll(STORES.MOVEMENTS)).length;
+
+  const updated = await updateProcurementItem(
+    extra.id,
+    {
+      description: 'TEIPE ELECTRICO NEGRO',
+      requestedQuantity: 4,
+      unit: 'PAQ',
+      notes: 'Comprar cuatro paquetes'
+    },
+    { userId: 'god-v5b2' }
+  );
+
+  assert.equal(updated.productName, 'TEIPE ELECTRICO NEGRO');
+  assert.equal(updated.requestedQuantity, 4);
+  assert.equal(updated.pendingQuantity, 4);
+  assert.equal(procurementExtraUnit(updated), 'PAQ');
+  assert.equal((await getAll(STORES.MOVEMENTS)).length, beforeMovements);
+});
+
+test('quitar renglón cancela sin borrar historia ni crear movimientos', async () => {
+  const product = await createProduct({
+    name: 'ACEITE QUITAR V5B2',
+    sku: 'V5B2-ACEITE',
+    replenishmentMethod: 'BOTH'
+  });
+  const item = await createManualProductProcurement({
+    productId: product.id,
+    method: 'PURCHASE',
+    requestedQuantity: 12
+  });
+  const beforeMovements = (await getAll(STORES.MOVEMENTS)).length;
+
+  const removed = await removeProcurementItem(item.id, {
+    userId: 'god-v5b2',
+    reason: 'Ya no hace falta'
+  });
+
+  assert.equal(removed.status, REPLENISHMENT_STATUS.CANCELLED);
+  assert.equal(removed.pendingQuantity, 12);
+  assert.equal(removed.sourceSuggestion.removedFromOperationalList, true);
+  assert.equal(removed.sourceSuggestion.removedReason, 'Ya no hace falta');
+  assert.equal(procurementItemCanEdit(removed), false);
+
+  const stored = await get(STORES.REPLENISHMENTS, item.id);
+  assert.equal(stored.status, REPLENISHMENT_STATUS.CANCELLED);
+  assert.equal((await getAll(STORES.MOVEMENTS)).length, beforeMovements);
+
+  await assert.rejects(
+    updateProcurementItem(item.id, { requestedQuantity: 20 }),
+    /no se puede editar\/quitar/i
   );
 });
