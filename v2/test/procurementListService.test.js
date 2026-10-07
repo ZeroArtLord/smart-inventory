@@ -258,7 +258,7 @@ test('agrega productos a la misma lista abierta y actualiza existentes sin dupli
   assert.equal(updated.items.length, 1);
   assert.equal(updated.items[0].id, firstId);
   assert.equal(updated.items[0].requestedQuantity, 14);
-  assert.equal(updated.items[0].notes, 'ajustado miércoles');
+  assert.equal(updated.items[0].notes, 'ajustado miercoles');
 
   const lists = await listProcurementLists();
   const list = lists.find(item => item.id === listId);
