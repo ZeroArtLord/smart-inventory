@@ -23,22 +23,26 @@ test('V8.7 conserva el padre LIVE DRAFT en el conjunto de agrupación si ya exis
   assert.match(ui, /group\.summary\?\.deliveryCount\s*>\s*0/);
 });
 
-test('V8.7 padre muestra fecha operativa y solo acciones Resumen + Ver entregas', () => {
-  assert.match(ui, /data-v87-supply-history-parent/);
-  assert.match(ui, /Fecha operativa/);
+test('V8.7/V8.7.1 padre conserva fecha operativa, Resumen, entregas y menú compacto', () => {
+  assert.match(ui, /data-v871-supply-history-parent/);
+  assert.match(ui, /const operationalDate = formatOperationalDay\(group\.operationalDate\)/);
+  assert.match(ui, /Surtido · \$\{escapeHtml\(operationalDate\)\}/);
   assert.match(ui, />Resumen</);
   assert.match(ui, /Ver entregas \(\$\{group\.summary\.deliveryCount\}\)/);
-  assert.match(ui, /data-v87-history-summary/);
-  assert.match(ui, /data-v87-history-toggle/);
+  assert.match(ui, /data-v871-summary-toggle/);
+  assert.match(ui, /data-v871-deliveries-toggle/);
+  assert.match(ui, /data-v871-supply-actions-trigger/);
 });
 
-test('V8.7 hijos conservan ID físico y contrato de exportación térmica/SAINT', () => {
+test('V8.7/V8.7.1 hijos conservan ID físico y contrato real de exportación/corrección', () => {
   assert.match(ui, /renderSupplyDeliveryRow/);
   assert.match(ui, /closed-document-row/);
   assert.match(ui, /data-v82-document-id/);
   assert.match(ui, /document-export-actions/);
   assert.match(ui, /data-action="export-document"/);
-  assert.match(ui, /data-v87-delivery-list/);
+  assert.match(ui, /data-action="correct-document"/);
+  assert.match(ui, /data-v871-delivery-actions-trigger/);
+  assert.match(ui, /v871-history-deliveries/);
   assert.match(ui, /hidden/);
 });
 
