@@ -25,7 +25,7 @@ const server=createServer(async(req,res)=>{
 });
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const port=server.address().port;
-const url='http://127.0.0.1:'+port+'/test/browser/monitorPilot.html';
+const url='http://127.0.0.1:'+port+'/test/browser/monitorPilot.html?vigiaMonitorPilot=1';
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
 const context=await browser.newContext({viewport:{width:1280,height:850}});
 const page=await context.newPage();
@@ -34,6 +34,10 @@ page.on('console',message=>{
   if(message.type()==='error'&&!message.text().includes('net::ERR_FAILED'))errors.push(message.text());
 });
 
+await page.route('**/api/v1/public/config',route=>route.fulfill({
+  status:200,contentType:'application/json',
+  body:JSON.stringify({ok:true,authMode:'dev',monitorPilotEnabled:true})
+}));
 await page.route('**/api/v1/session',route=>route.fulfill({
   status:200,contentType:'application/json',
   body:JSON.stringify({ok:true,session:{
