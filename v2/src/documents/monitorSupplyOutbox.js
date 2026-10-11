@@ -1,9 +1,10 @@
 // VIGÍA Monitor: outbox separado de los movimientos y cola de sync V2.
 // Usa el MISMO id al reintentar, incluso después de reiniciar el navegador.
-import { STORES,get,runTransaction,requestToPromise } from '../storage/database.js';
+import { STORES,get,getAll,runTransaction,requestToPromise } from '../storage/database.js';
 import { apiRequest } from '../api/apiClient.js';
 
 const PREFIX='vigia.monitor.supply.outbox.v1:';
+const sending=new Map();
 
 export function monitorSupplyOutboxKey({workspaceId,userId},deliveryId){
   const workspace=required(workspaceId,'Almacén');
@@ -36,10 +37,46 @@ export async function getMonitorSupplyOutboxEntry(identity,id){
   return (await get(STORES.SETTINGS,key))?.value||null;
 }
 
+export async function listMonitorSupplyOutbox(identity,{includeSynced=false}={}){
+  const prefix=monitorSupplyOutboxKey(identity,'_').slice(0,-1);
+  const all=await getAll(STORES.SETTINGS);
+  return all.filter(record=>String(record.key||'').startsWith(prefix))
+    .map(record=>record.value)
+    .filter(value=>value?.version===1 && value.delivery && (includeSynced||value.status!=='SYNCED'))
+    .sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt)));
+}
+
+export async function flushPendingMonitorSupplies(identity,{
+  request=apiRequest,isOnline=()=>typeof navigator==='undefined'||navigator.onLine!==false,
+  max=50
+}={}){
+  if(!Number.isInteger(max)||max<1||max>100)throw new Error('Límite de reintentos inválido');
+  const pending=(await listMonitorSupplyOutbox(identity)).filter(x=>x.status==='PENDING').slice(0,max);
+  const results=[];
+  for(const row of pending){
+    if(!isOnline())break;
+    results.push(await flushMonitorSupplyDelivery(identity,row.delivery.id,{request,isOnline}));
+  }
+  return {
+    attempted:results.length,
+    synchronized:results.filter(x=>x.status==='SYNCED').length,
+    conflicts:results.filter(x=>x.status==='CONFLICT').length,
+    pending:(await listMonitorSupplyOutbox(identity)).filter(x=>x.status==='PENDING').length
+  };
+}
+
 export async function flushMonitorSupplyDelivery(identity,id,{
   request=apiRequest,isOnline=()=>typeof navigator==='undefined'||navigator.onLine!==false
 }={}){
   const key=monitorSupplyOutboxKey(identity,id);
+  if(sending.has(key))return sending.get(key);
+  const operation=performFlush(key,{request,isOnline})
+    .finally(()=>sending.delete(key));
+  sending.set(key,operation);
+  return operation;
+}
+
+async function performFlush(key,{request,isOnline}){
   const old=(await get(STORES.SETTINGS,key))?.value;
   if(!old)throw new Error('No hay un surtido pendiente con ese identificador');
   if(old.status==='SYNCED'||old.status==='CONFLICT')return old;
