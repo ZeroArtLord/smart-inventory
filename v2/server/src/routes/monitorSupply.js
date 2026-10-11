@@ -36,7 +36,8 @@ monitorSupplyRouter.post('/supplies', async (req,res,next)=>{
       );
       if(!area.rowCount)throw err('Área de destino activa no encontrada','MONITOR_SUPPLY_AREA_UNKNOWN',400);
 
-      const productIds=input.lines.map(x=>x.productId);
+      // Un producto puede aparecer en CAJA y UND sin ser una línea duplicada.
+      const productIds=[...new Set(input.lines.map(x=>x.productId))];
       const found=await client.query(
         `SELECT id,name,category_id FROM products
           WHERE workspace_id=$1 AND active=true AND id=ANY($2::text[])`,
