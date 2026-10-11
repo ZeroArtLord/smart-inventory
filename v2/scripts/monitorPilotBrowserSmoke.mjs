@@ -131,7 +131,7 @@ try{
   await page.locator('#vsAddForm button[type="submit"]').click();
   await page.locator('#vigiaMonitorSupplyPilot .vs-line').filter({hasText:'Agua mineral'}).waitFor();
   await page.screenshot({path:path.join(screenshots,'surtidos-desktop.png')});
-  await page.locator('#vigiaMonitorSupplyPilot [data-vs-action="close"]').click();
+  await page.locator('#vigiaMonitorSupplyPilot .vs-header [data-vs-action="close"]').click();
   await page.locator('#vsSupplyLauncher').click();
   // open() lee IndexedDB asíncronamente; esperar al carrito restaurado.
   await page.locator('#vigiaMonitorSupplyPilot .vs-line').filter({hasText:'Agua mineral'}).waitFor();
@@ -149,7 +149,7 @@ try{
     return data.length===1&&data[0].status==='PENDING';
   });
   assert.equal(stored.size,0,'failed POST did not create a remote delivery');
-  await page.locator('#vigiaMonitorSupplyPilot [data-vs-action="close"]').click();
+  await page.locator('#vigiaMonitorSupplyPilot .vs-header [data-vs-action="close"]').click();
   await page.reload({waitUntil:'networkidle'});
   await page.locator('#vsSupplyLauncher').click();
   await page.locator('#vigiaMonitorSupplyPilot').getByText('Entregas pendientes de enviar').waitFor();
@@ -193,7 +193,7 @@ try{
   assert.equal(legacyQueue.status,'PENDING','existing V2 queue item untouched');
 
   // Reports: new confirmed deliveries separate from legacy local history.
-  await page.locator('#vigiaMonitorSupplyPilot [data-vs-action="close"]').click();
+  await page.locator('#vigiaMonitorSupplyPilot .vs-header [data-vs-action="close"]').click();
   await page.locator('#app h2').evaluate(el=>{el.textContent='Reportes';});
   await page.locator('#vsReportLauncher').click();
   await page.getByText('Surtidos Monitor registrados').waitFor();
@@ -213,7 +213,7 @@ try{
   }));
   assert.ok(reportLayout.width<=reportLayout.viewport+2,
     'reports cause horizontal document overflow at 390px: '+JSON.stringify(reportLayout));
-  await page.locator('#vigiaMonitorSupplyPilot [data-vs-action="close"]').click();
+  await page.locator('#vigiaMonitorSupplyPilot .vs-header [data-vs-action="close"]').click();
   await page.locator('#app h2').evaluate(el=>{el.textContent='Surtido';});
   await page.locator('#vsSupplyLauncher').click();
   await page.screenshot({path:path.join(screenshots,'surtidos-mobile.png')});
@@ -222,7 +222,7 @@ try{
   }));
   assert.ok(supplyLayout.width<=supplyLayout.viewport+2,
     'supply page horizontal overflow: '+JSON.stringify(supplyLayout));
-  await page.locator('#vigiaMonitorSupplyPilot [data-vs-action="close"]').click();
+  await page.locator('#vigiaMonitorSupplyPilot .vs-header [data-vs-action="close"]').click();
 
   // Weekly catalog review, extra free-form item, and print preview.
   await page.locator('#app h2').evaluate(el=>{el.textContent='Comprar / Pedir';});
@@ -234,7 +234,7 @@ try{
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Cinta métrica');
   await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
   await page.locator('#vigiaMonitorPilot [data-mp-page="lists"]').click();
-  await page.getByText('COPIA CHÓFER',{exact:true}).waitFor();
+  await page.locator('#vigiaMonitorPilot .mp-ticket').filter({hasText:'COPIA CHÓFER'}).first().waitFor();
   await page.getByText('Cinta métrica',{exact:true}).first().waitFor();
   await page.screenshot({path:path.join(screenshots,'comprar-pedir-mobile.png')});
   const weeklyLayout=await page.evaluate(()=>({
