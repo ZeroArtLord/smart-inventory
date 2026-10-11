@@ -16,6 +16,7 @@ import { authRouter } from './routes/auth.js';
 import { thermalPrinterRouter } from './routes/thermalPrinter.js';
 import { areasRouter } from './routes/areas.js';
 import { monitorReviewRouter } from './routes/monitorReview.js';
+import { monitorSupplyRouter } from './routes/monitorSupply.js';
 
 const app = express();
 app.set('trust proxy', 'loopback');
@@ -162,7 +163,8 @@ app.use(
     namespace: 'monitor'
   }),
   authContext,
-  monitorReviewRouter
+  monitorReviewRouter,
+  monitorSupplyRouter
 );
 
 app.use(
