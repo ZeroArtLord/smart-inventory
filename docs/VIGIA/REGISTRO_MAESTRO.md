@@ -274,3 +274,15 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - **Distinción de estado:** **función aprobada como requisito**; todavía NO se han creado entidades nuevas ni desarrollado sincronización de revisión, ni ejecutado pruebas ni desplegado cambio alguno. No prometer que ya funciona.
 - **Verificaciones futuras mínimas:** PC->servidor->móvil; móvil->servidor->PC; reconexión tras horas offline; decisión COMPRAR/PEDIR sin cantidad; pendiente y progreso; cierre/reinicio del navegador; dos cambios simultáneos en productos diferentes e iguales; sin duplicados, sin pérdida de datos ni movimientos de stock.
 - **Siguiente paso:** precisar si la revisión semanal es **personal** del usuario y visible en sus dos dispositivos o **compartida por todo el equipo del almacén** con permiso, antes de fijar claves de sesión y reglas de colaboración.
+
+
+### [REG-014] 2026-10-11 | Revisión semanal colaborativa por almacén | ACORDADO; IMPLEMENTACIÓN PENDIENTE
+
+- **Origen:** cuando se le consultó si la revisión sería personal o compartida por empleados, el usuario respondió: «COMO SEA ESO NO IMPORTA MUCHO PUEDEN MODIFICARLAS LAS PEROSANS QUE QUIERAN».
+- **Decisión:** la revisión semanal y las listas Comprar/Pedir serán **compartidas por el equipo del mismo almacén**, no atadas a un solo usuario. Cualquier persona **con acceso autorizado a VIGÍA y a ese almacén** podrá consultarlas y editarlas desde PC o teléfono; no se interpreta como permitir escritura anónima o pública.
+- **Comportamiento:** una sola revisión semanal colaborativa, una lista de compra y una lista de pedido vigentes; cada miembro ve decisiones, cantidades opcionales, productos pendientes y avance del equipo. Una actualización de un usuario deberá reflejarse en los demás tras sincronización.
+- **Controles discretos, sin añadir trabajo:** reutilizar inicio de sesión y membresía existentes, registrar quién cambió cada producto y cuándo, evitar duplicados y detectar ediciones concurrentes del mismo producto sin perderlas silenciosamente. Cambios sobre productos distintos se combinarán; si dos personas modifican el mismo producto, mostrar una resolución simple y preservar el historial.
+- **Persistencia:** conservar decisiones locales ante cortes y sincronizarlas con servidor cuando haya red. No confundir guardado local con sincronizado en los demás dispositivos. Preservar colas e historial existente, incluidos 103 conflictos móviles no resueltos; **no borrar IndexedDB**.
+- **Hereda REG-010/011/012/013:** revisión de todos los productos activos por categoría, saltar/retomar pendientes, cantidades opcionales, impresión con huecos en blanco, sin depender de stock local ni generar movimientos de inventario.
+- **Alcance:** acuerdo funcional. NO se ha implementado este nuevo modo colaborativo, no se ha probado, ni se ha desplegado.
+- **Siguiente paso:** consolidar la especificación del recorrido y enseñar al usuario una interfaz inicial revisable antes de desarrollar código funcional en un entorno aislado.
