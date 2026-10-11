@@ -439,3 +439,14 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - Pruebas unitarias previstas junto a suite CI de 604 o más pruebas. Se confirmaron 599/599 en un commit intermedio; la última ejecución de GitHub Actions `38180481830` estaba EN PROGRESO al registrar este texto. El resultado final debe anotarse como entrada posterior (no inferir aprobación).
 - No se han ejecutado pruebas manuales en teléfono o PC físico, ni impresión ESC/POS; el UI responsive requiere aceptación visual del usuario.
 - Todo en rama `feature/vigia-monitor-review-v1` / PR #23 DRAFT, sin merge ni despliegue.
+
+
+### [REG-029] 2026-10-11 | CI final de sesión offline, posición de revisión y Surtidos Monitor | TESTS OK / NO DESPLEGADO
+
+- GitHub Actions run `38180481830` sobre HEAD de rama `feature/vigia-monitor-review-v1` commit `d3379d8cc27f5b87783e3db19e5f086799f7b4b6`.
+- Trabajos: `client-tests SUCCESS`, `server-syntax SUCCESS`, `server-integration SUCCESS`.
+- Log del cliente: **604 tests, 604 pass, 0 fail**, incluyendo 9 tests del acceso offline, 16 tests de Surtidos y 5 de posición semanal adicionales a los ya existentes.
+- Smoke PostgreSQL del nuevo Monitor repitió `MONITOR_REVIEW_SMOKE_PASS` (dos usuarios, extras, nulos, auditoría, control de versión y cero movimientos de stock).
+- Alcance comprobado: pruebas unitarias, sintaxis, integración del backend preexistente y API de revisión; **NO implica pruebas end-to-end de interfaz, impresión física ni persistencia/sync real de Surtidos Monitor**.
+- PR #23 sigue DRAFT; sin merge ni despliegue en HP. No borrar la base, IndexedDB ni conflictos V2 pendientes.
+- Próximo paso: implementar persistencia/endpoint idempotente para Surtidos Monitor sin stock; pruebas de cliente/servidor y pruebas manuales visuales con teléfono; adaptar Reportes para que combinen historial y nuevos surtidos operativos sin falsear existencias.
