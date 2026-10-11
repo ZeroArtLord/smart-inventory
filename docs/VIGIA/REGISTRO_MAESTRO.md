@@ -1,0 +1,178 @@
+# VIGÍA — REGISTRO MAESTRO Y PROTOCOLO DE CONTINUIDAD
+
+> **Palabra clave permanente:** `VIGIA-FARO-1011`  
+> **Inicio del registro formal:** 2026-10-11  
+> **Proyecto:** VIGÍA (repositorio `ZeroArtLord/smart-inventory`)  
+> **Rama de trabajo conocida:** `feature/v9-0-phase-c-offline-access`  
+> **Estado del documento:** bitácora viva y versionada en GitHub.  
+> **Uso:** recuperar el hilo aunque cambie o termine la conversación de ChatGPT.
+
+## 0. Protocolo de continuidad (ACORDADO — REG-001)
+
+1. En cada respuesta sobre VIGÍA, el asistente incluirá la palabra clave literal **`VIGIA-FARO-1011`**. Mantener una sola clave estable; no reemplazarla por claves nuevas de cada mensaje.
+2. Toda decisión, requisito, modificación solicitada, restricción, prueba, resultado, bloqueo o corrección relevante del proyecto tendrá entrada en esta bitácora: fecha, ID, alcance, estado y siguiente paso. **Diferenciar explícitamente** deseos, propuestas, decisiones aprobadas, código implementado, pruebas superadas y despliegues verificados.
+3. Actualizar esta bitácora en GitHub **durante la conversación, cuando haya acceso a herramientas y se acuerden novedades del proyecto**. Una promesa verbal de memoria no reemplaza el commit. Si una actualización no se puede guardar, avisarlo y proporcionar el texto pendiente de registrar. No se puede escribir a GitHub de forma automática cuando no hay conversación activa o sin herramientas disponibles.
+4. Cuando el usuario escriba `VIGIA-FARO-1011` en un chat nuevo, buscar primero `docs/VIGIA/REGISTRO_MAESTRO.md` en `ZeroArtLord/smart-inventory`, revisar el HEAD actual de la rama, recuperar pendientes y **retomar el próximo paso sin reinventar ni repetir decisiones**.
+5. No publicar contraseñas, tokens, correos personales, datos sensibles ni credenciales de producción. Los registros técnicos tendrán identificadores mínimos necesarios y nunca secretos. Mantener referencias a evidencias sin hacer públicas capturas privadas.
+6. Trabajar **paso a paso**. No cambiar de arquitectura ni ejecutar despliegues antes de distinguir el diseño aprobado de lo meramente propuesto.
+7. Mantener un historial **append-only** de decisiones y eventos. Si una decisión cambia, añadir revisión explícita y marcar la anterior como reemplazada; no borrar el contexto.
+
+### Formato obligatorio de las próximas entradas
+
+```text
+[REG-XXX] Fecha | Tema | Estado
+Origen: conversación / revisión técnica / prueba / despliegue
+Necesidad y contexto:
+Decisión exacta o requisito:
+Alcance y exclusiones:
+Dependencias y riesgos:
+Código/archivos/commits (si aplica):
+Verificación (evidencia y resultado):
+Pendiente y siguiente acción:
+```
+
+Estados permitidos: **PROPUESTO**, **POR DECIDIR**, **ACORDADO**, **EN DESARROLLO**, **IMPLEMENTADO EN RAMA**, **TESTS OK**, **DESPLEGADO CONFIRMADO**, **FALLÓ / BLOQUEADO**, **REEMPLAZADO**. No asumir `DESPLEGADO CONFIRMADO` solo por la existencia de un commit.
+
+## 1. Cambio de rumbo: VIGÍA como MONITOR operativo (REG-002, 2026-10-11 — ACORDADO a nivel de objetivo)
+
+### Problema relatado por el usuario
+
+VIGÍA pasó de ayudar al almacén a convertirse en **otro sistema de inventario** que exige estar pendiente de cantidades, existencias, movimientos, conteos y ajustes, duplicando trabajo frente al sistema de inventario oficial. El objetivo principal del rediseño es **reducir trabajo administrativo**, no crear una segunda contabilidad de stock.
+
+### Nueva misión solicitada (requisitos de producto)
+
+VIGÍA debe ser un **monitor y asistente de trabajo**, centrado solamente en estos flujos:
+
+- **Visualizar los surtidos registrados**: qué producto se entregó, cantidad, destino/área, fecha y responsable, y consultar su historial. Los detalles exactos de reportes quedan por definir.
+- **Preparar y sacar listas de COMPRAS y PEDIDOS** con edición continua; agregar, quitar, cambiar cantidades y notas, y usar el resultado para comprar o pedir.
+- **Recomendar qué COMPRAR o PEDIR**: sugerencias accionables que no obliguen a llevar inventario paralelo.
+- **Registrar surtidos como carrito de compras**: buscar productos, agregarlos libremente, ajustar cantidades y guardar el surtido, **independientemente de que el stock en VIGÍA sea cero, insuficiente o desconocido**.
+
+### Límites expresos
+
+- VIGÍA **no debe exigir mantener un inventario secundario al día** para trabajar.
+- No bloquear la anotación de surtidos por stock insuficiente o desconocido.
+- El carrito es un **registro operativo de entregas**, no una orden de descontar stock del sistema oficial.
+- Quitar del **flujo diario** el requisito de entradas, conteos y ajustes para sostener una cifra paralela.
+- El destino de los históricos y módulos viejos queda **POR DECIDIR**; no borrar información existente ni eliminar funcionalidades en producción sin migración, auditoría y validación.
+- La simplificación funcional está aprobada como rumbo; **la arquitectura e implementación concretas no están aprobadas todavía**.
+
+### Flujo conceptual solicitado (no implementado)
+
+```text
+VIGÍA MONITOR
+  Surtidos   -> carrito libre -> guardar evento y consultar historial
+  Comprar/Pedir -> única lista de trabajo editable e imprimible
+  Inteligencia -> sugerencias de qué comprar o pedir
+  Sistema oficial de inventario -> fuera de VIGÍA como gestor paralelo
+```
+
+## 2. Fuente de datos para recomendaciones (REG-003, 2026-10-11 — POR DECIDIR)
+
+Se plantearon tres fuentes; el usuario **aún no eligió** una:
+
+A. Existencias leídas en **modo consulta** del sistema oficial (SAINT / OLD / NEXUM; integración técnica y sistema fuente exacto pendientes).
+B. Solo historial de surtidos registrado en VIGÍA (pronóstico de demanda, **sin afirmar stock actual real**).
+C. Ambas fuentes: historial de surtidos + existencias oficiales consultadas, cuando estén disponibles.
+
+No confundir consumo estimado con stock real. Hasta decidir la fuente, no diseñar cálculos definitivos ni automatizaciones que resten inventario oficial.
+
+## 3. Requisitos operativos ya discutidos (historia útil — registrar sin equiparar a nueva aprobación)
+
+### REG-004 — Lista semanal de compras/pedidos
+
+- El usuario arma la lista el **lunes**, normalmente se compra/pide el **jueves**.
+- El negocio sigue consumiendo entre lunes y jueves; por eso necesita **una sola lista vigente que se pueda reabrir, completar, corregir y quitar líneas**, en lugar de varias listas.
+- Existe diferenciación entre `PURCHASE` (comprar) y `ORDER` (pedir).
+- Se usan productos del catálogo, cantidades, presentaciones/unidades, notas y extras fuera de catálogo.
+- Los productos cancelados no deben aparecer como activos ni en el ticket, pero se debe conservar trazabilidad; el usuario detectó el error `Transición no permitida: CANCELLED → CANCELLED` al pulsar repetidamente `Quitar`.
+- La operación deseada debe permitir guardar trabajo sin perder selecciones aunque se salga de la pantalla, se recargue o haya un apagón.
+
+### REG-005 — Autosave de la lista de trabajo
+
+- Antes del rediseño se detectó que `state.drafts` y `state.pendingExtras` vivían en memoria y los cambios previos a confirmar se perdían con un cierre o corte eléctrico.
+- Se implementó un **borrador local** separado por usuario y almacén, con persistencia IndexedDB y respaldo localStorage.
+- Debe conservar selecciones, cantidades, unidades, notas, método comprar/pedir, entradas manuales y extras.
+- Es **persistencia por dispositivo**; sincronización entre PC y móvil como borrador compartido **no se ha implementado ni acordado**.
+
+### REG-006 — Carrito de surtidos propuesto
+
+- Agregar libremente productos y cantidades como un carrito.
+- No pedir "stock disponible" como requisito de entrada.
+- Sugeridos: registrar destino, usuario, fecha y detalle; permitir ver surtidos anteriores.
+- **POR DEFINIR**: permisos, edición/cancelación de surtidos, impresión, lectura de código de barras, uso sin conexión y sincronización, relación con sistemas externos.
+
+## 4. Estado técnico conocido y trazabilidad (no asumir cambios en producción sin pruebas)
+
+Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-access`.
+
+| Commit | Descripción | Estado conocido |
+| --- | --- | --- |
+| `bbb19bdd2a95aeca24e7d7b51eeb51f466a92f87` | Hotfix epsilon en validación sync y cálculo stock | **Desplegado confirmado**; 22/22 tests; HEALTH/READY OK |
+| `d0581e447b33bcf93d46c59ca1008cf7f364b8e2` | Autosave/restauración de borrador Comprar/Pedir | **Desplegado confirmado** como parte de `9b66e80` |
+| `bee03998933745dcf8151ba9458bbced022af425` | Agregar/editar líneas en una lista semanal, reabrirla si aún no hay recepción | **Desplegado confirmado** como parte de `9b66e80` |
+| `9b66e80fdc4b3e889003eea78c9787f7dd9adda6` | Corrección de test por normalización de acentos | **Último despliegue plenamente verificado en salida de PowerShell**: 23/23 tests, sintaxis OK, HEALTH/READY OK, 0 migraciones pendientes, servicio Running, worktree limpio |
+| `067eb9f94e1441836c67f26c97f0c34a5e4745b8` | Ocultar líneas `CANCELLED` y hacer idempotente el botón Quitar | **IMPLEMENTADO EN RAMA**; no hay evidencia posterior en este historial que confirme su despliegue |
+ 
+### Incidentes y riesgos históricos (REG-007)
+
+- La cola offline y conflictos pueden bloquear operaciones; se observó repetición del error de validación `Existencia esperada inválido` por un residuo de coma flotante `-2.220446049250313e-16`; se corrigió el tratamiento de epsilon sin aceptar negativos reales.
+- En el móvil, tras el hotfix, se observó `103 cambio(s) pendiente(s)`, `103 conflicto(s)`, `Último sync: synced`. Esto significa que los eventos no conflictivos drenaron, **pero los conflictos NO quedaron resueltos**. Falta conciliación controlada.
+- Se planteó una resolución masiva segura de duplicados, **no desarrollada / no ejecutada en el historial disponible**. No pulsar `Usar servidor` o `Reaplicar mi cambio` indiscriminadamente: podrían existir diferencias reales.
+- **No limpiar IndexedDB, cache, almacenamiento del navegador, colas offline o datos de usuario**, ni reinstalar PWA, como solución rápida. Preservar evidencia y datos.
+- El nuevo diseño de MONITOR no debe introducir un nuevo circuito de conflictos por escrituras duplicadas de stock.
+
+### Infraestructura histórica
+
+- Backend Windows Service `SmartInventoryV2` en servidor HP, Node, ruta de aplicación `C:\SmartInventory\App\v2\server`, escucha local `127.0.0.1:5190`.
+- Aplicación servida mediante `https://vigia.internal`, PWA que previamente indicaba `shell-64`; versión exacta futura por verificar.
+- Endpoints de salud `/health` y `/ready`; antes de desplegar comprobar rama/HEAD, worktree limpio, tests y migraciones.
+- Catálogo y datos históricos **no se deben borrar** como parte del rediseño conceptual.
+
+## 5. Decisiones que NO deben darse por tomadas
+
+1. Sistema origen exacto para leer existencias y permisos de solo lectura.
+2. Si las recomendaciones dependerán de stock oficial, de consumo por surtidos o de ambos.
+3. Qué pantallas existentes se ocultarán, archivarán o sustituirán, y cómo se accede a históricos.
+4. Cómo se sincronizarán los nuevos surtidos entre equipos si están offline, sin conflictos ni duplicados.
+5. Qué constituye un surtido finalizado y si se permite anular/corregirlo, imprimir o exportar.
+6. Campos mínimos de área de destino, solicitante, responsable y observaciones.
+7. Frecuencia, fórmulas y controles manuales de recomendaciones de compras/pedidos.
+8. Seguridad, permisos, auditoría y retención del registro de eventos.
+9. Plan de pruebas piloto, migración, respaldo y reversión.
+
+## 6. Próximo paso inmediato (REG-008, 2026-10-11 — ACORDADO como metodología)
+
+**Trabajar paso a paso, empezando por documentar TODO** antes de reprogramar VIGÍA. El usuario pidió registro integral y palabra clave en **cada respuesta**. Una vez registrado esto, abordar **una decisión de diseño por vez**, con un resumen verificable, sin desplegar cambios funcionales implícitos.
+
+### Checklist de continuidad
+
+- [x] Establecer palabra clave permanente: `VIGIA-FARO-1011`.
+- [x] Crear bitácora versionada en GitHub.
+- [ ] Confirmar primera decisión funcional concreta del rediseño.
+- [ ] Documentar flujos exactos con ejemplos reales.
+- [ ] Diseñar y validar propuesta de interfaz.
+- [ ] Implementar en rama o espacio aislado; preservar versión anterior.
+- [ ] Ejecutar pruebas unitarias, flujos de usuario y simulación de apagón/offline.
+- [ ] Desplegar únicamente tras aprobación y plan de reversión.
+
+## 7. Registro cronológico incremental
+
+### [REG-001] 2026-10-11 | Bitácora, continuidad y palabra clave | ACORDADO
+
+- **Origen:** petición explícita del usuario: registrar cada detalle, parte, cosa o modificación y dar una palabra clave en todas las respuestas para retomar tras agotarse la conversación.
+- **Decisión:** bitácora versionada, identificadores REG-XXX, una clave permanente, estados verificables, registrar también asuntos pendientes.
+- **Entregable:** este archivo.
+- **Siguiente acción:** empezar a concretar el diseño de VIGÍA MONITOR con el usuario, paso a paso.
+
+### [REG-002] 2026-10-11 | Simplificación radical VIGÍA MONITOR | ACORDADO como visión
+
+- **Origen:** usuario indica que VIGÍA se volvió un segundo inventario y consume trabajo.
+- **Requisitos:** ver surtidos, generar listas de compra/pedido, recomendar compras/pedidos, registrar surtidos sin restricciones de stock mediante carrito.
+- **No implica:** borrar módulos históricos, migrar datos ya, modificar stock oficial, ni desplegar.
+- **Estado:** visión acordada, implementación pendiente.
+
+### [REG-003] 2026-10-11 | Fuente de las recomendaciones | POR DECIDIR
+
+- **Opciones:** inventario oficial read-only / historial surtidos / ambos.
+- **Siguiente paso:** escoger la fuente antes de fijar el motor de sugerencias.
