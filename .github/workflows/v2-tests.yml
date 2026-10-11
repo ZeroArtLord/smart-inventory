@@ -65,7 +65,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Verify VIGIA Monitor desktop/mobile UI with real browser
-        run: node test/browser/monitorPilotSmoke.mjs
+        run: node scripts/monitorPilotBrowserSmoke.mjs
 
       - name: Save browser smoke screenshots
         if: always()
