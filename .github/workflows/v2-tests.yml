@@ -96,6 +96,9 @@ jobs:
       - name: Check server JavaScript syntax
         run: find src scripts -name "*.js" -print0 | xargs -0 -n1 node --check
 
+      - name: Check live Monitor pilot authorization defaults
+        run: node scripts/monitorPilotGateCheck.js
+
 
   server-integration:
     runs-on: ubuntu-latest
