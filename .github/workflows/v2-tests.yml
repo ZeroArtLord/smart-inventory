@@ -235,6 +235,7 @@ jobs:
 
       - name: Run production preflight against migrated database
         env:
+          MONITOR_PILOT_ENABLED: "false"
           NODE_ENV: production
           AUTH_MODE: firebase
           DEV_ALLOW_HEADER_AUTH: "false"
