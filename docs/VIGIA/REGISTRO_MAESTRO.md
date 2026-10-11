@@ -380,3 +380,23 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - CI del commit 904ee445: run 38177938970, client-tests 561/561, server-syntax SUCCESS, server-integration SUCCESS; nuevo smoke PostgreSQL con dos usuarios pasó e informó cero movimientos de stock.
 - Las migraciones y la API solo se han ejecutado en el entorno temporal de CI. No se han llevado al HP.
 - Falta conectar UI y modo offline durable con sincronización móvil-PC, impresión real y Reportes del monitor.
+
+
+### [REG-023] 2026-10-11 | Autoguardado offline de revisión semanal | IMPLEMENTADO EN RAMA / TESTS CLIENTE OK / NO DESPLEGADO
+
+- **Código nuevo:** `v2/src/replenishment/monitorReviewOffline.js` (commit `0239b30e`). Cola aislada en el almacén IndexedDB SETTINGS, separada de la cola V2 y de sus 103 conflictos históricos. Clave por almacén + usuario + semana.
+- **Comportamiento probado:** guarda la decisión antes de hacer peticiones al servidor; preserva `quantity:null`, pendientes y extras; reintentos de red con ID inmutable; evita duplicados en servidor; orden de ediciones del mismo producto; caso de edición concurrente muestra CONFLICT y conserva la decisión local y la versión remota, sin sobreescribir; otras decisiones no conflictivas pueden avanzar. Estado LOCAL, SYNCED o CONFLICT.
+- **Pruebas nuevas:** `v2/test/monitorReviewOffline.test.js`, 13 casos (commit `bfecfdc9`): separación de claves, persistencia IndexedDB, offline, sincronización simulada, doble edición, caída/reintento, extra sin catálogo/cantidad, conflictos, trabajo con otros productos, validación y no uso de SYNC_QUEUE antiguo.
+- **Verificación del cliente:** GitHub Actions run `38178550608` (commit `8447346a`), `client-tests SUCCESS`: 574 pruebas aprobadas, 0 fallidas; también `server-syntax SUCCESS`.
+- **Límites:** la cola conserva trabajo local después de recargar una vez autenticado, pero **la reapertura en frío sin Internet todavía depende de la recuperación de identidad/sesión que falta implementar y verificar**. No se ha ensayado un apagón real ni teléfono físico. No hay aún resolución humana de conflictos en UI, solo preservación y detección.
+- **Pendientes técnicos:** ritmo/reintentos prolongados para catálogos grandes, verificación real de varios navegadores y comportamiento con múltiples pestañas.
+
+### [REG-024] 2026-10-11 | Primera interfaz piloto integrada en rama | IMPLEMENTADA EN RAMA / NO DESPLEGADA
+
+- **Código:** `v2/src/ui/monitorReviewPilotUi.js` (commit `77c4f7e9`), `v2/css/monitor-pilot.css` (commit `1e77a24a`), `v2/index.html` integra el enlace (commit `8447346a`).
+- **Acceso:** desde la sección Comprar/Pedir de la V2, aparece lanzador opcional `VIGÍA Monitor (piloto)`. Abre una interfaz aislada sin reemplazar las pantallas/productos del flujo antiguo. Solo en la rama de desarrollo.
+- **Secciones disponibles en el código piloto:** Inicio por categorías y progreso; revisión producto por producto y cuatro decisiones; bandeja Pendientes; Seleccionados con cantidad opcional; Extras manuales (incluida cinta métrica); Mis listas y previsualización de dos tickets por tipo con cantidades vacías para anotar a mano. CSS responsive enfocado en pantallas estrechas.
+- **Datos:** lee catálogo activo y categorías locales, obtiene sesión autorizada de V2, usa el nuevo guardado local y consulta la nueva API de monitor online. Conserva los cambios antes de sincronizar. No genera movimientos de stock.
+- **Limitaciones:** impresión solo navegador de prueba (NO RC-8002 ESC/POS), sin contadores de sugerencias definitivas, sin sincronización offline tras arranque en frío sin sesión, sin cierre semanal, sin Reportes Monitor ni Surtidos Monitor. **Todavía no hay prueba E2E de la experiencia visual en móvil real**; sintaxis CI aprobada, no significa aceptación de UX.
+- **Estado de integración:** API, cola e interfaz están en rama `feature/vigia-monitor-review-v1` y PR #23 DRAFT. Sin merge a producción, sin instalación, sin ejecuciones del nuevo Monitor en el HP.
+- **Siguiente paso:** prueba piloto con catálogo representativo, probar UI PC/móvil y permisos, resolver arranque offline seguro y estrategia de conflictos, enlazar impresión ESC/POS, adaptar Reportes y Surtidos y cumplir plan de transición REG-021.
