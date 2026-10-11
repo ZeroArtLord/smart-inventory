@@ -132,6 +132,8 @@ try{
   await page.screenshot({path:path.join(screenshots,'surtidos-desktop.png')});
   await page.locator('#vigiaMonitorSupplyPilot [data-vs-action="close"]').click();
   await page.locator('#vsSupplyLauncher').click();
+  // open() lee IndexedDB asíncronamente; esperar al carrito restaurado.
+  await page.locator('#vigiaMonitorSupplyPilot .vs-line').filter({hasText:'Agua mineral'}).waitFor();
   assert.equal(await page.locator('#vigiaMonitorSupplyPilot .vs-line').filter({hasText:'Agua mineral'}).count(),1,
     'cart is autosaved across dialog reopen');
 
