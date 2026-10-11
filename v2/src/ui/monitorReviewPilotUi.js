@@ -1,7 +1,7 @@
 // Pilot isolated from V2 procurement: its launcher never replaces existing forms.
 // Requires authenticated V2 app session. NO stock movements or legacy sync writes.
 import { getAll, STORES } from '../storage/database.js';
-import { getCurrentSession } from '../admin/adminClient.js';
+import { resolveMonitorPilotSession } from '../replenishment/monitorPilotSession.js';
 import { createLocalId } from '../core/ids.js';
 import {
   readMonitorReview, queueMonitorReviewChange, syncMonitorReview
@@ -36,14 +36,14 @@ if(root){
 
 function updateLauncher(){
   const title=String(root?.querySelector('h2')?.textContent||'').trim().toLowerCase();
-  launcher.hidden=state.visible||title!=='comprar / pedir';
+  launcher.hidden=state.visible||document.body.classList.contains('auth-locked')||title!=='comprar / pedir';
 }
 async function openPilot(){
   state.visible=true;state.loading=true;state.error='';
   shell.hidden=false;document.body.style.overflow='hidden';updateLauncher();paint();
   try{
     const [session,products,categories]=await Promise.all([
-      getCurrentSession(),getAll(STORES.PRODUCTS),getAll(STORES.CATEGORIES)
+      resolveMonitorPilotSession(),getAll(STORES.PRODUCTS),getAll(STORES.CATEGORIES)
     ]);
     if(!session?.workspaceId || !session?.userId)throw new Error('Sesión válida requerida');
     state.session=session;
