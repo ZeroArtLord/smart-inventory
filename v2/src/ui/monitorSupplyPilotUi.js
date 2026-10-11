@@ -192,7 +192,7 @@ function renderSupply(){
     '<button class="vs-primary" type="submit">+ Agregar al carrito</button></form></article>'+
     '<article class="vs-card"><h2>Carrito de entrega</h2>'+
     (display||'<p class="vs-muted">Todavía no hay productos en esta entrega.</p>')+
-    '<div class="vs-actions">'+btn('Registrar entrega','confirm')+'</div>'+
+    '<div class="vs-actions">'+'<button class="vs-primary" type="button" data-vs-action="confirm">Registrar entrega</button>'+'</div>'+
     '<p class="vs-muted">Al confirmar se guarda primero en este dispositivo y luego se intenta enviar. Imprimir y registrar no modifican stock.</p></article>'+
     '<article class="vs-card"><h2>Entregas pendientes de enviar</h2>'+
     (state.pending.length?state.pending.map(p=>'<div class="vs-line"><div><strong>'+
@@ -234,7 +234,10 @@ function renderReports(){
     btn('Volver a Reportes V8','close')+'</article>';
 }
 async function persistDraft(updated){
-  state.draft=await saveMonitorSupplyDraft(state.identity,updated);
+  // Reflejar el cambio inmediatamente para no perder una selección si el
+  // siguiente toque llega antes de que IndexedDB termine de escribir.
+  state.draft=updated;
+  await saveMonitorSupplyDraft(state.identity,updated);
   state.error='';state.message='Borrador guardado en este dispositivo';
 }
 async function handleChange(event){
