@@ -63,3 +63,27 @@ test('no permite offline sin almacén seleccionado', async()=>{
     authMode:'firebase',workspaceId:null
   })}),/Firebase/);
 });
+
+test('rol de Surtidos puede entrar al piloto correspondiente sin permiso de compras',async()=>{
+  const session=await resolveMonitorPilotSession({...args,
+    requiredAnyPermissions:['supply.write'],
+    offlineAccess:async()=>({
+      ...access(),selectedWorkspace:{id:'workspace-a',permissions:['supply.write']}
+    })
+  });
+  assert.equal(session.cachedOffline,true);
+  await assert.rejects(resolveMonitorPilotSession({...args,
+    requiredAnyPermissions:['reports.view'],
+    offlineAccess:async()=>({
+      ...access(),selectedWorkspace:{id:'workspace-a',permissions:['supply.write']}
+    })
+  }),/permiso/);
+});
+test('rol Reportes solo lee sus reportes y no queda autorizado para surtir',async()=>{
+  const online={
+    ...args,online:()=>true,
+    liveSession:async()=>({workspaceId:'workspace-a',userId:'analyst-1',permissions:['reports.view']})
+  };
+  assert.equal((await resolveMonitorPilotSession({...online,requiredAnyPermissions:['reports.view']})).userId,'analyst-1');
+  await assert.rejects(resolveMonitorPilotSession({...online,requiredAnyPermissions:['supply.write']}),/permiso/);
+});
