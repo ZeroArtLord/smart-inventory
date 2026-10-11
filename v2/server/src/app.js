@@ -15,6 +15,7 @@ import { sessionRouter } from './routes/session.js';
 import { authRouter } from './routes/auth.js';
 import { thermalPrinterRouter } from './routes/thermalPrinter.js';
 import { areasRouter } from './routes/areas.js';
+import { monitorReviewRouter } from './routes/monitorReview.js';
 
 const app = express();
 app.set('trust proxy', 'loopback');
@@ -150,6 +151,18 @@ app.use(
   }),
   authContext,
   areasRouter
+);
+
+// Separado de /sync: estos cambios NO generan movimientos de stock.
+app.use(
+  '/api/v1/monitor',
+  rateLimit({
+    windowMs: 60000,
+    max: 120,
+    namespace: 'monitor'
+  }),
+  authContext,
+  monitorReviewRouter
 );
 
 app.use(
