@@ -337,3 +337,13 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - **Seguridad:** preservación de auditoría de actor/fecha y permisos de acceso a los reportes; no publicar acceso indiscriminado.
 - **Estado:** funcionalidad existente revisada y esquema propuesto de cuatro vistas, NO cambios a código de Reportes, NO tests ni despliegue. **PENDIENTE validación de usuario** de las vistas propuestas.
 - **Siguiente paso:** confirmar qué información debe predominar en Reportes antes de implementarlos como parte del VIGÍA Monitor.
+
+
+### [REG-019] 2026-10-11 | Aprobación de Reportes e inicio de desarrollo aislado | ACORDADO / EN DESARROLLO
+
+- **Origen:** el usuario respondió «OK LISTO CONTINUA» tras la propuesta REG-018 de mantener Reportes como módulo principal con vistas Surtidos, Consumo por área, Compras/Pedidos y Tendencias, junto a Inicio, Surtidos y Comprar/Pedir como otras áreas principales.
+- **Interpretación confirmada para ejecución:** los cuatro grupos propuestos de Reportes se adoptan como alcance funcional inicial, manteniendo historial y exportaciones. Los nuevos reportes deben distinguir surtidos registrados de stock inventariado: **VIGÍA será un monitor y no llevará segundo inventario**.
+- **Autorización de progreso:** continuar hacia implementación gradual en **rama separada**, sin eliminar el código antiguo y sin desplegar modificaciones al servidor HP o instalar migraciones. Evitar alterar el flujo productivo hasta contar con pruebas y aprobación específica de puesta en producción.
+- **Primera etapa planificada:** motor de revisión semanal de compras/pedidos independiente de stock, con todos los productos por categorías, marca humana, cantidad positiva u opcional \`null\`, pendientes, listas COMPRAR/PEDIR, extras manuales, versiones para detección de conflictos y funciones puras para pruebas automáticas. Los reportes se conectarán más adelante a los nuevos eventos y al historial existente.
+- **Aclaración de estado:** REG-018 reportes diseñados, **no implementados** como nuevas vistas todavía; para REG-019 solo hay autorización para empezar desarrollo. Registrar después las rutas, resultados de pruebas y SHAs realmente producidos.
+- **Preservación de datos:** no borrar ni modificar colas offline ni 103 conflictos históricos del teléfono; no eliminar features o entidades V2 antiguas.
