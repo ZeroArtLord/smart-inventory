@@ -4,6 +4,7 @@ import {STORES,getAll} from '../storage/database.js';
 import {listAreas} from '../areas/areaService.js';
 import {listAreaDeliveries} from '../areas/supplyAreaDeliveryService.js';
 import {resolveMonitorPilotSession} from '../replenishment/monitorPilotSession.js';
+import {isMonitorPilotEnabled} from './monitorPilotEnabled.js';
 import {
   addMonitorSupplyLine,updateMonitorSupplyLine,removeMonitorSupplyLine
 } from '../documents/monitorSupplyModel.js';
@@ -17,6 +18,7 @@ import {
 
 const root=document.getElementById('app');
 let dialog=null,supplyButton=null,reportButton=null;
+let pilotEnabled=false;
 const state={
   mode:'supply',visible:false,busy:false,session:null,identity:null,
   draft:null,products:[],areas:[],pending:[],history:[],consumption:[],
@@ -32,6 +34,7 @@ if(root){
   document.body.append(dialog);
   new MutationObserver(checkLauncher).observe(root,{childList:true,subtree:true});
   checkLauncher();
+  isMonitorPilotEnabled().then(enabled=>{pilotEnabled=enabled;checkLauncher();});
   supplyButton.addEventListener('click',()=>open('supply').catch(fail));
   reportButton.addEventListener('click',()=>open('reports').catch(fail));
   dialog.addEventListener('click',event=>handleClick(event).catch(fail));
@@ -58,10 +61,11 @@ function checkLauncher(){
     if(state.visible)close();supplyButton.hidden=true;reportButton.hidden=true;return;
   }
   const title=String(root?.querySelector('h2')?.textContent||'').trim().toLowerCase();
-  supplyButton.hidden=state.visible||!title.startsWith('surtido');
-  reportButton.hidden=state.visible||title!=='reportes';
+  supplyButton.hidden=!pilotEnabled||state.visible||!title.startsWith('surtido');
+  reportButton.hidden=!pilotEnabled||state.visible||title!=='reportes';
 }
 async function open(mode){
+  if(!pilotEnabled)throw new Error('Monitor no está activado en este dispositivo');
   state.mode=mode;state.visible=true;state.busy=true;
   state.error='';state.message='';
   dialog.hidden=false;document.body.style.overflow='hidden';checkLauncher();paint();
