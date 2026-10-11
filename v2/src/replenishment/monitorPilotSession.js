@@ -13,11 +13,12 @@ export async function resolveMonitorPilotSession({
   liveSession = getCurrentSession,
   syncConfig = getSyncConfig,
   logoutLock = getOfflineLogoutLock,
-  offlineAccess = readOfflineAccessSnapshot
+  offlineAccess = readOfflineAccessSnapshot,
+  requiredAnyPermissions = ['catalog.view','purchases.write','count.write']
 } = {}) {
   if (online()) {
     const session = await liveSession();
-    return requireReviewIdentity(session);
+    return requireReviewIdentity(session,requiredAnyPermissions);
   }
 
   const config = await syncConfig();
@@ -51,12 +52,12 @@ export async function resolveMonitorPilotSession({
   return requireReviewIdentity(session);
 }
 
-function requireReviewIdentity(session) {
+function requireReviewIdentity(session,requiredAnyPermissions) {
   if(!session?.workspaceId || !session?.userId) {
     throw accessError('Se requiere una identidad y almacén autorizados');
   }
   const permissions=Array.isArray(session.permissions)?session.permissions:[];
-  if(!['*','catalog.view','purchases.write','count.write'].some(p=>permissions.includes(p))) {
+  if(!['*',...requiredAnyPermissions].some(p=>permissions.includes(p))) {
     throw accessError('No tienes permiso para consultar la revisión');
   }
   return session;
