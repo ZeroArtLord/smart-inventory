@@ -31,6 +31,7 @@ if(root){
   launcher.addEventListener('click',()=>openPilot().catch(showError));
   shell.addEventListener('click',event=>handleClick(event).catch(showError));
   shell.addEventListener('submit',event=>handleSubmit(event).catch(showError));
+  shell.addEventListener('change',event=>handleChange(event).catch(showError));
   window.addEventListener('online',()=>{if(state.visible)pushAndRefresh().catch(showError);});
 }
 
@@ -65,6 +66,10 @@ function closePilot(){
 async function pushAndRefresh(){
   if(!state.options)return;
   state.local=await syncMonitorReview(state.options);
+  if(state.local.status==='SYNCED' && state.message.startsWith('Guardado en este dispositivo'))state.message='';
+  // Un refresco de fondo nunca debe borrar texto que alguien está escribiendo.
+  const focus=document.activeElement;
+  if(shell.contains(focus)&&focus?.matches?.('input,textarea,select'))return;
   paint();
 }
 async function localChange(change){
@@ -345,6 +350,15 @@ async function handleClick(event){
     return;
   }
   if(action==='print'){window.print();}
+}
+async function handleChange(event){
+  const picker=event.target.closest('[data-mp-category-picker]');
+  if(!picker)return;
+  const chosen=groups().find(group=>group.id===picker.value);
+  if(!chosen)return;
+  state.currentCategory=chosen.id;
+  state.cursor=Math.max(0,chosen.products.findIndex(product=>!findRow(product.id)));
+  paint();
 }
 async function handleSubmit(event){
   if(event.target?.id!=='mpExtraForm')return;
