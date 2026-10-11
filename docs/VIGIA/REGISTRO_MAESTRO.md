@@ -319,3 +319,21 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - **Puntos todavía por validar:** aprobación final del orden/flujo visual; regla para marcar Realizada si hay cantidades sin definir; ciclo de cierre semanal; rediseño visual móvil.
 - **Estado actual:** especificación documental únicamente. No se alteraron código funcional, base de datos, sincronización ni producción; no hubo despliegue.
 - **Siguiente paso:** confirmar el diseño con usuario, después crear implementación aislada y plan de pruebas.
+
+
+### [REG-018] 2026-10-11 | Reportes como módulo principal independiente | PRESERVACIÓN ACORDADA; DISEÑO SIMPLIFICADO PROPUESTO
+
+- **Origen:** después de presentar seis subsecciones internas del módulo Comprar/Pedir, el usuario preguntó explícitamente: «OK Y REPORTES?». Se aclara que las seis subsecciones **no reemplazan el menú general**; Reportes sigue siendo parte principal de VIGÍA Monitor.
+- **Estructura general propuesta:** menú principal VIGÍA Monitor con cuatro módulos: 1) Inicio, 2) Surtidos, 3) Comprar/Pedir, 4) Reportes. Catálogo, Usuarios, Auditoría, Configuración y diagnósticos en administración/segundo plano. Esta estructura aún requiere validación fina de usuario.
+- **Base técnica comprobada en código:** existe \`v2/src/ui/reportBuilderV8Ui.js\` con reportes avanzados de actividad, cantidad surtida, tendencias, filtros, agrupaciones por área/categoría/producto, productos más movidos, anomalías, mapa de actividad, preguntas interpretadas sobre datos, guardado de vistas y exportación CSV; \`v2/src/reporting/areaConsumptionReport.js\` computa consumo por áreas; \`v2/src/ui/godOperationalOversightUi.js\` presenta histórico de surtidos y export CSV/XLSX/SAINT; \`v2/src/reporting/reportingEngine.js\` incluye reporte de stock derivado y vencimientos. **Algunos indicadores actuales dependen del stock paralelo, por lo que no se deben asumir válidos después del rediseño.**
+- **Propuesta para simplificar Reportes (pendiente de aprobación explícita):**
+  1. **Surtidos:** eventos y productos entregados por fecha, responsable y área, cantidades y documentos; filtros día/semana/mes/rango y búsquedas.
+  2. **Consumo por área:** qué recibió cada área y cuáles productos/presentaciones se surtieron con mayor frecuencia, comparativas entre períodos. Mostrar número de entregas o cantidades solo en unidades compatibles.
+  3. **Compras y pedidos:** listas semanales, productos marcados/realizados, cantidades opcionales, extras, pendientes y comparación entre semanas, con trazabilidad. Diferenciar selección de compra de compra realmente ejecutada; **no inventar recepción, costo ni gasto**.
+  4. **Tendencias y recomendaciones:** top de surtidos, patrones por semana, variaciones, consumo estimado y justificación de sugerencias; separar demanda observada de stock oficial aún no integrado.
+- **Exportaciones a conservar:** CSV, Excel, PDF/impresión y tickets según cada reporte, manteniendo el mecanismo de permisos, formatos y comprobaciones ya desarrollados. PDF mediante impresión/navegador si procede; no afirmar generador PDF nativo en todos los flujos.
+- **Debe desaparecer del resumen principal del monitor:** necesidad de conteo físico, alertas de mínimo/máximo y cifras de existencia calculadas desde movimientos internos como si representaran stock oficial. En vez de eliminar sus archivos o históricos, conservarlos archivados/tras administración hasta validación de migración.
+- **Datos históricos:** conservar surtidos y registros históricos V2 sin borrado ni conversión automática, diferenciando eventos viejos con movimientos de stock de los futuros eventos informativos de surtido. No sumar falsamente productos de unidades diferentes.
+- **Seguridad:** preservación de auditoría de actor/fecha y permisos de acceso a los reportes; no publicar acceso indiscriminado.
+- **Estado:** funcionalidad existente revisada y esquema propuesto de cuatro vistas, NO cambios a código de Reportes, NO tests ni despliegue. **PENDIENTE validación de usuario** de las vistas propuestas.
+- **Siguiente paso:** confirmar qué información debe predominar en Reportes antes de implementarlos como parte del VIGÍA Monitor.
