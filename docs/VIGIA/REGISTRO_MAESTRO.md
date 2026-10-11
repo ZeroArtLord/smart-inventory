@@ -298,3 +298,24 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - **Limitaciones:** sin sincronización PC↔móvil real, sin conexión a PostgreSQL/Firebase, sin impresión ESC/POS real, sin catálogos reales, sin integración en producción. No se ha desplegado nada ni borrado datos.
 - **Estatus de propuesta:** interfaz preliminar lista para feedback del usuario. El botón \`NO HACE FALTA\` y aspecto visual se presentan como propuesta, aún ajustables. Persistencia/sincronización reales aprobadas como objetivo en REG-013/014, pero no implementadas en este archivo.
 - **Siguiente paso:** mostrar prototipo y pedir evaluación concreta del recorrido/pantalla para aprobar o corregir antes de iniciar implementación aislada. No inferir autorización para tocar producción.
+
+
+### [REG-016] 2026-10-11 | Feedback a diseño REG-015 y aprobación de Extras | ACORDADO
+
+- **Origen:** el usuario revisó el primer prototipo REG-015 y comentó que **la imagen/presentación visual de teléfono está un poco mal hecha**, pero que eso puede arreglarse después; **el resto del diseño le parece bien**.
+- **Requisito explícito clave:** añadir **COMPRAS EXTRAS MANUALES** de cosas fuera del catálogo, por ejemplo «cinta métrica», sin registrar esos elementos como producto VIGÍA. El asistente y usuario confirmaron que esas compras deben incluirse obligatoriamente en el flujo.
+- **Comportamiento confirmado:** agregar texto libre por ítem Extra, con elección COMPRAR o PEDIR, cantidad/unidad/observaciones opcionales y capacidad de aparecer en Seleccionados, lista final y ticket impreso bajo grupo EXTRAS. No afectar stock ni exigir creación de catálogo. La lista semanal puede incluir extras y productos normales a la vez.
+- **Estado:** requisitos y feedback registrados, integración a producto real pendiente. La demo REG-015 ya incluía una opción ilustrativa de extras, pero sin integración backend real.
+- **Seguimiento visual:** conservar el rediseño móvil como tarea pendiente, no considerar la captura móvil del REG-015 como diseño definitivamente aprobado.
+- **Siguiente paso:** especificar las seis secciones del módulo y validarlas antes de implementar.
+
+### [REG-017] 2026-10-11 | Diseño funcional de seis secciones de Comprar/Pedir | PROPUESTO PARA APROBACIÓN
+
+- **Origen:** el usuario contestó «OK CONTINUEMOS» tras la propuesta de definir exactamente la estructura final, pantalla por pantalla, antes de desarrollar.
+- **Documento de especificación:** \`docs/VIGIA/ESPECIFICACION_COMPRAR_PEDIR_MONITOR_REG017.md\`.
+- **Seis secciones descritas:** 1 Inicio/revisión semanal; 2 Revisión por categoría; 3 Pendientes; 4 Seleccionados; 5 Extras; 6 Mis listas/impresión. **Extras no depende del catálogo y admite cantidad sin definir.**
+- **Hereda decisiones REG-010 a REG-016:** todos los productos activos, recomendaciones no vinculantes, cuatro estados humanos, cantidades positivas o \`null\`, pendientes recuperables, impresión con espacios en blanco, una lista de compra y una de pedido editables, colaboración del equipo del almacén PC/teléfono, sin movimientos de stock.
+- **Diferencia importante:** los campos de clasificación se podrán guardar antes de conocer la cantidad; el contrato de reposición existente exige positivo y deberá evolucionarse con seguridad.
+- **Puntos todavía por validar:** aprobación final del orden/flujo visual; regla para marcar Realizada si hay cantidades sin definir; ciclo de cierre semanal; rediseño visual móvil.
+- **Estado actual:** especificación documental únicamente. No se alteraron código funcional, base de datos, sincronización ni producción; no hubo despliegue.
+- **Siguiente paso:** confirmar el diseño con usuario, después crear implementación aislada y plan de pruebas.
