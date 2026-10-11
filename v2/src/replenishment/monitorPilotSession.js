@@ -49,7 +49,7 @@ export async function resolveMonitorPilotSession({
     authMode:'firebase',
     cachedOffline:true
   };
-  return requireReviewIdentity(session);
+  return requireReviewIdentity(session,requiredAnyPermissions);
 }
 
 function requireReviewIdentity(session,requiredAnyPermissions) {
