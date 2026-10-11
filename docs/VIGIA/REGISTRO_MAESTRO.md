@@ -361,3 +361,22 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - **Límites fundamentales:** motor funcional puro, **sin interfaz nueva** conectada, sin IndexedDB/PostgreSQL propios para review, sin push/pull entre PC y teléfono, sin confirmación final de lista, sin impresión ESC/POS conectada, sin nuevos reportes implementados. Detección de conflicto de versión en el modelo no implica resolución de conflictos en servidor.
 - **Datos productivos sin tocar:** NO se ejecutaron scripts en el servidor HP, NO se modificó esquema SQL, NO se borró ninguna cola ni histórico. Seguir protegiendo 103 conflictos antiguos.
 - **Próximo paso:** persistencia/contrato de sincronización duradero de revisión semanal por almacén, y luego UI integrada/flujo de impresión, con pruebas en rama aislada; desarrollar reportes adaptados a surtidos operativos sin falsear stock.
+
+
+### [REG-021] 2026-10-11 | Plan de transición al nuevo VIGÍA | PROPUESTO, NO EJECUTADO
+
+- Ante la pregunta del usuario sobre retirar VIGÍA actual: se recomienda conservarlo operando mientras se desarrolla y prueba VIGÍA Monitor.
+- El nuevo monitor se probará con acceso, base de datos y configuración separados de producción.
+- Antes del cambio: verificar la versión instalada, respaldos y restauración, preservar historial, asegurar las colas offline pendientes, probar todas las pantallas en PC/móvil y pedir aprobación de corte.
+- En el cambio definitivo: ventana de mantenimiento, respaldo final, instalación versionada, prueba de regresión y rollback sin descartar datos nuevos.
+- Plan completo: docs/VIGIA/PLAN_TRANSICION_VIGIA_MONITOR_REG021.md, commit c19e18e7.
+- No se ha detenido, reiniciado ni migrado el servidor real.
+
+### [REG-022] 2026-10-11 | Almacenamiento compartido online de revisión semanal | TESTS OK, NO DESPLEGADO
+
+- Rama: feature/vigia-monitor-review-v1; PR #23 en borrador.
+- Archivos nuevos: v2/server/migrations/020_monitor_weekly_reviews.sql; v2/server/src/routes/monitorReview.js; v2/server/scripts/monitorReviewSmoke.js. Modificados: v2/server/src/app.js y .github/workflows/v2-tests.yml.
+- Permite lectura y edición por personas autorizadas del mismo almacén, cantidad opcional nula, productos y extras, versiones por línea, auditoría e idempotencia de reintentos. No crea movimientos de inventario.
+- CI del commit 904ee445: run 38177938970, client-tests 561/561, server-syntax SUCCESS, server-integration SUCCESS; nuevo smoke PostgreSQL con dos usuarios pasó e informó cero movimientos de stock.
+- Las migraciones y la API solo se han ejecutado en el entorno temporal de CI. No se han llevado al HP.
+- Falta conectar UI y modo offline durable con sincronización móvil-PC, impresión real y Reportes del monitor.
