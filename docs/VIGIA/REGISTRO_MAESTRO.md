@@ -400,3 +400,13 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - **Limitaciones:** impresión solo navegador de prueba (NO RC-8002 ESC/POS), sin contadores de sugerencias definitivas, sin sincronización offline tras arranque en frío sin sesión, sin cierre semanal, sin Reportes Monitor ni Surtidos Monitor. **Todavía no hay prueba E2E de la experiencia visual en móvil real**; sintaxis CI aprobada, no significa aceptación de UX.
 - **Estado de integración:** API, cola e interfaz están en rama `feature/vigia-monitor-review-v1` y PR #23 DRAFT. Sin merge a producción, sin instalación, sin ejecuciones del nuevo Monitor en el HP.
 - **Siguiente paso:** prueba piloto con catálogo representativo, probar UI PC/móvil y permisos, resolver arranque offline seguro y estrategia de conflictos, enlazar impresión ESC/POS, adaptar Reportes y Surtidos y cumplir plan de transición REG-021.
+
+
+### [REG-025] 2026-10-11 | CI final para cola offline y UI piloto | TESTS AUTOMÁTICOS OK / PR EN BORRADOR
+
+- GitHub Actions run 38178550608 sobre commit 8447346a3f0c7b5d4a94190d9550e767a257d8f7.
+- Resultados confirmados: client-tests SUCCESS (574/574, 0 fallidas); server-syntax SUCCESS; server-integration SUCCESS.
+- El smoke de PostgreSQL volvió a emitir MONITOR_REVIEW_SMOKE_PASS, con dos usuarios, cantidades nulas, extras, versiones y cero movimientos de stock.
+- Las 13 pruebas nuevas de monitorReviewOffline se ejecutaron exitosamente dentro del total.
+- El nuevo piloto de UI pasó comprobaciones de sintaxis, NO una validación visual real de navegador/telefono ni pruebas end-to-end sobre una instalación real.
+- Rama feature/vigia-monitor-review-v1, PR #23 DRAFT. La rama productiva y el HP no han sido modificados.
