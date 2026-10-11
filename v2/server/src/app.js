@@ -17,6 +17,7 @@ import { thermalPrinterRouter } from './routes/thermalPrinter.js';
 import { areasRouter } from './routes/areas.js';
 import { monitorReviewRouter } from './routes/monitorReview.js';
 import { monitorSupplyRouter } from './routes/monitorSupply.js';
+import { monitorPilotGate } from './middleware/monitorPilotGate.js';
 
 const app = express();
 app.set('trust proxy', 'loopback');
@@ -68,6 +69,7 @@ app.get('/api/v1/public/config', (_req, res) => {
     ok: true,
     service: 'smart-inventory-v2',
     authMode: config.authMode,
+    monitorPilotEnabled: config.monitorPilotEnabled,
     firebaseProjectId:
       config.authMode === 'firebase'
         ? config.firebaseProjectId
@@ -163,6 +165,7 @@ app.use(
     namespace: 'monitor'
   }),
   authContext,
+  monitorPilotGate,
   monitorReviewRouter,
   monitorSupplyRouter
 );
