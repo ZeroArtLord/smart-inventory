@@ -41,7 +41,8 @@ await page.route('**/api/v1/session',route=>route.fulfill({
     permissions:['catalog.view','purchases.write','supply.write','reports.view']
   }})
 }));
-await page.route('**/api/v1/monitor/supplies*',async route=>{
+// Playwright '*' no cruza '/': usar '**' para incluir /consumption.
+await page.route('**/api/v1/monitor/supplies**',async route=>{
   const req=route.request();
   const u=new URL(req.url());
   const method=req.method();
