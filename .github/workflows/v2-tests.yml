@@ -142,6 +142,9 @@ jobs:
       - name: Run real sync and stock smoke
         run: npm run smoke:integration
 
+      - name: Verify VIGIA Monitor multi-user review persistence
+        run: node scripts/monitorReviewSmoke.js
+
       - name: Restart API
         run: |
           kill "$(cat /tmp/smart-inventory-v2.pid)"
