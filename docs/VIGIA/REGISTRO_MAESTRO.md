@@ -286,3 +286,15 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - **Hereda REG-010/011/012/013:** revisión de todos los productos activos por categoría, saltar/retomar pendientes, cantidades opcionales, impresión con huecos en blanco, sin depender de stock local ni generar movimientos de inventario.
 - **Alcance:** acuerdo funcional. NO se ha implementado este nuevo modo colaborativo, no se ha probado, ni se ha desplegado.
 - **Siguiente paso:** consolidar la especificación del recorrido y enseñar al usuario una interfaz inicial revisable antes de desarrollar código funcional en un entorno aislado.
+
+
+### [REG-015] 2026-10-11 | Primer prototipo visual interactivo Comprar/Pedir | PROTOTIPO PROBADO, REVISIÓN DEL USUARIO PENDIENTE
+
+- **Origen:** el usuario respondió «OK» a la propuesta de preparar el diseño visual completo del nuevo módulo Comprar/Pedir para revisarlo antes de programar.
+- **Entregables:** HTML único descargable \`VIGIA_Prototipo_Comprar_Pedir_REG015.html\` en la conversación; documentación permanente de diseño en \`docs/VIGIA/PROTOTIPO_COMPRAR_PEDIR_REG015.md\`. SHA-256 del HTML: \`53ce66a09a3b342a6119702223c5802217e255541b24a22c069943f295796598\`.
+- **Diseño:** navegación oscura VIGÍA Monitor + paneles claros, responsive escritorio/teléfono. Pantallas: Inicio/categorías, Revisar productos uno por uno, Pendientes, Seleccionados con cantidades opcionales y extras, Mis listas con tickets 80 mm y dos copias. El prototipo tiene 33 productos simulados organizados en 6 categorías. Las sugerencias son ilustrativas y NO datos del VIGÍA real.
+- **Comportamiento de demo:** COMPRAR, PEDIR, NO HACE FALTA, PENDIENTE; avance de revisión, salto y recuperación desde pendientes; cantidades positivas o \`null\`, unidad, observación; cambio de clasificación; extra libre; lista diferenciada COMPRAR/PEDIR; impresión por navegador con cantidad vacía como espacio de escritura \`________\`. Selecciones guardadas SOLO en el navegador de la demo usando prefijo \`vigia.reg015.demo.v1\`.
+- **Verificación local:** sintaxis JS revisada; pruebas Playwright con Chromium sin errores JS: navegación, decisiones opcionales, pendiente, recuperación, agregado de extra y dos copias en vista previa; móvil 390px sin desbordamiento horizontal. Pruebas de diseño, NO pruebas operativas ni servidor.
+- **Limitaciones:** sin sincronización PC↔móvil real, sin conexión a PostgreSQL/Firebase, sin impresión ESC/POS real, sin catálogos reales, sin integración en producción. No se ha desplegado nada ni borrado datos.
+- **Estatus de propuesta:** interfaz preliminar lista para feedback del usuario. El botón \`NO HACE FALTA\` y aspecto visual se presentan como propuesta, aún ajustables. Persistencia/sincronización reales aprobadas como objetivo en REG-013/014, pero no implementadas en este archivo.
+- **Siguiente paso:** mostrar prototipo y pedir evaluación concreta del recorrido/pantalla para aprobar o corregir antes de iniciar implementación aislada. No inferir autorización para tocar producción.
