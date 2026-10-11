@@ -40,6 +40,41 @@ jobs:
           find src test -name "*.js" -print0 | xargs -0 -n1 node --check
           node --check sw.js
 
+  browser-pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: v2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install client test dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install pinned Playwright for isolated browser smoke
+        run: npm install --no-save --no-package-lock playwright@1.56.1 --no-audit --no-fund
+
+      - name: Install Chromium headless
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify VIGIA Monitor desktop/mobile UI with real browser
+        run: node test/browser/monitorPilotSmoke.mjs
+
+      - name: Save browser smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitor-pilot-browser-screenshots
+          path: v2/test-results/monitor-pilot/
+          if-no-files-found: ignore
+
   server-syntax:
     runs-on: ubuntu-latest
     defaults:
