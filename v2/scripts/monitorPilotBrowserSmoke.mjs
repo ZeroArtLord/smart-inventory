@@ -196,7 +196,11 @@ try{
   await page.locator('#app h2').evaluate(el=>{el.textContent='Reportes';});
   await page.locator('#vsReportLauncher').click();
   await page.getByText('Surtidos Monitor registrados').waitFor();
-  await page.getByText('Agua mineral',{exact:true}).waitFor();
+  console.log('BROWSER_REPORT_VISIBLE',JSON.stringify({
+    text:(await page.locator('#vigiaMonitorSupplyPilot').innerText()).slice(0,1400),
+    deliveries:stored.size,postAttempts
+  }));
+  await page.getByText('Agua mineral',{exact:true}).waitFor({timeout:5000});
   await page.getByText('Historial anterior de VIGÍA V2 (separado)').waitFor();
   await page.screenshot({path:path.join(screenshots,'reportes-desktop.png')});
 
