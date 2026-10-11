@@ -58,7 +58,7 @@ function checkLauncher(){
     if(state.visible)close();supplyButton.hidden=true;reportButton.hidden=true;return;
   }
   const title=String(root?.querySelector('h2')?.textContent||'').trim().toLowerCase();
-  supplyButton.hidden=state.visible||!title.startsWith('surtidos');
+  supplyButton.hidden=state.visible||!title.startsWith('surtido');
   reportButton.hidden=state.visible||title!=='reportes';
 }
 async function open(mode){
@@ -192,7 +192,7 @@ function renderSupply(){
     '<button class="vs-primary" type="submit">+ Agregar al carrito</button></form></article>'+
     '<article class="vs-card"><h2>Carrito de entrega</h2>'+
     (display||'<p class="vs-muted">Todavía no hay productos en esta entrega.</p>')+
-    '<div class="vs-actions">'+btn('Registrar entrega','confirm','class="vs-btn vs-primary"')+'</div>'+
+    '<div class="vs-actions">'+btn('Registrar entrega','confirm')+'</div>'+
     '<p class="vs-muted">Al confirmar se guarda primero en este dispositivo y luego se intenta enviar. Imprimir y registrar no modifican stock.</p></article>'+
     '<article class="vs-card"><h2>Entregas pendientes de enviar</h2>'+
     (state.pending.length?state.pending.map(p=>'<div class="vs-line"><div><strong>'+
