@@ -125,6 +125,7 @@ jobs:
       NODE_ENV: test
       AUTH_MODE: dev
       DEV_ALLOW_HEADER_AUTH: "true"
+      MONITOR_PILOT_ENABLED: "true"
       SMOKE_STATE_FILE: /tmp/smart-inventory-smoke.json
       BACKUP_DIR: /tmp/smart-inventory-backups
       BACKUP_RETENTION_DAYS: "14"
