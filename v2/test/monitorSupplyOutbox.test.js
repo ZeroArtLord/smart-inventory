@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   monitorSupplyOutboxKey,stageMonitorSupplyDelivery,getMonitorSupplyOutboxEntry,
+  listMonitorSupplyOutbox,flushPendingMonitorSupplies,
   flushMonitorSupplyDelivery,getMonitorRecordedSupplies,getMonitorSupplyConsumption
 } from '../src/documents/monitorSupplyOutbox.js';
 import { STORES,get } from '../src/storage/database.js';
@@ -100,4 +101,52 @@ test('solo acepta documentos registrados para la cola de envío',async()=>{
   await assert.rejects(stageMonitorSupplyDelivery(identity('eight'),{
     ...document('supply-08'),status:'DRAFT'
   }),/Solo se preparan/);
+});
+
+test('reconexión procesa pendientes del mismo operador sin tocar otra identidad',async()=>{
+  const ident=identity('retry-batch'),other=identity('other-batch');
+  await stageMonitorSupplyDelivery(ident,document('batch-one'));
+  await stageMonitorSupplyDelivery(ident,document('batch-two'));
+  await stageMonitorSupplyDelivery(other,document('batch-other'));
+  const sent=[];
+  const result=await flushPendingMonitorSupplies(ident,{
+    request:async(_,{body})=>{
+      sent.push(body.id);
+      return {ok:true,delivery:{recordedAt:'2026-10-11T20:00:00Z'}};
+    }
+  });
+  assert.deepEqual(sent,['batch-one','batch-two']);
+  assert.deepEqual({attempted:result.attempted,synchronized:result.synchronized,pending:result.pending},
+    {attempted:2,synchronized:2,pending:0});
+  assert.equal((await listMonitorSupplyOutbox(other)).length,1);
+});
+test('dos envíos simultáneos del mismo documento emiten una sola petición',async()=>{
+  const ident=identity('parallel');const id='parallel-one';
+  await stageMonitorSupplyDelivery(ident,document(id));
+  let count=0;
+  const request=async()=>{count++;await new Promise(resolve=>setTimeout(resolve,5));
+    return {ok:true,delivery:{recordedAt:'2026-10-11T20:00:00Z'}};
+  };
+  const [a,b]=await Promise.all([
+    flushMonitorSupplyDelivery(ident,id,{request}),
+    flushMonitorSupplyDelivery(ident,id,{request})
+  ]);
+  assert.equal(a.status,'SYNCED');assert.equal(b.status,'SYNCED');
+  assert.equal(count,1);
+});
+test('reintentos batch conservan conflicto y otros pendientes',async()=>{
+  const ident=identity('batch-conflict');
+  await stageMonitorSupplyDelivery(ident,document('conflict-one'));
+  await stageMonitorSupplyDelivery(ident,document('good-two'));
+  const summary=await flushPendingMonitorSupplies(ident,{
+    request:async(_,{body})=>{
+      if(body.id==='conflict-one')throw Object.assign(new Error('Conflicto'),{status:409});
+      return {ok:true,delivery:{recordedAt:'2026-10-11T20:00:00Z'}};
+    }
+  });
+  assert.equal(summary.conflicts,1);
+  assert.equal(summary.synchronized,1);
+  assert.equal(summary.pending,0);
+  assert.equal((await listMonitorSupplyOutbox(ident)).length,1);
+  assert.equal((await listMonitorSupplyOutbox(ident))[0].status,'CONFLICT');
 });
