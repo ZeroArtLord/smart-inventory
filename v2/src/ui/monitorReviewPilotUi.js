@@ -39,6 +39,11 @@ if(root){
 }
 
 function updateLauncher(){
+  // Si VIGÍA bloquea la sesión o cierra la cuenta, ocultar también el piloto.
+  if(document.body.classList.contains('auth-locked') && state.visible){
+    closePilot();
+    return;
+  }
   const title=String(root?.querySelector('h2')?.textContent||'').trim().toLowerCase();
   launcher.hidden=state.visible||document.body.classList.contains('auth-locked')||title!=='comprar / pedir';
 }
