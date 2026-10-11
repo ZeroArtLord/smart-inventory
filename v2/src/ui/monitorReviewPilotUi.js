@@ -2,6 +2,7 @@
 // Requires authenticated V2 app session. NO stock movements or legacy sync writes.
 import { getAll, STORES } from '../storage/database.js';
 import { resolveMonitorPilotSession } from '../replenishment/monitorPilotSession.js';
+import { isMonitorPilotEnabled } from './monitorPilotEnabled.js';
 import { createLocalId } from '../core/ids.js';
 import {
   readPilotPosition, savePilotPosition, restorePilotPosition
@@ -12,6 +13,7 @@ import {
 
 const root=document.getElementById('app');
 let shell=null,launcher=null;
+let pilotEnabled=false;
 const state={
   visible:false,loading:false,page:'home',week:weekMonday(),
   currentCategory:null,cursor:0,session:null,options:null,
@@ -30,6 +32,7 @@ if(root){
   const observer=new MutationObserver(updateLauncher);
   observer.observe(root,{childList:true,subtree:true});
   updateLauncher();
+  isMonitorPilotEnabled().then(enabled=>{pilotEnabled=enabled;updateLauncher();});
 
   launcher.addEventListener('click',()=>openPilot().catch(showError));
   shell.addEventListener('click',event=>handleClick(event).catch(showError));
@@ -45,9 +48,10 @@ function updateLauncher(){
     return;
   }
   const title=String(root?.querySelector('h2')?.textContent||'').trim().toLowerCase();
-  launcher.hidden=state.visible||document.body.classList.contains('auth-locked')||title!=='comprar / pedir';
+  launcher.hidden=!pilotEnabled||state.visible||document.body.classList.contains('auth-locked')||title!=='comprar / pedir';
 }
 async function openPilot(){
+  if(!pilotEnabled)throw new Error('Monitor no está activado en este dispositivo');
   state.visible=true;state.loading=true;state.error='';
   shell.hidden=false;document.body.style.overflow='hidden';updateLauncher();paint();
   try{
