@@ -170,6 +170,19 @@ try{
       workspaceId:'workspace-browser-lab',userId:'worker-browser-lab'
     })).length===0;
   });
+  // Verificar confirmación externa además del cambio de estado local.
+  for(let attempt=0;attempt<80&&stored.size===0;attempt++){
+    await new Promise(resolve=>setTimeout(resolve,75));
+  }
+  const localStatuses=await page.evaluate(async()=>{
+    const mod=await import('/src/documents/monitorSupplyOutbox.js');
+    return (await mod.listMonitorSupplyOutbox({
+      workspaceId:'workspace-browser-lab',userId:'worker-browser-lab'
+    },{includeSynced:true})).map(x=>({id:x.delivery.id,status:x.status}));
+  });
+  console.log('BROWSER_DELIVERY_CONFIRMATION',JSON.stringify({
+    postAttempts,remoteCount:stored.size,localStatuses,immutableId
+  }));
   assert.equal(stored.size,1,'one remote delivery, no duplicate');
   assert.ok(stored.has(immutableId),'retry preserves original document ID');
   const legacyQueue=await page.evaluate(async()=>{
