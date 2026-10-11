@@ -410,3 +410,32 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - Las 13 pruebas nuevas de monitorReviewOffline se ejecutaron exitosamente dentro del total.
 - El nuevo piloto de UI pasó comprobaciones de sintaxis, NO una validación visual real de navegador/telefono ni pruebas end-to-end sobre una instalación real.
 - Rama feature/vigia-monitor-review-v1, PR #23 DRAFT. La rama productiva y el HP no han sido modificados.
+
+
+### [REG-026] 2026-10-11 | Acceso offline para piloto Monitor | IMPLEMENTADO EN RAMA, NO DESPLEGADO
+
+- Origen: el usuario pidió continuar VIGÍA Monitor después de REG-025.
+- Código nuevo: `v2/src/replenishment/monitorPilotSession.js` (commit `7abde344`), 9 pruebas en `v2/test/monitorPilotSession.test.js` (commit `b0aa588e`); integración UI en commit `f387faf8`.
+- Reutiliza la autorización offline de la V2 con límite y validación ya existentes, comprueba el bloqueo de cierre de sesión y que workspace y permisos coincidan; no inventa credenciales ni omite autenticación. Ante acceso vencido o inválido NO abre el piloto.
+- La pantalla piloto cierra su overlay cuando se bloquea la sesión V2 (commit `d3379d8c`).
+- Límite: acceso offline depende de autorización previa válida y de que app base ya haya abierto; no permite iniciar cuenta nueva ni acceso a otro almacén sin red. Un acceso revocado que no se pueda comprobar offline mantiene los límites del mecanismo V2 ya existente.
+- No toca el servicio HP ni cambia datos de producción.
+
+### [REG-027] 2026-10-11 | Núcleo informativo Surtidos Monitor | IMPLEMENTADO EN RAMA, BACKEND PENDIENTE
+
+- Código `v2/src/documents/monitorSupplyModel.js` (commit `e26bfc21`, corrección de precisión `0ce43f75`) con carrito por área/destino, fecha, responsable, productos, cantidades entregadas y unidades, repetición acumulada, edición/borrado de líneas solo en borrador y finalización `RECORDED`.
+- No consulta existencia ni impone mínimo/máximo; no realiza movimientos de stock ni escribe tablas V2. No puede descontar stock negativo porque no maneja existencias.
+- La agrupación de consumo por área, producto y unidad evita sumar por error CAJA con UND o KG. Los resúmenes muestran surtidos realmente marcados como registrados, no documentos borrador.
+- 16 pruebas nuevas en `v2/test/monitorSupplyModel.test.js` (commit `b586721c`): carrito, cantidades positivas, unidades, edición, finalización, inmutabilidad y filtros/reportes.
+- IMPORTANTE: es modelo puro implementado solo en rama, **NO** existe aún API PostgreSQL para persistir estos surtidos ni UI final conectada; no declarar Surtidos Monitor desplegado.
+- Decisiones abiertas: correcciones/anulaciones trazables después de registrar un surtido, persistencia y sincronización sin duplicados; conservar trazabilidad histórica.
+
+### [REG-028] 2026-10-11 | Recuperación exacta de posición y mejoras de interacción | IMPLEMENTADO EN RAMA, VERIFICACIÓN EN PROGRESO
+
+- Código `v2/src/ui/monitorPilotPosition.js` (commit `8ce14339`) y 5 pruebas `v2/test/monitorPilotPosition.test.js` (commit `0ec5141d`).
+- Guarda en IndexedDB SETTINGS última categoría/producto para cada almacén, usuario y semana sin tocar cola de sincronización antigua; al reabrir el piloto recupera posición si el producto/categoría aún existe; si no, recupera opción segura.
+- Cambios en `v2/src/ui/monitorReviewPilotUi.js`: selector de categoría funcional, fondo no refresca campos mientras usuario escribe, el indicador no afirma estar sincronizado si está offline, persistencia de posición tras saltar o avanzar, cierre del piloto cuando la V2 bloquea sesión. HEAD funcional `d3379d8c`.
+- La identidad offline se reutiliza de VIGÍA, sin permitir acceso a usuario no autenticado.
+- Pruebas unitarias previstas junto a suite CI de 604 o más pruebas. Se confirmaron 599/599 en un commit intermedio; la última ejecución de GitHub Actions `38180481830` estaba EN PROGRESO al registrar este texto. El resultado final debe anotarse como entrada posterior (no inferir aprobación).
+- No se han ejecutado pruebas manuales en teléfono o PC físico, ni impresión ESC/POS; el UI responsive requiere aceptación visual del usuario.
+- Todo en rama `feature/vigia-monitor-review-v1` / PR #23 DRAFT, sin merge ni despliegue.
