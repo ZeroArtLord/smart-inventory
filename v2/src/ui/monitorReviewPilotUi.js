@@ -4,6 +4,9 @@ import { getAll, STORES } from '../storage/database.js';
 import { resolveMonitorPilotSession } from '../replenishment/monitorPilotSession.js';
 import { createLocalId } from '../core/ids.js';
 import {
+  readPilotPosition, savePilotPosition, restorePilotPosition
+} from './monitorPilotPosition.js';
+import {
   readMonitorReview, queueMonitorReviewChange, syncMonitorReview
 } from '../replenishment/monitorReviewOffline.js';
 
@@ -54,11 +57,27 @@ async function openPilot(){
     state.categories=categories.filter(c=>c&&c.active!==false&&c.id)
       .sort((a,b)=>String(a.name).localeCompare(String(b.name),'es'));
     state.local=await readMonitorReview(state.options);
+    const savedPosition=await readPilotPosition(state.options);
+    const position=restorePilotPosition(savedPosition,groups());
+    if(position){
+      state.currentCategory=position.categoryId;
+      state.cursor=position.cursor;
+      state.page=position.page;
+    }
     state.loading=false;paint();
     await pushAndRefresh();
   }catch(error){
     state.loading=false;showError(error);
   }
+}
+async function persistPilotCursor(){
+  if(!state.options)return;
+  const group=groups().find(g=>g.id===state.currentCategory);
+  await savePilotPosition(state.options,{
+    categoryId:group?.id||'',
+    productId:group?.products[state.cursor]?.id||'',
+    page:state.page
+  });
 }
 function closePilot(){
   state.visible=false;shell.hidden=true;document.body.style.overflow='';updateLauncher();
@@ -136,6 +155,8 @@ function button(label,action,options={}) {
 }
 function info(){
   const label=state.local?.status==='CONFLICT'?'⚠ Conflictos sin resolver: '+state.local.conflictCount
+    :state.local?.network==='OFFLINE'?'● Sin Internet · datos de este dispositivo'
+    :state.local?.network==='RETRY_LATER'?'● Servidor no disponible; datos locales intactos'
     :state.local?.status==='LOCAL'?'● Pendiente de sincronizar: '+state.local.pendingCount
     :state.local?'✓ Sincronizado':'Sin iniciar';
   return '<span class="mp-chip">'+esc(label)+'</span>';
@@ -306,7 +327,7 @@ async function handleClick(event){
     state.currentCategory=node.dataset.mpCategory;
     const group=groups().find(x=>x.id===state.currentCategory);
     state.cursor=Math.max(0,group?.products.findIndex(p=>!findRow(p.id))??0);
-    state.page='review';state.message='';paint();return;
+    state.page='review';state.message='';await persistPilotCursor();paint();return;
   }
   if(action==='jump'){
     const id=node.dataset.mpId;
@@ -315,14 +336,14 @@ async function handleClick(event){
     const group=groups().find(x=>x.products.some(x=>x.id===id));
     state.currentCategory=group.id;
     state.cursor=group.products.findIndex(x=>x.id===id);
-    state.page='review';paint();return;
+    state.page='review';await persistPilotCursor();paint();return;
   }
   if(action==='previous'||action==='next'){
     const group=groups().find(x=>x.id===state.currentCategory);
     if(group){
       state.cursor=Math.max(0,Math.min(group.products.length-1,state.cursor+(action==='previous'?-1:1)));
     }
-    paint();return;
+    await persistPilotCursor();paint();return;
   }
   if(action==='choose'){
     const group=groups().find(x=>x.id===state.currentCategory);
@@ -334,7 +355,7 @@ async function handleClick(event){
       kind:'PRODUCT',itemId:p.id,decision:node.dataset.mpChoice,
       quantity,unit,notes
     });
-    moveToNextUndecided();paint();return;
+    moveToNextUndecided();await persistPilotCursor();paint();return;
   }
   if(action==='save-selection'){
     const item=selectedItems().find(x=>x.itemKey===node.dataset.mpItem);
@@ -358,7 +379,7 @@ async function handleChange(event){
   if(!chosen)return;
   state.currentCategory=chosen.id;
   state.cursor=Math.max(0,chosen.products.findIndex(product=>!findRow(product.id)));
-  paint();
+  await persistPilotCursor();paint();
 }
 async function handleSubmit(event){
   if(event.target?.id!=='mpExtraForm')return;
