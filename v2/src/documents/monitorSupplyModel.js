@@ -152,7 +152,9 @@ function positive(value){
   if(value==null||value===''||!Number.isFinite(amount)||amount<=0||amount>1e9){
     throw new Error('La cantidad entregada debe ser positiva');
   }
-  return roundPrecision(amount);
+  const rounded=roundPrecision(amount);
+  if(rounded<=0)throw new Error('La cantidad entregada debe ser positiva con hasta 6 decimales');
+  return rounded;
 }
 function roundPrecision(value){return Math.round((value+Number.EPSILON)*1e6)/1e6;}
 function required(value,label){
