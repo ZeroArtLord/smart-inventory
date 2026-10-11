@@ -122,6 +122,7 @@ const APP_SHELL = [
   './css/monitor-pilot.css',
   './css/monitor-supply-pilot.css',
   './src/ui/monitorReviewPilotUi.js',
+  './src/ui/monitorPilotEnabled.js',
   './src/ui/monitorSupplyPilotUi.js',
   './src/ui/monitorPilotPosition.js',
   './src/replenishment/monitorPilotSession.js',
