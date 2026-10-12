@@ -700,3 +700,21 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - GitHub Actions run `38269209519` sobre commit `e8cdedac21cf372261049543644ec2b1d68cfa9f`: los cinco trabajos `windows-snapshot-parse`, `browser-pilot`, `server-integration`, `server-syntax` y `client-tests` terminaron con conclusion `success`.
 - El chequeo `server-syntax` incluye `node --check ../../docs/VIGIA/VIGIA_HP_MONITOR_PREDEPLOY_READONLY.cjs`. Esto prueba sintaxis, NO su ejecucion Windows real ni accesibilidad a bases/backup de HP.
 - Pendiente ejecutar el preflight solo lectura en HP y recibir `VIGIA_MONITOR_PREFLIGHT_READONLY_PASS`. Aun no se han instalado los modulos Monitor ni aplicado migraciones 020/021.
+
+
+### [REG-052] 2026-10-12 | Último preflight del HP real: APROBADO COMPLETO | PREFLIGHT PASS / PRODUCCIÓN SIN CAMBIOS
+
+- Usuario ejecutó en el HP `docs/VIGIA/VIGIA_HP_MONITOR_PREDEPLOY_READONLY.cjs` y entregó la salida `VIGIA_MONITOR_PREFLIGHT_READONLY_PASS`.
+- Todas las pruebas reportaron [OK]: archivos de aplicación; Git HEAD local `067eb9f94e14` con 0 archivos rastreados modificados; dump PostgreSQL disponible e idéntico al SHA256 verificado, longitud 1.893.531 bytes; snapshot App/Service existente; SHA256 de `v2/index.html`, `v2/sw.js`, `v2/server/src/app.js`, `v2/server/.env` igual al snapshot.
+- Base productiva verificada: `smart_inventory` como rol `smart_inventory`; permiso CREATE en public true; no existen tablas Monitor; migraciones 001-019 exactas, ninguna faltante/adicional y `020_monitor_weekly_reviews.sql` y `021_monitor_supply_deliveries.sql` sin aplicar.
+- Datos productivos vivos al momento de preflight: products=494, documents=132, movements=1019. Son conteos verificados en ese momento y pueden cambiar después por operaciones normales.
+- La restauración completa del respaldo protegido ya había sido validada en la etapa REG-050; PC y móvil quedaron sin conflictos locales según usuario tras el reset voluntario del móvil.
+- El informe precisa: NO se instaló ni migró VIGÍA Monitor en HP, NO hubo reinicio, ni actualizaciones de servicio; se requiere autorización explícita de ventana de intervención.
+
+### [REG-053] 2026-10-12 | Runbook para despliegue de Monitor en la misma instalación HP | PREPARADO EN GITHUB / PENDIENTE APROBACIÓN
+
+- Archivo de trabajo: `docs/VIGIA/VIGIA_HP_MONITOR_DEPLOY_RUNBOOK.md` en rama `feature/vigia-monitor-review-v1`, commit `3afa6da00daa7b50b35f613214316794948b5166`. Es una guía de operaciones, NO se ha ejecutado.
+- GitHub compare desde `067eb9f94e1441836c67f26c97f0c34a5e4745b8` hasta candidato Monitor probado `e8cdedac21cf372261049543644ec2b1d68cfa9f`: estado ahead (fast-forward), 98 commits delante y cero detrás. No hubo cambios a v2/server/package.json. CI de candidato en run `38269209519`: cinco jobs success.
+- Plan aprobado a nivel técnico (NO es aún autorización de ejecución): revisar colas y cambios antes de ventana; fetch sin tocar runtime; nuevo backup online sin purga tras parar escrituras; detener SOLAMENTE SmartInventoryV2 durante una ventana convenida; fast-forward al commit fijo; migraciones aditivas 020/021; preflight; iniciar servicio; /health y /ready correctos; monitorPilotEnabled=false al inicio; validar V2 original en PC/teléfono; **separadamente** activación por usuario permitido.
+- Rollback planificado: restaurar código anterior, con servicio parado y verificación, sin borrar tablas 020/021 ni revertir DB productiva a backup (para no perder escrituras); conservar dump, snapshot, auditoría, cola y demás datos. No usar git clean.
+- Control pendiente: pedir consentimiento expreso del usuario para **detener/reiniciar SmartInventoryV2 y aplicar migraciones 020/021 en la base productiva**. No ejecutar estas acciones antes del OK y de revisar el resultado de staging/fetch.
