@@ -125,6 +125,9 @@ jobs:
       - name: Verify PostgreSQL role probe syntax
         run: node --check ../../docs/VIGIA/VIGIA_HP_PG_ROLE_READONLY.cjs
 
+      - name: Verify separate-admin restore helper syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_RESTORE_ADMIN_SAFE.cjs
+
       - name: Check live Monitor pilot authorization defaults
         run: node scripts/monitorPilotGateCheck.js
 
