@@ -96,6 +96,9 @@ jobs:
       - name: Check server JavaScript syntax
         run: find src scripts -name "*.js" -print0 | xargs -0 -n1 node --check
 
+      - name: Verify safe manual-backup helper syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_BACKUP_MANUAL_SAFE.cjs
+
       - name: Check live Monitor pilot authorization defaults
         run: node scripts/monitorPilotGateCheck.js
 
