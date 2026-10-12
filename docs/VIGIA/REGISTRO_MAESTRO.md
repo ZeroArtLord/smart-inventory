@@ -645,3 +645,11 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - Sintaxis incluida en CI en commit `a331863bcdbf7b697c1988ede5c7bc30dc22b3eb`; run `38265172617` iniciado, pendiente de confirmar resultado final al registrar la entrada.
 - Riesgo operativo: ante fallo de conexión o de `pg_restore` no hay confirmación de restauración y por tanto NO se despliega VIGÍA; si la limpieza de DB temporal fallara, NO borrar nada manualmente sin revisar. No usar ni compartir la credencial administradora del chat.
 - Próximo paso: cuando CI cierre correctamente, ejecutar la herramienta de comprobación real con contraseña introducida en consola del HP; solicitar solo la salida sin credenciales ni `.env`. Si supera la restauración, planificar migraciones aditivas y despliegue controlado con autorización puntual sobre el HP actual, usando snapshots REG-039/041 como protección.
+
+
+### [REG-046] 2026-10-12 | Verificador con administrador independiente: CI aprobada | AUN NO EJECUTADO EN HP
+
+- GitHub Actions `38265172617`, commit de trabajo `a331863bcdbf7b697c1988ede5c7bc30dc22b3eb`: `client-tests SUCCESS`, `windows-snapshot-parse SUCCESS`, `server-syntax SUCCESS`, `server-integration SUCCESS`, `browser-pilot SUCCESS`.
+- Se verificó sintaxis de `docs/VIGIA/VIGIA_HP_RESTORE_ADMIN_SAFE.cjs` junto con otras pruebas automatizadas. No significa restauración productiva: ejecución Windows/HP con credencial administrativa todavía pendiente.
+- Autorización y limites: rol `postgres` se usará únicamente para crear/llenar/comprobar/eliminar una DB efímera del mismo PostgreSQL. No guardar contraseña en GitHub o chats. Capturarla oculta en PowerShell y eliminar variable del entorno al acabar. Cambiar contraseña administrativa previamente compartida tan pronto como sea viable, coordinando dependencias externas.
+- No alterar el rol `smart_inventory`, `smart_inventory` productiva, instalación HP o PWA. Exigir salida `VIGIA_RESTORE_ADMIN_PASS` antes de plantear migraciones.
