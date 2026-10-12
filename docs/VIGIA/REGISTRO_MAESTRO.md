@@ -564,3 +564,10 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - **Verificación en CI incorporada:** \`.github/workflows/v2-tests.yml\` contiene \`node --check ../../docs/VIGIA/VIGIA_HP_BACKUP_MANUAL_SAFE.cjs\`, commit \`2c3a1d25fd1c333f2789799c6aefc93481fe96f0\`. No inferir aprobación del job hasta consultar el run \`38256870212\`.
 - **Estado real:** script manual creado/commiteado, **NO ejecutado en HP todavía**, no se creó nueva copia, no se probaron restauraciones; producción V2 sigue funcionando sin cambios. La próxima orden será ejecutar la copia manual y mostrar SOLO la salida textual y comprobante SHA, NO adjuntar \`.dump\` ni \`.env\` ni claves.
 - **Después:** comprobar estado de colas/conflictos en teléfonos y definir ventana corta para publicación controlada del piloto sobre la misma instalación real, con backup de archivos y rollback, antes de cualquier migración.
+
+
+### [REG-038] 2026-10-12 | Comprobación automática de helper para respaldo manual | CI OK / NO EJECUTADO EN HP
+
+- GitHub Actions \`38256870212\`, HEAD \`2c3a1d25fd1c333f2789799c6aefc93481fe96f0\` de la rama \`feature/vigia-monitor-review-v1\`: \`server-syntax SUCCESS\`, \`server-integration SUCCESS\`, \`client-tests SUCCESS\`, \`browser-pilot SUCCESS\`.
+- El paso de \`server-syntax\` incluye \`node --check ../../docs/VIGIA/VIGIA_HP_BACKUP_MANUAL_SAFE.cjs\`, por lo que se confirmó sintaxis JavaScript. **No prueba ejecutar pg_dump en Windows ni restaurar los bytes del archivo.**
+- Mantener ejecución humana explícita del backup manual de REG-037 en servidor, verificar log y SHA256 y conservar todas las copias anteriores. NO usar el script de backups con retención antigua y NO apagar servicio ni ejecutar migraciones hasta siguientes controles.
