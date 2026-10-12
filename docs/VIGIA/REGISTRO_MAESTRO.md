@@ -624,3 +624,13 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - La herramienta exige SHA256 exacto del dump protegido REG-039, crea base temporal aleatoria en el MISMO servicio PostgreSQL, restaura con pg_restore --exit-on-error --single-transaction, valida tablas y registros; cierra conexiones y elimina exclusivamente la base creada por la prueba. No altera smart_inventory ni el servicio VIGIA; si no hay permiso CREATEDB se detiene sin ampliar privilegios.
 - El chequeo sintactico de la nueva herramienta se incorporo al CI en commit `24b0af18f86cd97541f7ef04065a2f7b577c0379`. No declarar la restauracion verificada sin salida `VIGIA_RESTORE_REAL_PASS` del propio HP.
 - Restan confirmacion del resultado real, ventana breve de reinicio autorizada y despliegue limitado por usuario. Hasta entonces no aplicar migraciones ni publicar nuevos scripts PWA.
+
+
+### [REG-044] 2026-10-12 | Restauración en base temporal bloqueada por CREATEDB | NO RESTAURADO / NO MODIFICADO
+
+- El usuario ejecutó `VIGIA_HP_RESTORE_VALIDATE_SAFE.cjs` en HP. Etapa [1/5] SHA256 del dump pasó, [2/5] conexión administrativa a base `postgres` con credenciales de app pasó, [3/5] `CREATE DATABASE` fue RECHAZADO: `se ha denegado el permiso para crear la base de datos`.
+- El script informó `VIGIA_RESTORE_REAL_FAIL`; no se llegó a `pg_restore`, no se verificaron tablas ni datos restaurados y no se confirmó ninguna base temporal creada. No inferir respaldo dañado: el bloqueo es de privilegios de la cuenta actual.
+- No activar Monitor, no hacer migraciones, no reiniciar servicio ni dar a la cuenta de VIGÍA `CREATEDB` o `SUPERUSER` para eludir este control.
+- Recuperación segura propuesta: consultar rol de aplicación en modo SOLO LECTURA y confirmar disponibilidad de un administrador PostgreSQL independiente; si existe acceso autorizado, crear exclusivamente una base efímera para restauración con ese administrador sin cambiar roles de aplicación; restaurar y verificar con el mínimo acceso y eliminar únicamente esa base tras la prueba. Nunca realizar `DROP` o `ALTER ROLE` sobre la base/usuario de producción.
+- Herramienta nueva en rama `feature/vigia-monitor-review-v1`: `docs/VIGIA/VIGIA_HP_PG_ROLE_READONLY.cjs`, commit `1631f71d17049d1d01d443e482c624fa1a2a2e55`. Lee rol actual, permisos `rolcreatedb`/`rolsuper`, existencia del administrador `postgres` y recuento de bases temporales por prefijo; no modifica base ni imprime secretos.
+- Comprobación de sintaxis adicionada en CI con commit `1df9aa0fefa0cd2ad90559bc2a578e5561213342`; pendiente recibir resultado de ejecución y salida del diagnóstico del HP. Usuario afirmó que el teléfono quedó sin conflictos (REG-043).
