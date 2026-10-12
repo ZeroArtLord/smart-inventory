@@ -664,3 +664,12 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - **Seguridad:** jamás almacenar, citar o copiar en scripts la posible contraseña compartida en el chat; recomendar rotación y revisar dependencias antes de cambiarla. No modificar `pg_hba.conf`, no desactivar autenticación ni conceder CREATEDB/SUPERUSER al rol aplicativo.
 - **Siguiente diagnóstico seguro:** contrastar autenticación con `psql.exe -W` directamente, usando HOST y PORT derivados sin exponer credenciales del `DATABASE_URL` real. Consultar exclusivamente `SELECT current_user,current_database()`. Si también rechaza, determinar/recuperar por la vía administrativa autorizada las credenciales vigentes sin tocar la cuenta del servicio; si acepta, investigar diferencia entre psql y cliente Node (codificación/traspaso de contraseña).
 - Mientras falte `VIGIA_RESTORE_ADMIN_PASS`, NO ejecutar migraciones 020/021, `git pull` productivo, reiniciar servicio ni activar el piloto.
+
+
+### [REG-048] 2026-10-12 | Usuario prefiere rotar credenciales administrativas de PostgreSQL | PENDIENTE / SIN CAMBIOS
+
+- El usuario desea cambiar contraseñas en vez de montar otra instancia para comprobar el respaldo de PostgreSQL. Priorizar solo la del rol administrativo `postgres`; **no cambiar la del rol operativo `smart_inventory`** sin revisar todas sus dependencias y la configuracion de la aplicacion.
+- El usuario no conoce una contrasena valida de `postgres` y el intento anterior fue rechazado; rol aplicativo no tiene CREATEDB ni superusuario.
+- Primer paso seguro: comprobar si pgAdmin 4 dispone de una sesion administradora `postgres` ya autenticada (consulta `SELECT current_user;`). Si existe, usar Properties > Definition > Password del rol `postgres` para establecer una clave nueva directamente en el HP, sin publicarla. Si no hay sesion administrativa, planificar recuperacion local autorizada en ventana atendida, con procedimiento y rollback revisados; no debilitar autenticacion ni reiniciar de forma improvisada.
+- La posible contrasena compartida en el chat se considera expuesta: no copiarla en script ni registro; generar una nueva clave unica y rotarla si actualmente es valida.
+- Produccion intacta: no se modificaron servicios, base, roles, configuracion de autenticacion ni contrasenas; restauracion real del dump sigue pendiente.
