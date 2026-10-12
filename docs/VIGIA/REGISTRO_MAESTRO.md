@@ -613,3 +613,14 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - **Procedimiento acordado:** limpiar exclusivamente los datos del sitio/app VIGÍA en ese teléfono, no la base productiva, no datos de PC, no cachés de otros navegadores ni del teléfono completo. Evitar pulsar `Usar servidor`, `Reaplicar mi cambio` o reintentar/reproducir en masa esos conflictos. Tras reset, iniciar sesión en el mismo almacén y verificar 0 pendientes / 0 conflictos y estado del catálogo; si no coincide, detener el despliegue e investigar.
 - **Precaución:** si VIGÍA se instaló como PWA de Chrome, borrar los datos del sitio concreto (no todos los datos de Chrome). Si se instaló como aplicación independiente, borrar solo almacenamiento de esa app, nunca datos del navegador completo. Confirmar origen/dominio antes de borrar.
 - **No ejecutado por el asistente:** ningún borrado en teléfono; ni despliegue/migración/reinicio de HP. El snapshot de aplicación REG-041 y dump REG-039 permanecen; la prueba completa de restauración PostgreSQL sigue pendiente.
+
+
+### [REG-043] 2026-10-12 | Reinicio local del telefono confirmado por usuario; restauracion real preparada | DATOS MOVILES LIMPIOS, HP INTACTO
+
+- El usuario confirmo expresamente: "listo sin conflictos ni nada", tras optar por borrar los datos locales de VIGIA solo en su telefono Android. Se registra como confirmacion del usuario, no como lectura remota independiente.
+- En las capturas anteriores el telefono reportaba 165 cambios pendientes y 165 conflictos. Esos registros locales se consideran voluntariamente descartados por el usuario. PC presentaba 0 y no se modifico.
+- No inferir que las 165 operaciones estuvieran guardadas en PostgreSQL. Mantener catalogo y movimientos del servidor como fuente de verdad sin reintroducir eventos antiguos.
+- Se preparo herramienta `docs/VIGIA/VIGIA_HP_RESTORE_VALIDATE_SAFE.cjs` en rama aislada `feature/vigia-monitor-review-v1` commit `2fe650eaccf178f591a09bbc730d8a3fe58a0961`. Aun NO ejecutada en HP.
+- La herramienta exige SHA256 exacto del dump protegido REG-039, crea base temporal aleatoria en el MISMO servicio PostgreSQL, restaura con pg_restore --exit-on-error --single-transaction, valida tablas y registros; cierra conexiones y elimina exclusivamente la base creada por la prueba. No altera smart_inventory ni el servicio VIGIA; si no hay permiso CREATEDB se detiene sin ampliar privilegios.
+- El chequeo sintactico de la nueva herramienta se incorporo al CI en commit `24b0af18f86cd97541f7ef04065a2f7b577c0379`. No declarar la restauracion verificada sin salida `VIGIA_RESTORE_REAL_PASS` del propio HP.
+- Restan confirmacion del resultado real, ventana breve de reinicio autorizada y despliegue limitado por usuario. Hasta entonces no aplicar migraciones ni publicar nuevos scripts PWA.
