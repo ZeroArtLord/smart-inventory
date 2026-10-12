@@ -103,6 +103,7 @@ async function main(){
     created=true;
     console.log('[4/6] Restaurando el dump solo en '+SCRATCH+' ...');
     const environment={...process.env,PGPASSWORD:adminPassword,PGCONNECT_TIMEOUT:'12'};
+    delete environment.VIGIA_PG_ADMIN_PASSWORD;
     const sslmode=connection.searchParams.get('sslmode');
     if(sslmode)environment.PGSSLMODE=sslmode;
     await restoreArchive([
