@@ -571,3 +571,21 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - GitHub Actions \`38256870212\`, HEAD \`2c3a1d25fd1c333f2789799c6aefc93481fe96f0\` de la rama \`feature/vigia-monitor-review-v1\`: \`server-syntax SUCCESS\`, \`server-integration SUCCESS\`, \`client-tests SUCCESS\`, \`browser-pilot SUCCESS\`.
 - El paso de \`server-syntax\` incluye \`node --check ../../docs/VIGIA/VIGIA_HP_BACKUP_MANUAL_SAFE.cjs\`, por lo que se confirmó sintaxis JavaScript. **No prueba ejecutar pg_dump en Windows ni restaurar los bytes del archivo.**
 - Mantener ejecución humana explícita del backup manual de REG-037 en servidor, verificar log y SHA256 y conservar todas las copias anteriores. NO usar el script de backups con retención antigua y NO apagar servicio ni ejecutar migraciones hasta siguientes controles.
+
+
+### [REG-039] 2026-10-12 | Respaldo manual PostgreSQL ejecutado en HP | ARCHIVO COMPROBADO, RESTAURACION PENDIENTE
+
+- El usuario ejecutó el proceso de copia en el servidor SERVIDOR sin parar VIGÍA.
+- Archivo generado: F:\SmartInventoryBackups\VIGIA_MANUAL_PREDEPLOY\vigia_manual_predeploy_2026-10-12T13-40-02-012Z.dump
+- Tamaño: 1893531 bytes. SHA256: 3b83bd345a0128810d44e50c154162b2fc5e9fff79c95ec697dbdb33a4f0a0e4.
+- Las fases pg_dump, pg_restore --list y lectura/descompresión completa acabaron OK. El recibo declara que no se eliminaron copias anteriores y que no se modificó la base original.
+- La restauración completa en otra base NO se ha probado. No inferir que el respaldo es plenamente restaurable.
+- Prohibido borrar archivos o actualizar la PWA hasta revisar operaciones pendientes de dispositivos móviles.
+
+### [REG-040] 2026-10-12 | Snapshot de instalación actual, herramienta preparada | CODIGO VERIFICADO EN CI, NO EJECUTADO EN HP
+
+- Script agregado a rama feature/vigia-monitor-review-v1: docs/VIGIA/VIGIA_HP_APP_SNAPSHOT_SAFE.ps1, commit 4df757e4c8fea3a573118cc542d4c9cec7acd230.
+- Copia los directorios App y Service a una carpeta nueva en F:, sin detener el servicio, modificar PostgreSQL ni eliminar archivos existentes.
+- Comprueba hashes de archivos críticos y produce recibo en el propio servidor. La copia es privada y no debe compartirse.
+- CI run 38258025862: los trabajos client-tests, windows-snapshot-parse, server-syntax, browser-pilot y server-integration terminaron SUCCESS.
+- El script no se ha ejecutado aún en el servidor. Próximo paso: ejecutar snapshot y compartir solamente el texto de resultados; después comprobar operaciones de cola pendientes y definir despliegue controlado.
