@@ -589,3 +589,16 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - Comprueba hashes de archivos críticos y produce recibo en el propio servidor. La copia es privada y no debe compartirse.
 - CI run 38258025862: los trabajos client-tests, windows-snapshot-parse, server-syntax, browser-pilot y server-integration terminaron SUCCESS.
 - El script no se ha ejecutado aún en el servidor. Próximo paso: ejecutar snapshot y compartir solamente el texto de resultados; después comprobar operaciones de cola pendientes y definir despliegue controlado.
+
+
+### [REG-041] 2026-10-12 | Snapshot real de archivos HP realizado y verificado | OK / PENDIENTES RESTORE Y COLAS
+
+- Usuario ejecutó en el servidor real el script `docs/VIGIA/VIGIA_HP_APP_SNAPSHOT_SAFE.ps1`; salida `SNAPSHOT_OK`.
+- `robocopy` copió `C:\SmartInventory\App` y `C:\SmartInventory\Service`; ambos códigos de salida fueron `1` (archivos copiados correctamente).
+- SHA-256 de archivos críticos: `app.js`, `index.html`, `sw.js`, `.env` y wrapper del servicio coincidieron con los orígenes, conforme a salida del script.
+- Commit respaldado: `067eb9f94e1441836c67f26c97f0c34a5e4745b8`.
+- Snapshot privado: `F:\SmartInventoryBackups\VIGIA_MANUAL_PREDEPLOY\HP_APP_SNAPSHOT_20261012_095434_67ae0e91`; comprobante `VIGIA_SNAPSHOT_RECEIPT.txt` en esa carpeta. **No compartir el snapshot: contiene configuración privada en .env.**
+- Junto con el dump de PostgreSQL registrado en REG-039, existen copias de aplicación/servicio y DB anteriores al despliegue nuevo. **Aun NO se ha ejecutado prueba de restauración completa PostgreSQL**; checksum/descompresión no equivalen a restore. Puede haber archivos cambiantes durante una copia en caliente.
+- El script no detuvo ni reinició `SmartInventoryV2`; no se aplicaron migraciones y el servidor de producción sigue apuntando al commit anterior según el resultado aportado.
+- **Próximo control obligatorio antes de actualizar JS/PWA:** obtener del teléfono/dispositivos las cifras reales de `Configuración > Sincronización > Trabajo pendiente` y de `Conflictos de sincronización`. No pulsar `Usar servidor`, `Reaplicar mi cambio`, ni limpiar datos/cache; los ~103 conflictos pasados no equivalen a un conteo actual verificado.
+- Después: confirmar recuperación completa del dump en DB temporal solo para restauración (no un segundo VIGÍA en uso), con alcance/limpieza explícitos y seguro para DB productiva. Posterior instalación versionada, feature flag con usuario permitido y aprobación puntual de reinicio; no activar todavía.
