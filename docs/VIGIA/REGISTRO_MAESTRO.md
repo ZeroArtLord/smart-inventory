@@ -693,3 +693,10 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - **Siguiente fase:** antes de tocar producción, ejecutar `docs/VIGIA/VIGIA_HP_MONITOR_PREDEPLOY_READONLY.cjs` en rama `feature/vigia-monitor-review-v1`, commit `3a5bfc802d540ca8d36539b14e57633afd78d926`. Comprueba SHA del dump, archivos de snapshot, ausencia de cambios en worktree, esquema/migraciones 001-019 y 020/021 pendientes, roles y permisos de creación de tablas; hace SELECTs, no escritura. Script incorporado para chequeo sintáctico a CI en commit `e8cdedac21cf372261049543644ec2b1d68cfa9f`.
 - **Gate de producción:** tras preflight correcto, acordar ventana corta de servicio y autorización expresa para desplegar código/migraciones sobre HP con bandera `MONITOR_PILOT_ENABLED=false` inicialmente y `MONITOR_PILOT_USER_IDS` solamente al activar; preparar rollback y controlar versiones, no borrar colas ni inventario.
 - **Seguridad:** la contraseña admin expuesta en chat debe rotarse en un momento seguro; NO volver a repetir ni registrar su valor. El usuario decidió posponer el cambio.
+
+
+### [REG-051] 2026-10-12 | Verificador predeploy de solo lectura CI OK | SIN EJECUCION EN HP
+
+- GitHub Actions run `38269209519` sobre commit `e8cdedac21cf372261049543644ec2b1d68cfa9f`: los cinco trabajos `windows-snapshot-parse`, `browser-pilot`, `server-integration`, `server-syntax` y `client-tests` terminaron con conclusion `success`.
+- El chequeo `server-syntax` incluye `node --check ../../docs/VIGIA/VIGIA_HP_MONITOR_PREDEPLOY_READONLY.cjs`. Esto prueba sintaxis, NO su ejecucion Windows real ni accesibilidad a bases/backup de HP.
+- Pendiente ejecutar el preflight solo lectura en HP y recibir `VIGIA_MONITOR_PREFLIGHT_READONLY_PASS`. Aun no se han instalado los modulos Monitor ni aplicado migraciones 020/021.
