@@ -119,6 +119,9 @@ jobs:
       - name: Verify safe manual-backup helper syntax
         run: node --check ../../docs/VIGIA/VIGIA_HP_BACKUP_MANUAL_SAFE.cjs
 
+      - name: Verify temporary restore checker syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_RESTORE_VALIDATE_SAFE.cjs
+
       - name: Check live Monitor pilot authorization defaults
         run: node scripts/monitorPilotGateCheck.js
 
