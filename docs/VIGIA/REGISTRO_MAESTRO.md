@@ -653,3 +653,14 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - Se verificó sintaxis de `docs/VIGIA/VIGIA_HP_RESTORE_ADMIN_SAFE.cjs` junto con otras pruebas automatizadas. No significa restauración productiva: ejecución Windows/HP con credencial administrativa todavía pendiente.
 - Autorización y limites: rol `postgres` se usará únicamente para crear/llenar/comprobar/eliminar una DB efímera del mismo PostgreSQL. No guardar contraseña en GitHub o chats. Capturarla oculta en PowerShell y eliminar variable del entorno al acabar. Cambiar contraseña administrativa previamente compartida tan pronto como sea viable, coordinando dependencias externas.
 - No alterar el rol `smart_inventory`, `smart_inventory` productiva, instalación HP o PWA. Exigir salida `VIGIA_RESTORE_ADMIN_PASS` antes de plantear migraciones.
+
+
+### [REG-047] 2026-10-12 | Administrador postgres: prueba de acceso rechazada | RESTORE NO EJECUTADO, PRODUCCIÓN INTACTA
+
+- Usuario ejecutó `VIGIA_HP_RESTORE_ADMIN_SAFE.cjs` en HP con contraseña introducida de forma oculta.
+- Etapas observadas: `[1/6] Comparando SHA256` completada; `[2/6] Autenticando administrador en la base postgres` falló con error de autenticación por contraseña, `VIGIA_RESTORE_ADMIN_FAIL`.
+- No se alcanzó `[3/6] CREATE DATABASE`, no se intentó `pg_restore`, no hay comprobación de restauración completa. Los respaldos manuales REG-039 y snapshot REG-041 permanecen.
+- No concluir que el dump está defectuoso; el rol `postgres` existe (REG-045), pero eso no demuestra que la contraseña probada sea correcta.
+- **Seguridad:** jamás almacenar, citar o copiar en scripts la posible contraseña compartida en el chat; recomendar rotación y revisar dependencias antes de cambiarla. No modificar `pg_hba.conf`, no desactivar autenticación ni conceder CREATEDB/SUPERUSER al rol aplicativo.
+- **Siguiente diagnóstico seguro:** contrastar autenticación con `psql.exe -W` directamente, usando HOST y PORT derivados sin exponer credenciales del `DATABASE_URL` real. Consultar exclusivamente `SELECT current_user,current_database()`. Si también rechaza, determinar/recuperar por la vía administrativa autorizada las credenciales vigentes sin tocar la cuenta del servicio; si acepta, investigar diferencia entre psql y cliente Node (codificación/traspaso de contraseña).
+- Mientras falte `VIGIA_RESTORE_ADMIN_PASS`, NO ejecutar migraciones 020/021, `git pull` productivo, reiniciar servicio ni activar el piloto.
