@@ -122,6 +122,9 @@ jobs:
       - name: Verify temporary restore checker syntax
         run: node --check ../../docs/VIGIA/VIGIA_HP_RESTORE_VALIDATE_SAFE.cjs
 
+      - name: Verify PostgreSQL role probe syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_PG_ROLE_READONLY.cjs
+
       - name: Check live Monitor pilot authorization defaults
         run: node scripts/monitorPilotGateCheck.js
 
