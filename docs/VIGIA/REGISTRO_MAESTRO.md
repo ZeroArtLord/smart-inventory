@@ -673,3 +673,12 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - Primer paso seguro: comprobar si pgAdmin 4 dispone de una sesion administradora `postgres` ya autenticada (consulta `SELECT current_user;`). Si existe, usar Properties > Definition > Password del rol `postgres` para establecer una clave nueva directamente en el HP, sin publicarla. Si no hay sesion administrativa, planificar recuperacion local autorizada en ventana atendida, con procedimiento y rollback revisados; no debilitar autenticacion ni reiniciar de forma improvisada.
 - La posible contrasena compartida en el chat se considera expuesta: no copiarla en script ni registro; generar una nueva clave unica y rotarla si actualmente es valida.
 - Produccion intacta: no se modificaron servicios, base, roles, configuracion de autenticacion ni contrasenas; restauracion real del dump sigue pendiente.
+
+
+### [REG-049] 2026-10-12 | Contraseña de postgres recuperada; usuario decide no rotarla por ahora | DECISION EXPLICITA / RESTORE PENDIENTE
+
+- El usuario indica que encontró una contraseña para el rol administrativo `postgres`. **No registrar ni repetir su valor**, ya que fue compartido en el chat y es débil.
+- El usuario descarta expresamente el cambio de contraseñas por ahora y solicita continuar utilizando la clave actual. No modificar las credenciales de `postgres` ni de `smart_inventory`. Recomendar rotación posterior por exposición y baja complejidad, sin bloquear la validación que el usuario desea.
+- La nueva clave candidata aún no está verificada por conexión de PostgreSQL. Próximo paso: ejecutar en el HP el verificador existente `docs/VIGIA/VIGIA_HP_RESTORE_ADMIN_SAFE.cjs` anclado al commit `cfbb1727d301ae7d0787fa6656c297f13fbf0ab5`; introducir clave en terminal oculta, nunca en código o chat.
+- La prueba de restauración usa SHA256 previamente verificado, crea exclusivamente una base efímera con nombre aleatorio y usa rol administrador por separado, restaura/comprueba y elimina esa base. Hasta observar `VIGIA_RESTORE_ADMIN_PASS` no concluir que se haya restaurado ni desplegar/migrar producción.
+- Los respaldos manuales de PostgreSQL y aplicación, así como el teléfono reiniciado sin conflictos según usuario, están documentados en REG-039/041/043.
