@@ -4,6 +4,7 @@ import { getAll, STORES } from '../storage/database.js';
 import { resolveMonitorPilotSession } from '../replenishment/monitorPilotSession.js';
 import { isMonitorPilotEnabled } from './monitorPilotEnabled.js';
 import { createLocalId } from '../core/ids.js';
+import { renderMonitorTicketSet } from './monitorTicketTemplate.js';
 import {
   readPilotPosition, savePilotPosition, restorePilotPosition
 } from './monitorPilotPosition.js';
@@ -283,27 +284,12 @@ function renderExtras(){
     '<button class="mp-button mp-primary" style="margin-top:15px" type="submit">+ Guardar extra</button></form>');
 }
 function renderLists(){
-  const all=selectedItems();
-  const buy=all.filter(x=>x.decision==='BUY'),order=all.filter(x=>x.decision==='ORDER');
-  const ticket=(label,copy,items)=>{
-    const categories=new Map();
-    for(const item of items){
-      const group=categories.get(item.category)||[];
-      group.push(item);categories.set(item.category,group);
-    }
-    return '<div class="mp-ticket"><h3>VIGÍA MONITOR<br>'+esc(label)+'</h3>'+
-      '<div style="text-align:center">'+esc(copy)+'<br>Semana '+esc(state.week)+'</div><hr>'+
-      ([...categories.entries()].map(([category,rows])=>'<strong>'+esc(category)+'</strong>'+
-        rows.map(item=>'<div class="mp-ticket-line"><span>'+esc(item.name)+'</span><b>'+
-          esc(item.quantity==null?'________':item.quantity)+' '+esc(item.unit||'')+'</b></div>').join('')).join('')||
-        '<p>Sin artículos</p>')+'<hr>Firma: ______________</div>';
-  };
+  const rows = selectedItems();
   return panel('Mis listas semanales',
-    '<p class="mp-muted mp-no-print">Impresión de prueba del navegador. La impresora ESC/POS real se integrará tras validar el piloto. Imprimir no cierra la revisión.</p>'+
-    '<div class="mp-inline mp-no-print">'+button('Imprimir vista previa','print',{cls:'mp-button mp-primary'})+'</div>'+
-    '<div class="mp-grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">'+
-    ticket('LISTA DE COMPRAS','COPIA CHÓFER',buy)+ticket('LISTA DE COMPRAS','COPIA DEPÓSITO',buy)+
-    ticket('LISTA DE PEDIDOS','COPIA PROVEEDOR',order)+ticket('LISTA DE PEDIDOS','COPIA DEPÓSITO',order)+'</div>');
+    '<p class="mp-muted mp-no-print">Impresión de prueba del navegador. La impresora ESC/POS real se integrará tras validar el piloto. Imprimir no cierra la revisión.</p>' +
+    '<div class="mp-inline mp-no-print">' + button('Imprimir vista previa','print',{cls:'mp-button mp-primary'}) + '</div>' +
+    '<div class="mp-grid mp-ticket-grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">' +
+      renderMonitorTicketSet({ weekStart:state.week, items:rows }) + '</div>');
 }
 function decisionLabel(d){return ({
   BUY:'Comprar',ORDER:'Pedir',PENDING:'Pendiente',NOT_NEEDED:'No hace falta',UNREVIEWED:'Sin revisar'
