@@ -89,8 +89,13 @@ jobs:
           $god = & node $godHelper
           if($LASTEXITCODE -ne 0 -or -not ($god -match '^VIGIA_GOD_IDENTIFIED .*"firebaseLinked":true')){ throw 'GOD lookup failed on Windows' }
           $env:VIGIA_TEST_MULTIPLE_GODS = '1'
-          $two = & node $godHelper 2>&1
-          if($LASTEXITCODE -eq 0){ throw 'GOD lookup incorrectly accepted multiple identities' }
+          $oldErrorPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          try {
+            $two = & node $godHelper 2>$null
+            $negativeExitCode = $LASTEXITCODE
+          } finally { $ErrorActionPreference = $oldErrorPreference }
+          if($negativeExitCode -eq 0){ throw 'GOD lookup incorrectly accepted multiple identities' }
           Remove-Item Env:\VIGIA_TEST_MULTIPLE_GODS -ErrorAction SilentlyContinue
           Write-Host 'VIGIA_GOD_ID_UNIQUENESS_FAIL_CLOSED_PASS'
           Write-Host 'VIGIA_GOD_ID_LOOKUP_WINDOWS_PASS'
