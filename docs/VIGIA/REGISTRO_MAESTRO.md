@@ -757,3 +757,17 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - Éxito exigido para declarar nuevo software INSTALADO: `VIGIA_MONITOR_DEPLOY_SUCCESS_OFF` entregado por HP más validación visual manual de PC/teléfono. GitHub CI solo verifica sintaxis del instalador y pruebas en entorno aparte, NO su ejecución ni funcionamiento físico de HP.
 - GitHub Actions run `38403244791` sobre versión del instalador `b664500...`: cinco jobs SUCCESS, incluyendo PowerShell Windows 5.1 parse del script, browser-pilot, client-tests, server-syntax e integration.
 - Cuidado: usuarios deben cerrar/pausar operaciones VIGÍA durante ventana de Stop/Start, no borrar caché ni colas ajenas; los cambios documentales Monitor quedan desactivados inicialmente. Si pasa con bandera OFF, en conversación posterior autorizar usuario UUID de prueba y reinicio adicional para ON.
+
+
+### [REG-058] 2026-10-13 | Intento de despliegue B BLOQUEADO ANTES de detener servicio | PROD SIN CAMBIOS
+
+- Usuario ejecutó el instalador B inicial en HP (hora local 09:19:49), pero en prevalidación la función ReadCounts invocó `node -e` desde Windows PowerShell 5.1. Por manejo de comillas en argumentos nativos, SQL `SELECT` perdió las comillas de JavaScript y Node v24.20.0 emitió `SyntaxError: Expected ',', got '<eof>'`.
+- Resultado explícito del instalador: `DEPLOY_STEP_FAILED: Prevalidar servicio, version, backups y bandera`, `DEPLOY_ERROR: No se pudieron obtener los conteos actuales`, `ANTES_DEL_STOP: servicio no fue detenido; no hubo intento de migracion.` NO se ejecutó git merge, no hubo migraciones 020/021 y NO se activó Monitor ni tocó datos. NO procede rollback de código.
+- Respaldo del 13-Oct y stage `STAGE_PASS_SIN_PARAR_SERVICIO` siguen disponibles, aunque deben verificar vigencia SHA/timestamp al reintentar. No pedir al usuario rerun del instalador defectuoso.
+
+### [REG-059] 2026-10-13 | Hotfix de validación SQL standalone para PowerShell | CORREGIDO EN GITHUB, HP AÚN PENDIENTE
+
+- Se creó `docs/VIGIA/VIGIA_HP_MONITOR_DB_VERIFY_SAFE.cjs` commit `3309eb72f61b456966c649e097a991bbfca95c18`. Carga `dotenv` y `pg` desde el servidor de VIGÍA con createRequire, valida base `smart_inventory`, hace `BEGIN TRANSACTION READ ONLY` y soporta `counts` y `schema`; NO modifica PostgreSQL ni imprime secretos.
+- Instalador B corregido `docs/VIGIA/VIGIA_HP_MONITOR_DEPLOY_SAFE.ps1`, commit `ce336165dc759964f9a39153203e5512c616cfb9`: elimina `node -e` para conteos y comprobación SQL; descarga la herramienta standalone por URL de commit inmutable, valida `node --check`, ejecuta como ARCHIVO a través de `node.exe`. Todas esas validaciones siguen ANTES de parar servicio cuando corresponde.
+- Nuevo CI `.github/workflows/v2-tests.yml` commit `bbe20303554abedd778bdb0910e06502efbac77a`: añade prueba real en Windows PowerShell con módulos `dotenv`/`pg` simulados que verifica modos counts/schema y salida `VIGIA_SQL_FILE_EXECUTION_WINDOWS_PASS`, además de sintaxis PowerShell y las pruebas previas. Run GitHub Actions `38404737815` en ejecución al redactar esta entrada: Windows mock y parse SUCCESS, client y browser SUCCESS; integration todavía en progreso.
+- Versión operativa a instalar sigue fijada en `e8cdedac21cf372261049543644ec2b1d68cfa9f`, no el HEAD reciente de la rama que contiene solamente scripts de operación/CI. Mantener piloto OFF, y no declarar instalación hasta ver `VIGIA_MONITOR_DEPLOY_SUCCESS_OFF` del HP.
