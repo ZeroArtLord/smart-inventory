@@ -8,7 +8,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $root = 'C:\SmartInventory\App'
-$base = '9c39ec589938c4ce55e1f753aac87cc71316c35e'
+$base = 'e8cdedac21cf372261049543644ec2b1d68cfa9f'
 $target = 'e658deb90bbfb05978f8e1ab6c3d7e1c123d7c02'
 $branch = 'feature/vigia-monitor-normal-mirror-20261013'
 $backupRoot = 'F:\SmartInventoryBackups\VIGIA_MONITOR_PRINT'
@@ -72,6 +72,13 @@ try {
   $unexpected = GitChecked @('diff','--name-only',$base,$target,'--','v2/server')
   Demand ([string]::IsNullOrWhiteSpace($unexpected)) 'El candidato incluye cambios en backend; cancelar'
   $allowed = @(
+    '.github/workflows/v2-tests.yml',
+    'docs/VIGIA/VIGIA_HP_GOD_ID_READONLY.cjs',
+    'docs/VIGIA/VIGIA_HP_MONITOR_DB_VERIFY_SAFE.cjs',
+    'docs/VIGIA/VIGIA_HP_MONITOR_DEPLOY_RUNBOOK.md',
+    'docs/VIGIA/VIGIA_HP_MONITOR_DEPLOY_SAFE.ps1',
+    'docs/VIGIA/VIGIA_HP_MONITOR_ENABLE_GOD_SAFE.ps1',
+    'docs/VIGIA/VIGIA_HP_MONITOR_STAGE_SAFE.ps1',
     'v2/src/replenishment/monitorToNormalMirror.js',
     'v2/src/ui/monitorNormalMirrorUi.js',
     'v2/src/ui/monitorTicketTemplate.js',
