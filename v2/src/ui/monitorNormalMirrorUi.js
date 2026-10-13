@@ -86,7 +86,9 @@ export function renderMonitorMirrorForNormal(snapshot, { loading = false, error 
   ];
   return header +
     '<p style="margin:12px 0">Semana ' + escapeHtml(snapshot.weekStart) +
-    ' · Comprar: <b>' + list.PURCHASE.length + '</b> · Pedir: <b>' + list.ORDER.length + '</b></p>' +
+    ' · Comprar: <b>' + list.PURCHASE.length + '</b> · Pedir: <b>' + list.ORDER.length + '</b>' +
+    ' · Revisados: <b>' + snapshot.counts.reviewed + ' / ' + snapshot.counts.totalProducts + '</b>' +
+    ' · Pendientes: <b>' + snapshot.counts.pending + '</b></p>' +
     warning + missing +
     '<p style="font-size:.81rem;color:#526678">Vista sincronizada bajo demanda. Los documentos y borradores normales permanecen independientes y sin alteraciones. No confirma ni cierra listas.</p>' +
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px">' + cards.join('') + '</div></section>';
