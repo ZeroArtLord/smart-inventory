@@ -10,6 +10,8 @@ $ProgressPreference='SilentlyContinue'
 $root='C:\SmartInventory\App'
 $server=Join-Path $root 'v2\server'
 $node='C:\Program Files\nodejs\node.exe'
+$helperPath=Join-Path $env:TEMP 'VIGIA_HP_MONITOR_DB_VERIFY_SAFE.cjs'
+$helperUrl='https://raw.githubusercontent.com/ZeroArtLord/smart-inventory/3309eb72f61b456966c649e097a991bbfca95c18/docs/VIGIA/VIGIA_HP_MONITOR_DB_VERIFY_SAFE.cjs'
 $old='067eb9f94e1441836c67f26c97f0c34a5e4745b8'
 $target='e8cdedac21cf372261049543644ec2b1d68cfa9f'
 $newDump='F:\SmartInventoryBackups\VIGIA_MANUAL_PREDEPLOY\vigia_manual_predeploy_2026-10-13T13-03-19-421Z.dump'
@@ -59,63 +61,20 @@ function NodeChecked([string[]]$arguments,[string]$purpose){
     if($LASTEXITCODE -ne 0){throw ($purpose+' falló. Codigo='+$LASTEXITCODE)}
 }
 function ReadCounts {
-    Push-Location $server
-    try {
-        # Usa dotenv + pg instalado, sin imprimir DATABASE_URL ni credenciales.
-        $js=@'
-require("dotenv").config();
-const pg=require("pg");
-(async()=>{
- const c=new pg.Client({connectionString:process.env.DATABASE_URL,connectionTimeoutMillis:10000});
- try{
-  await c.connect();
-  const r=await c.query("SELECT current_database() AS db,"+
-    "(SELECT COUNT(*)::int FROM products) AS products,"+
-    "(SELECT COUNT(*)::int FROM documents) AS documents,"+
-    "(SELECT COUNT(*)::int FROM document_lines) AS lines,"+
-    "(SELECT COUNT(*)::int FROM movements) AS movements,"+
-    "(SELECT COUNT(*)::int FROM sync_events) AS sync,"+
-    "(SELECT COUNT(*)::int FROM audit_events) AS audit");
-  if(r.rows[0]?.db!=="smart_inventory")throw Error("La DB no es smart_inventory");
-  console.log("COUNTS="+JSON.stringify(r.rows[0]));
- }finally{await c.end().catch(()=>{});}
-})().catch(()=>{console.error("ERROR_CONTEOS_READONLY");process.exitCode=1});
-'@
-        $out=@(& $node -e $js)
-        Insist ($LASTEXITCODE -eq 0) 'No se pudieron obtener los conteos actuales'
-        $line=@($out|Where-Object {$_ -match '^COUNTS='}|Select-Object -Last 1)
-        Insist ($line.Count -eq 1) 'Salida de conteos inesperada'
-        return $line[0].Substring(7)
-    }finally{Pop-Location}
+    # El SQL vive en un archivo .cjs; no usar node -e en PowerShell 5.1:
+    # la invocacion nativa puede perder comillas de los literales JavaScript.
+    $all=@(& $node $helperPath 'counts')
+    Insist ($LASTEXITCODE -eq 0) 'No se pudieron obtener los conteos actuales'
+    $found=@($all | Where-Object {$_ -like 'COUNTS=*'})
+    Insist ($found.Count -eq 1) 'Salida de conteos inesperada'
+    return $found[0].Substring(7)
 }
 function ValidateMonitorSchema {
-    Push-Location $server
-    try {
-        $js=@'
-require("dotenv").config();
-const {Client}=require("pg");
-(async()=>{
-const c=new Client({connectionString:process.env.DATABASE_URL,connectionTimeoutMillis:10000});
-try{
- await c.connect();
- const q=await c.query("SELECT current_database() AS db,"+
- "(SELECT COUNT(*)::int FROM schema_migrations) AS mig,"+
- "(SELECT COUNT(*)::int FROM schema_migrations WHERE filename IN "+
- "('020_monitor_weekly_reviews.sql','021_monitor_supply_deliveries.sql')) AS monitor_mig,"+
- "(SELECT COUNT(*)::int FROM monitor_weekly_review_items) AS review_items,"+
- "(SELECT COUNT(*)::int FROM monitor_weekly_review_mutations) AS review_mutations,"+
- "(SELECT COUNT(*)::int FROM monitor_supply_deliveries) AS supply_deliveries");
- const a=q.rows[0];
- if(a.db!=="smart_inventory"||a.mig!==21||a.monitor_mig!==2||
- a.review_items!==0||a.review_mutations!==0||a.supply_deliveries!==0) {
-  throw Error("La migracion no quedo en el estado aditivo esperado");
- }
- console.log("MONITOR_MIGRATIONS_21_PASS");
-}finally{await c.end().catch(()=>{});}
-})().catch(()=>{console.error("MONITOR_SCHEMA_CHECK_FAILED");process.exitCode=1});
-'@
-        NodeChecked -arguments @('-e',$js) -purpose 'Validacion SQL de Monitor'
-    }finally{Pop-Location}
+    $out=@(& $node $helperPath 'schema')
+    Insist ($LASTEXITCODE -eq 0) 'Validacion SQL de Monitor fallo'
+    $found=@($out | Where-Object {$_ -eq 'MONITOR_MIGRATIONS_21_PASS'})
+    Insist ($found.Count -eq 1) 'No se confirmaron las 21 migraciones de Monitor'
+    Say 'MONITOR_MIGRATIONS_21_PASS'
 }
 function SecureFlagIsOff {
     $envPath=Join-Path $server '.env'
@@ -196,6 +155,11 @@ try{
     Insist ([string]::IsNullOrWhiteSpace($dep)) 'Cambios de dependencias no previstos'
     SecureFlagIsOff
     CheckHealthFlag $false
+    Say '[PRECHECK] Descargando y validando verificador SQL separado (sin node -e)...'
+    [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -UseBasicParsing -Uri $helperUrl -OutFile $helperPath
+    & $node --check $helperPath
+    Insist ($LASTEXITCODE -eq 0) 'El verificador SQL no supero node --check'
     $baseline=ReadCounts
     Say ('[OK] Precheck: git '+$old.Substring(0,12)+'; dump SHA256; snapshot; Monitor off')
     Say ('COUNTS_ANTES '+$baseline)
