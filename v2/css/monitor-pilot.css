@@ -66,11 +66,43 @@
  #vigiaMonitorPilotLauncher{bottom:72px;right:9px;padding:12px 14px}
 }
 @media print{
- body>*:not(#vigiaMonitorPilot){display:none!important}
+ body.vigia-monitor-print-active>*:not(#vigiaMonitorPilot){display:none!important}
  #vigiaMonitorPilot{position:static;overflow:visible;background:white;color:black}
  #vigiaMonitorPilot .mp-head,#vigiaMonitorPilot .mp-nav,#vigiaMonitorPilot .mp-no-print{display:none!important}
  #vigiaMonitorPilot .mp-shell{padding:0;max-width:80mm}
  #vigiaMonitorPilot .mp-card{border:0;padding:0;box-shadow:none}
  #vigiaMonitorPilot .mp-ticket{width:76mm;max-width:76mm;border:0;break-after:page;margin:0}
  @page{size:80mm auto;margin:2mm}
+}
+
+
+/* Plantilla 80mm compartida por Monitor piloto y espejo de Comprar/Pedir normal.
+   El módulo tradicional NO altera documentos; solo muestra/impime una lectura GET. */
+#vigiaMonitorPilot .mp-ticket-product small{display:block;font-weight:normal;color:#536171;font-size:11px;white-space:normal}
+#vigiaMonitorPilot .mp-ticket-line .mp-ticket-product{min-width:0;overflow-wrap:anywhere;flex:1}
+#v6MonitorMirror .v6-monitor-mirror-ticket-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:14px}
+#v6MonitorMirror .mp-ticket{border:1px dashed #789;padding:14px;max-width:340px;min-width:0;background:white;color:#142c42;font:13px/1.5 ui-monospace,monospace;break-inside:avoid;margin:8px auto;width:100%;box-sizing:border-box}
+#v6MonitorMirror .mp-ticket h3{text-align:center;font-size:17px}
+#v6MonitorMirror .mp-ticket hr{border:0;border-top:1px dashed #777}
+#v6MonitorMirror .mp-ticket-line{display:flex;justify-content:space-between;gap:14px;margin:9px 0}
+#v6MonitorMirror .mp-ticket-line .mp-ticket-product{min-width:0;overflow-wrap:anywhere;flex:1}
+#v6MonitorMirror .mp-ticket-line b{text-align:right;white-space:nowrap}
+#v6MonitorMirror .mp-ticket-product small{display:block;font-weight:normal;color:#536171;font-size:11px}
+#v6MonitorMirror .mp-ticket-category{display:block;margin-top:8px}
+#v6MonitorPrintPage{display:none!important}
+
+@media print {
+  /* La vieja regla global de Monitor ocultaba también las impresiones de VIGÍA normal
+     incluso con el piloto cerrado. Ahora cada clase activa SOLO su propio trabajo. */
+  body.vigia-monitor-normal-print-active>*:not(#v6MonitorPrintPage){display:none!important}
+  body.vigia-monitor-normal-print-active #v6MonitorPrintPage{display:block!important;position:static!important;overflow:visible!important;max-width:80mm!important;width:80mm!important;margin:0!important;padding:0!important;border:0!important;background:white!important;color:black!important;font:13px/1.5 ui-monospace,monospace!important}
+  #v6MonitorPrintPage .mp-ticket{display:block;width:76mm;max-width:76mm;margin:0;padding:14px 0;box-sizing:border-box;border:0;background:white;color:black;font:13px/1.5 ui-monospace,monospace;break-after:page;page-break-after:always;break-inside:avoid}
+  #v6MonitorPrintPage .mp-ticket h3{text-align:center;font-size:17px;line-height:1.3}
+  #v6MonitorPrintPage .mp-ticket hr{border:0;border-top:1px dashed #777}
+  #v6MonitorPrintPage .mp-ticket-category{display:block;margin:8px 0}
+  #v6MonitorPrintPage .mp-ticket-line{display:flex;justify-content:space-between;gap:12px;margin:9px 0}
+  #v6MonitorPrintPage .mp-ticket-product{flex:1;min-width:0;overflow-wrap:anywhere}
+  #v6MonitorPrintPage .mp-ticket-product small{display:block;font-size:11px;font-weight:normal}
+  #v6MonitorPrintPage .mp-ticket-line b{text-align:right;white-space:nowrap}
+  @page{size:80mm auto;margin:2mm}
 }
