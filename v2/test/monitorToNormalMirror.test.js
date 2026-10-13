@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectMonitorToNormal } from '../src/replenishment/monitorToNormalMirror.js';
-import { renderMonitorMirrorForNormal, currentMonitorWeek } from '../src/ui/monitorNormalMirrorUi.js';
+import { renderMonitorMirrorForNormal, printableMonitorMirror, currentMonitorWeek } from '../src/ui/monitorNormalMirrorUi.js';
+import { renderMonitorTicketSet } from '../src/ui/monitorTicketTemplate.js';
+import { readFileSync } from 'node:fs';
 
 const PRODUCTS = [
   { id: 'p1', name: 'Agua mineral', categoryId: 'c1', unitCode: 'UND' },
@@ -85,4 +87,61 @@ test('Reject corrupt quantities, never approximate or silently skip', () => {
 test('Weekly dates follow local Monday, even at year change', () => {
   assert.equal(currentMonitorWeek(new Date(2026, 9, 13)), '2026-10-12');
   assert.equal(currentMonitorWeek(new Date(2027, 0, 1)), '2026-12-28');
+});
+
+
+test('Imprimir VIGÍA normal uses IDENTICAL HTML template as Monitor pilot', () => {
+  const snapshot = project();
+  const pilotMarkup = renderMonitorTicketSet({
+    weekStart: snapshot.weekStart,
+    items: [
+      {name:'Agua mineral',category:'BEBIDAS',decision:'BUY',quantity:null,unit:'CJ',notes:'Comprar después'},
+      {name:'Malta Polar',category:'BEBIDAS',decision:'ORDER',quantity:2,unit:'CJ',notes:'<b>& peligro'},
+      {name:'Guantes',category:'EXTRAS',decision:'BUY',quantity:4,unit:'UND',notes:'Talla M'}
+    ]
+  });
+  const normalMarkup = printableMonitorMirror(snapshot);
+  assert.equal(normalMarkup, pilotMarkup);
+  assert.equal((normalMarkup.match(/VIGÍA MONITOR/g)||[]).length,4);
+  assert.equal((normalMarkup.match(/LISTA DE COMPRAS/g)||[]).length,2);
+  assert.equal((normalMarkup.match(/LISTA DE PEDIDOS/g)||[]).length,2);
+  assert.equal((normalMarkup.match(/Firma: ______________/g)||[]).length,4);
+  assert.match(normalMarkup,/________ CJ/);
+  assert.match(normalMarkup,/Nota: Comprar después/);
+  assert.match(normalMarkup,/&lt;b&gt;&amp; peligro/);
+  assert.match(normalMarkup,/EXTRAS/);
+});
+
+test('Printing refuses conflicts, queued changes even when NONE of them selected', () => {
+  const pendingReview = project({localState:{
+    items:[{itemKey:'product:p4',kind:'PRODUCT',decision:'NOT_NEEDED',localOnly:true,localStatus:'PENDING'}],
+    pendingCount:1,conflictCount:0
+  }});
+  assert.equal(pendingReview.counts.pendingLocal,1);
+  assert.throws(()=>printableMonitorMirror(pendingReview),/sin sincronizar/);
+  const conflictReview = project({localState:{items:[], pendingCount:0,conflictCount:1}});
+  assert.equal(conflictReview.counts.conflicts,1);
+  assert.throws(()=>printableMonitorMirror(conflictReview),/conflicto/);
+});
+
+test('Printing refuses stale/unknown products and empty selections', () => {
+  const unknown = project({serverItems:[{itemKey:'product:missing',kind:'PRODUCT',
+    productId:'missing',decision:'ORDER',quantity:5,unit:'CJ'}]});
+  assert.throws(()=>printableMonitorMirror(unknown),/catálogo/);
+  assert.throws(()=>printableMonitorMirror(project({serverItems:[]})),/No hay productos/);
+});
+
+test('Ticket printing in BOTH views is safely isolated from old V6 global print CSS', () => {
+  const css=readFileSync(new URL('../css/monitor-pilot.css',import.meta.url),'utf8');
+  const normal=readFileSync(new URL('../src/ui/procurementWorkspaceV6Ui.js',import.meta.url),'utf8');
+  const pilot=readFileSync(new URL('../src/ui/monitorReviewPilotUi.js',import.meta.url),'utf8');
+  const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
+  assert.match(normal,/data\.v6pAction/);
+  assert.match(normal,/print-monitor-mirror/);
+  assert.match(normal,/syncBeforeFetch:true/);
+  assert.match(css,/body\.vigia-monitor-normal-print-active #v6MonitorPrintPage \*/);
+  assert.match(css,/visibility:visible!important/);
+  assert.match(css,/body\.vigia-monitor-print-active>\*:not\(#vigiaMonitorPilot\)/);
+  assert.match(pilot,/renderMonitorTicketSet/);
+  assert.match(sw,/monitorTicketTemplate\.js/);
 });
