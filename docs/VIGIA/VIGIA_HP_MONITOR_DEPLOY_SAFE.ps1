@@ -137,7 +137,15 @@ function CheckHealthFlag([bool]$strict) {
     }
 }
 function StartOldVersionOnFailure {
-    Say 'RECUPERACION: verificando version y cambios locales antes de actuar...'
+    Say 'RECUPERACION: verificando que el servicio este detenido antes de restaurar archivos...'
+    $prior=Get-Service -Name 'SmartInventoryV2' -ErrorAction Stop
+    if($prior.Status -ne 'Stopped'){
+        Stop-Service -Name 'SmartInventoryV2' -ErrorAction Stop
+        WaitService 'SmartInventoryV2' 'Stopped' 40
+    }
+    Start-Sleep -Seconds 2
+    $openPorts=@(Get-NetTCPConnection -LocalPort 5190 -State Listen -ErrorAction SilentlyContinue)
+    Insist ($openPorts.Count -eq 0) 'Puerto 5190 aun escucha; no cambiar codigo durante rollback'
     $sha=CurrentSha
     $clean=[string]::IsNullOrWhiteSpace((TrackedChanges))
     if($sha -eq $old){
