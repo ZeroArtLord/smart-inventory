@@ -19,9 +19,16 @@ export function projectMonitorToNormal({ serverItems = [], localState = null, pr
   }
 
   const lists = { PURCHASE: [], ORDER: [] };
-  const counts = { pendingLocal: 0, conflicts: 0, unresolvedProducts: 0 };
+  const counts = { pendingLocal: 0, conflicts: 0, unresolvedProducts: 0,
+    reviewed: 0, pending: 0, notNeeded: 0, totalProducts: products.length };
   for (const item of merged.values()) {
-    if (item.deleted === true || (item.decision !== 'BUY' && item.decision !== 'ORDER')) continue;
+    if (item.deleted === true) continue;
+    if (item.kind === 'PRODUCT') {
+      if (['BUY', 'ORDER', 'NOT_NEEDED'].includes(item.decision)) counts.reviewed++;
+      if (item.decision === 'PENDING') counts.pending++;
+      if (item.decision === 'NOT_NEEDED') counts.notNeeded++;
+    }
+    if (item.decision !== 'BUY' && item.decision !== 'ORDER') continue;
     const isExtra = item.kind === 'EXTRA';
     const product = isExtra ? null : byProduct.get(String(item.productId));
     const category = isExtra ? 'EXTRAS' : (
