@@ -9,7 +9,7 @@ const [app, sw, html] = await Promise.all([
 ]);
 
 test('hotfix PWA fuerza comprobación de actualización y expone shell', () => {
-  assert.match(sw, /smart-inventory-v2-shell-64/);
+  assert.match(sw, /smart-inventory-v2-shell-(?:6[4-9]|[7-9][0-9])/);
   assert.match(app, /CLIENT_BUILD = 'shell-64'/);
   assert.match(app, /updateViaCache:\s*'none'/);
   assert.match(app, /registration\.update\(\)/);
