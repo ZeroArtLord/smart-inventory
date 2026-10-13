@@ -6,17 +6,6 @@ import {
 import { esc } from './procurementWorkspaceV6Render.js';
 
 export function renderPrintModal({ list, businessName, monitor = false }) {
-  const typeLabel = list.kind === 'ORDER'
-    ? 'LISTA DE PEDIDOS'
-    : 'LISTA DE COMPRAS';
-  const copies = list.kind === 'ORDER'
-    ? ['COPIA PEDIDO / PROVEEDOR', 'COPIA DEPÓSITO']
-    : ['COPIA CHÓFER', 'COPIA DEPÓSITO'];
-  const active = list.items.filter(
-    item => item.status !== 'CANCELLED'
-  );
-  const groups = groupByCategory(active);
-
   return `
     <div class="v6p-modal v6p-print-modal">
       <div class="v6p-modal-head">
@@ -43,8 +32,9 @@ export function renderPrintModal({ list, businessName, monitor = false }) {
           </div>
           <button
             class="v6p-primary"
-            data-v6p-action="direct-print"
+            data-v6p-action="${monitor ? 'monitor-direct-print' : 'direct-print'}"
             data-list-id="${esc(list.id)}"
+            ${monitor ? `data-monitor-kind="${list.kind}"` : ''}
             type="button"
           >🖨 Imprimir ticket</button>
         </div>
