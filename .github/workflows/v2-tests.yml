@@ -96,6 +96,7 @@ jobs:
             $negativeExitCode = $LASTEXITCODE
           } finally { $ErrorActionPreference = $oldErrorPreference }
           if($negativeExitCode -eq 0){ throw 'GOD lookup incorrectly accepted multiple identities' }
+          $global:LASTEXITCODE = 0
           Remove-Item Env:\VIGIA_TEST_MULTIPLE_GODS -ErrorAction SilentlyContinue
           Write-Host 'VIGIA_GOD_ID_UNIQUENESS_FAIL_CLOSED_PASS'
           Write-Host 'VIGIA_GOD_ID_LOOKUP_WINDOWS_PASS'
