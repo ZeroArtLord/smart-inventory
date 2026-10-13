@@ -47,6 +47,309 @@ jobs:
           }
           Write-Host "VIGIA_HP_STAGE_PARSE_PASS"
 
+      - name: Execute SQL helper from Windows PowerShell with a mock driver
+        shell: powershell
+        run: |
+          $fixture = Join-Path $env:RUNNER_TEMP "vigia_sql_mock"
+          $modules = Join-Path $fixture "node_modules"
+          New-Item -ItemType Directory -Force -Path (Join-Path $modules "pg") | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $modules "dotenv") | Out-Null
+          '{"name":"vigia-mock","version":"1.0.0"}' | Set-Content -Encoding ASCII (Join-Path $fixture 'package.json')
+          'fixture' | Set-Content -Encoding ASCII (Join-Path $fixture '.env')
+          @'
+          module.exports={config(){process.env.DATABASE_URL='postgres://mock@127.0.0.1:5432/smart_inventory';return {parsed:{}}}};
+          '@ | Set-Content -Encoding ASCII (Join-Path $modules 'dotenv\index.js')
+          @'
+          module.exports={Client:class{
+            async connect(){}
+            async query(sql){
+              if(sql==='BEGIN TRANSACTION READ ONLY'||sql==='COMMIT')return {rows:[]};
+              if(sql.includes('AS monitor_mig'))return {rows:[{db:'smart_inventory',mig:21,monitor_mig:2,review_items:0,review_mutations:0,supply_deliveries:0}]};
+              return {rows:[{db:'smart_inventory',products:494,documents:132,lines:4196,movements:1019,sync:10075,audit:11370}]};
+            }
+            async end(){}
+          }};
+          '@ | Set-Content -Encoding ASCII (Join-Path $modules 'pg\index.js')
+          $env:VIGIA_SERVER_DIR = $fixture
+          $helper = 'docs/VIGIA/VIGIA_HP_MONITOR_DB_VERIFY_SAFE.cjs'
+          & node --check $helper
+          if($LASTEXITCODE -ne 0){ throw 'DB helper syntax invalid' }
+          $counts = & node $helper counts
+          if($LASTEXITCODE -ne 0 -or -not ($counts -match '^COUNTS=.*"products":494')){ throw 'Counts mode failed on Windows' }
+          $schema = & node $helper schema
+          if($LASTEXITCODE -ne 0 -or -not ($schema -match '^MONITOR_MIGRATIONS_21_PASS
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          $path = "docs/VIGIA/VIGIA_HP_MONITOR_DEPLOY_SAFE.ps1"
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+          Write-Host "VIGIA_HP_DEPLOY_PARSE_PASS"
+
+  client-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install test dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run V2 tests
+        run: npm test
+
+      - name: Check client JavaScript syntax
+        run: |
+          find src test -name "*.js" -print0 | xargs -0 -n1 node --check
+          node --check sw.js
+
+  browser-pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: v2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install client test dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install pinned Playwright for isolated browser smoke
+        run: npm install --no-save --no-package-lock playwright@1.56.1 --no-audit --no-fund
+
+      - name: Install Chromium headless
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify VIGIA Monitor desktop/mobile UI with real browser
+        run: node scripts/monitorPilotBrowserSmoke.mjs
+
+      - name: Save browser smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitor-pilot-browser-screenshots
+          path: v2/test-results/monitor-pilot/
+          if-no-files-found: ignore
+
+  server-syntax:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v2/server
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install server dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Check server JavaScript syntax
+        run: find src scripts -name "*.js" -print0 | xargs -0 -n1 node --check
+
+      - name: Verify safe manual-backup helper syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_BACKUP_MANUAL_SAFE.cjs
+
+      - name: Verify temporary restore checker syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_RESTORE_VALIDATE_SAFE.cjs
+
+      - name: Verify PostgreSQL role probe syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_PG_ROLE_READONLY.cjs
+
+      - name: Verify separate-admin restore helper syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_RESTORE_ADMIN_SAFE.cjs
+
+      - name: Verify HP predeployment read-only preflight syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_MONITOR_PREDEPLOY_READONLY.cjs
+
+      - name: Check live Monitor pilot authorization defaults
+        run: node scripts/monitorPilotGateCheck.js
+
+
+  server-integration:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: smart_inventory
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: smart_inventory
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smart_inventory -d smart_inventory"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    defaults:
+      run:
+        working-directory: v2/server
+
+    env:
+      PORT: 5190
+      DATABASE_URL: postgres://smart_inventory:ci_password@127.0.0.1:5432/smart_inventory
+      NODE_ENV: test
+      AUTH_MODE: dev
+      DEV_ALLOW_HEADER_AUTH: "true"
+      MONITOR_PILOT_ENABLED: "true"
+      SMOKE_STATE_FILE: /tmp/smart-inventory-smoke.json
+      BACKUP_DIR: /tmp/smart-inventory-backups
+      BACKUP_RETENTION_DAYS: "14"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install server dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install PostgreSQL client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Apply PostgreSQL migrations
+        run: npm run migrate
+
+      - name: Provision first admin idempotently
+        run: |
+          npm run admin:provision -- --email ci-admin@example.com --workspace-key ci-admin-workspace --workspace-name "CI Admin Workspace"
+          npm run admin:provision -- --email ci-admin@example.com --workspace-key ci-admin-workspace --workspace-name "CI Admin Workspace"
+
+      - name: Verify Firebase identity linking rules
+        run: npm run smoke:firebase-identity
+
+      - name: Start API
+        run: |
+          npm start > /tmp/smart-inventory-v2.log 2>&1 &
+          echo $! > /tmp/smart-inventory-v2.pid
+
+      - name: Wait for readiness
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:5190/ready > /tmp/ready.json; then
+              cat /tmp/ready.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/smart-inventory-v2.log
+          exit 1
+
+      - name: Run real sync and stock smoke
+        run: npm run smoke:integration
+
+      - name: Verify VIGIA Monitor multi-user review persistence
+        run: node scripts/monitorReviewSmoke.js
+
+      - name: Verify VIGIA Monitor supply persistence and consumption
+        run: node scripts/monitorSupplySmoke.js
+
+      - name: Restart API
+        run: |
+          kill "$(cat /tmp/smart-inventory-v2.pid)"
+          for i in $(seq 1 20); do
+            if ! kill -0 "$(cat /tmp/smart-inventory-v2.pid)" 2>/dev/null; then
+              break
+            fi
+            sleep 0.25
+          done
+          npm start >> /tmp/smart-inventory-v2.log 2>&1 &
+          echo $! > /tmp/smart-inventory-v2.pid
+
+      - name: Wait after restart
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:5190/ready > /tmp/ready-after-restart.json; then
+              cat /tmp/ready-after-restart.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/smart-inventory-v2.log
+          exit 1
+
+      - name: Verify restart durability
+        run: npm run smoke:restart
+
+      - name: Run PostgreSQL integrity audit
+        run: npm run integrity:check
+
+      - name: Inspect SAINT initial-load readiness
+        run: npm run saint:preflight
+
+      - name: Create fake Firebase credential for preflight
+        run: |
+          cat > /tmp/firebase-service-account.json <<'JSON'
+          {
+            "type": "service_account",
+            "project_id": "smart-inventory-c296b",
+            "private_key_id": "ci",
+            "private_key": "-----BEGIN PRIVATE KEY-----\\nCI-ONLY\\n-----END PRIVATE KEY-----\\n",
+            "client_email": "ci@smart-inventory-c296b.iam.gserviceaccount.com",
+            "client_id": "1"
+          }
+          JSON
+
+      - name: Run production preflight against migrated database
+        env:
+          MONITOR_PILOT_ENABLED: "false"
+          NODE_ENV: production
+          AUTH_MODE: firebase
+          DEV_ALLOW_HEADER_AUTH: "false"
+          FIREBASE_PROJECT_ID: smart-inventory-c296b
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/firebase-service-account.json
+        run: npm run preflight:production
+
+      - name: Create PostgreSQL backup
+        run: npm run backup
+
+      - name: Verify backup catalog
+        run: npm run backup:verify
+
+      - name: Restore backup into temporary database
+        run: npm run backup:restore-smoke
+
+      - name: Show server log on failure
+        if: failure()
+        run: cat /tmp/smart-inventory-v2.log
+)){ throw 'Schema mode failed on Windows' }
+          Write-Host 'VIGIA_SQL_FILE_EXECUTION_WINDOWS_PASS'
+          Remove-Item Env:\VIGIA_SERVER_DIR -ErrorAction SilentlyContinue
+
       - name: Parse HP production deployment script with Windows PowerShell
         shell: powershell
         run: |
