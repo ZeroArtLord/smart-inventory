@@ -737,3 +737,23 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - Windows-snapshot-parse ejecutó Parse HP stage script with Windows PowerShell y devolvió success (sintaxis PowerShell Windows 5.1). No significa que el script se haya ejecutado en HP ni que el respaldo de hoy exista.
 - El script de etapa A listo para usuario es el archivo versionado del commit d811d033c847bb220da9a555af9e3b7dbf60caaf. Se debe ejecutar primero y entregar stdout con STAGE_PASS_SIN_PARAR_SERVICIO antes de hacer B.
 - No hubo intervención en servicio ni base del HP desde GitHub. Se mantiene bandera Monitor off hasta autorización para segundo paso. La autorización de la ventana ya consta en REG-054.
+
+
+### [REG-056] 2026-10-13 | Preparación A en HP real completada, con respaldo nuevo | STAGE PASS / SIN DESPLIEGUE
+
+- Usuario ejecutó stage seguro del HP el 2026-10-13 09:03:10 (hora local): resultado `STAGE_PASS_SIN_PARAR_SERVICIO`.
+- `SmartInventoryV2` y `postgresql-x64-18` Running; /health y /ready correctos. Git HEAD productivo `067eb9f94e14`, 0 cambios rastreados. Descargar Git solo a .git, SHA Monitor probado `e8cdedac21cf` disponible, HEAD remoto entonces `826b72d09c43`; no se ha modificado código en ejecución.
+- Último preflight solo lectura repitió PASS completo: DB `smart_inventory`, rol `smart_inventory`, tabla Monitor ausente, 19 migraciones exactas, permiso CREATE=true; recuento previo: 494 productos, 132 documentos, 1019 movimientos. Snapshot anterior App/Service y su hash siguen coincidiendo.
+- **NUEVO BACKUP** (13-Oct, etapa A) creado sin purgar otros: `F:\SmartInventoryBackups\VIGIA_MANUAL_PREDEPLOY\vigia_manual_predeploy_2026-10-13T13-03-19-421Z.dump`; bytes `1893531`; SHA256 `64f0b48a373dd34c959237419c10325b2171092b3f59bb8d9a4ad6735a6420d5`. Su catálogo y descompresión completa pasaron, pero NO se realizó restauración de este dump; el anterior del 12-Oct sí superó restauración completa independiente.
+- El stage confirmó al finalizar que SmartInventoryV2 sigue Running, Git antiguo, sin cambios en producción. Reporte emitido en `%TEMP%\VIGIA_MONITOR_PREPARE\VIGIA_MONITOR_STAGE_20261013_090310.txt` y compartido por usuario.
+- Próximo paso bajo autorización de REG-054: detener operaciones en clientes, ejecutar script B con confirmación local y sus guardas de snapshot/hash/commit, parar servicio y actualizar SOLO a SHA aprobado, migrar 020/021, preflight, reanudar y verificar Monitor OFF.
+
+### [REG-057] 2026-10-13 | Desplegador B preparado, autocomprobado y con rollback | IMPLEMENTADO GITHUB, NO EJECUTADO EN HP
+
+- Script nuevo `docs/VIGIA/VIGIA_HP_MONITOR_DEPLOY_SAFE.ps1`, rama `feature/vigia-monitor-review-v1`, commit fijo `b664500dc8469a75123b6d956700907cf1813dc0`. Diseñado para HP real, no nuevo VIGÍA.
+- Prechecks: service y PostgreSQL Running; SHA productivo `067eb9f`, worktree rastreado sin modificaciones, SHA candidato `e8cdedac21cf` disponible y descendiente, sin cambio de dependencias; stage aprobado del día; dump nuevo del 13-Oct SHA256 exacto y reciente, snapshot App/Service disponible; Monitor actualmente OFF; captura conteos de tablas productivas.
+- Antes de cambiar servidor, usuario debe escribir `EJECUTAR` en la consola. Detiene SOLO `SmartInventoryV2`, espera servicio Stopped y puerto 5190 libre; `git merge --ff-only --no-stat e8cdedac...`; ejecuta `node scripts/migrate.js` que aplica 020/021, verifica 21 migraciones, 3 tablas Monitor vacías y recuentos de datos V2 sin variaciones; ejecuta preflight:production, inicia servicio, comprueba /health, /ready y public/config.monitorPilotEnabled=false, confirma HEAD, worktree, conteos.
+- Si falla tras detener el servicio, intenta detenerlo y volver SOLO al código anterior cuando SHA/estado concuerdan y no hay cambios rastreados, sin tocar DB/colas/borradores, dejando 020/021 aditivas si ya se aplicaron. Verifica API tras rollback. Si no es seguro volver, detiene y reporta `ROLLBACK_ATTENTION` sin operaciones adicionales automáticas.
+- Éxito exigido para declarar nuevo software INSTALADO: `VIGIA_MONITOR_DEPLOY_SUCCESS_OFF` entregado por HP más validación visual manual de PC/teléfono. GitHub CI solo verifica sintaxis del instalador y pruebas en entorno aparte, NO su ejecución ni funcionamiento físico de HP.
+- GitHub Actions run `38403244791` sobre versión del instalador `b664500...`: cinco jobs SUCCESS, incluyendo PowerShell Windows 5.1 parse del script, browser-pilot, client-tests, server-syntax e integration.
+- Cuidado: usuarios deben cerrar/pausar operaciones VIGÍA durante ventana de Stop/Start, no borrar caché ni colas ajenas; los cambios documentales Monitor quedan desactivados inicialmente. Si pasa con bandera OFF, en conversación posterior autorizar usuario UUID de prueba y reinicio adicional para ON.
