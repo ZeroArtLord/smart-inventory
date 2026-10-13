@@ -3,7 +3,9 @@
 // Autorización real se valida en /api/v1/monitor (allowlist del servidor).
 import { apiRequest } from '../api/apiClient.js';
 import { readMonitorReview, syncMonitorReview } from '../replenishment/monitorReviewOffline.js';
-import { renderMonitorTicketSet } from './monitorTicketTemplate.js';
+import { renderProcurementTickets } from './procurementWorkspaceV6Print.js';
+import { listCard } from './procurementWorkspaceV6Render.js';
+import { buildMonitorNativeLists } from '../replenishment/monitorNativeTicketAdapter.js';
 import { projectMonitorToNormal } from '../replenishment/monitorToNormalMirror.js';
 
 export function currentMonitorWeek(now = new Date()) {
@@ -40,7 +42,7 @@ function escapeHtml(value) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
   );
 }
-export function printableMonitorMirror(snapshot) {
+export function assertMonitorPrintable(snapshot) {
   if (!snapshot || snapshot.source !== 'monitor-weekly-review') {
     throw new Error('Se necesita una revisión Monitor válida para imprimir');
   }
@@ -55,16 +57,17 @@ export function printableMonitorMirror(snapshot) {
   if (!buy.length && !order.length) {
     throw new Error('No hay productos seleccionados para imprimir');
   }
-  return renderMonitorTicketSet({
-    weekStart: snapshot.weekStart,
-    items: [
-      ...buy.map(x => ({...x, name:x.description, decision:'BUY'})),
-      ...order.map(x => ({...x, name:x.description, decision:'ORDER'}))
-    ]
-  });
+  return true;
 }
 
-export function renderMonitorMirrorForNormal(snapshot, { loading = false, error = '' } = {}) {
+// Renderiza exactamente la misma plantilla V6 que usa "Vista 80mm" en VIGÍA normal.
+export function printableMonitorMirror(snapshot,{ownerLabel,businessName}={}) {
+  assertMonitorPrintable(snapshot);
+  return buildMonitorNativeLists(snapshot,{ownerLabel})
+    .map(list=>renderProcurementTickets({list,businessName})).join('');
+}
+
+export function renderMonitorMirrorForNormal(snapshot, { loading = false, error = '', ownerLabel = 'Usuario VIGÍA' } = {}) {
   const css = 'margin:14px 0;padding:18px;border:1px solid #aecbdf;border-radius:14px;background:#f6fbfe;color:#142c42';
   const header = '<section id="v6MonitorMirror" style="' + css + '" aria-label="Listas espejo de VIGÍA Monitor">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
@@ -72,7 +75,7 @@ export function renderMonitorMirrorForNormal(snapshot, { loading = false, error 
     '<p style="margin:4px 0;font-size:.85rem">La misma revisión semanal de Monitor, sin duplicar operaciones en las listas tradicionales.</p></div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:8px">' +
     '<button type="button" data-v6p-action="refresh-monitor-mirror" class="v6p-ghost">↻ Actualizar</button>' +
-    '<button type="button" data-v6p-action="print-monitor-mirror" class="v6p-primary">🖨 Actualizar e imprimir</button></div></div>';
+    '<button type="button" data-v6p-action="print-monitor-mirror" class="v6p-primary">↻ Actualizar y ver listas</button></div></div>';
   if (loading) return header + '<p role="status">Consultando Monitor…</p></section>';
   if (error) return header + '<p role="alert">No se pudo leer Monitor: ' + escapeHtml(error) +
     '. No se modificó ninguna lista.</p></section>';
@@ -85,12 +88,9 @@ export function renderMonitorMirrorForNormal(snapshot, { loading = false, error 
       : '<p role="status" style="color:#215d47">✓ Lectura del servidor Monitor; sin cambios locales pendientes en esta vista.</p>';
   const missing = snapshot.counts.unresolvedProducts
     ? '<p role="alert">⚠ ' + snapshot.counts.unresolvedProducts + ' producto(s) no pudieron asociarse al catálogo local. Se muestran por ID y NO se omiten.</p>' : '';
-  // Es exactamente la misma función HTML usada por Monitor > Mis listas.
-  const items = [
-    ...list.PURCHASE.map(x => ({...x, name:x.description, decision:'BUY'})),
-    ...list.ORDER.map(x => ({...x, name:x.description, decision:'ORDER'}))
-  ];
-  const tickets = renderMonitorTicketSet({weekStart:snapshot.weekStart, items});
+  // Misma tarjeta del V6 original; Monitor es lectura semanal, no copia legacy.
+  const nativeLists=buildMonitorNativeLists(snapshot,{ownerLabel});
+  const cards=nativeLists.map(x=>listCard(x,{monitor:true})).join('');
   return header +
     '<p style="margin:12px 0">Semana ' + escapeHtml(snapshot.weekStart) +
     ' · Comprar: <b>' + list.PURCHASE.length + '</b> · Pedir: <b>' + list.ORDER.length + '</b>' +
@@ -98,5 +98,5 @@ export function renderMonitorMirrorForNormal(snapshot, { loading = false, error 
     ' · Pendientes: <b>' + snapshot.counts.pending + '</b></p>' +
     warning + missing +
     '<p style="font-size:.81rem;color:#526678">Vista sincronizada bajo demanda. Los documentos y borradores normales permanecen independientes y sin alteraciones. No confirma ni cierra listas.</p>' +
-    '<div class="v6-monitor-mirror-ticket-grid">' + tickets + '</div></section>';
+    '<div class="v6p-list-grid">' + cards + '</div></section>';
 }
