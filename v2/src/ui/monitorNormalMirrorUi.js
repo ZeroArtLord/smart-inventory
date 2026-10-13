@@ -40,6 +40,30 @@ function escapeHtml(value) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
   );
 }
+export function printableMonitorMirror(snapshot) {
+  if (!snapshot || snapshot.source !== 'monitor-weekly-review') {
+    throw new Error('Se necesita una revisión Monitor válida para imprimir');
+  }
+  if (snapshot.counts.conflicts || snapshot.counts.pendingLocal) {
+    throw new Error('Hay cambios sin sincronizar o en conflicto. Sincroniza antes de imprimir.');
+  }
+  if (snapshot.counts.unresolvedProducts) {
+    throw new Error('El catálogo no contiene todos los productos. No se imprime una lista incompleta.');
+  }
+  const buy = snapshot.lists.PURCHASE || [];
+  const order = snapshot.lists.ORDER || [];
+  if (!buy.length && !order.length) {
+    throw new Error('No hay productos seleccionados para imprimir');
+  }
+  return renderMonitorTicketSet({
+    weekStart: snapshot.weekStart,
+    items: [
+      ...buy.map(x => ({...x, name:x.description, decision:'BUY'})),
+      ...order.map(x => ({...x, name:x.description, decision:'ORDER'}))
+    ]
+  });
+}
+
 export function renderMonitorMirrorForNormal(snapshot, { loading = false, error = '' } = {}) {
   const css = 'margin:14px 0;padding:18px;border:1px solid #aecbdf;border-radius:14px;background:#f6fbfe;color:#142c42';
   const header = '<section id="v6MonitorMirror" style="' + css + '" aria-label="Listas espejo de VIGÍA Monitor">' +
