@@ -4,7 +4,10 @@ import { getAll, STORES } from '../storage/database.js';
 import { resolveMonitorPilotSession } from '../replenishment/monitorPilotSession.js';
 import { isMonitorPilotEnabled } from './monitorPilotEnabled.js';
 import { createLocalId } from '../core/ids.js';
-import { renderMonitorTicketSet } from './monitorTicketTemplate.js';
+import { renderProcurementTickets } from './procurementWorkspaceV6Print.js';
+import { buildMonitorNativeLists } from '../replenishment/monitorNativeTicketAdapter.js';
+import { fetchMonitorMirrorForNormal, assertMonitorPrintable } from './monitorNormalMirrorUi.js';
+import { printThermalProcurementList } from '../printing/thermalPrinterClient.js';
 import {
   readPilotPosition, savePilotPosition, restorePilotPosition
 } from './monitorPilotPosition.js';
@@ -18,7 +21,8 @@ let pilotEnabled=false;
 const state={
   visible:false,loading:false,page:'home',week:weekMonday(),
   currentCategory:null,cursor:0,session:null,options:null,
-  products:[],categories:[],local:null,message:'',error:''
+  products:[],categories:[],local:null,message:'',error:'',
+  pendingReviewMode:false,printing:false
 };
 if(root){
   launcher=document.createElement('button');
@@ -72,6 +76,7 @@ async function openPilot(){
     state.categories=categories.filter(c=>c&&c.active!==false&&c.id)
       .sort((a,b)=>String(a.name).localeCompare(String(b.name),'es'));
     state.local=await readMonitorReview(state.options);
+    state.pendingReviewMode=false;
     const savedPosition=await readPilotPosition(state.options);
     const position=restorePilotPosition(savedPosition,groups());
     if(position){
@@ -234,7 +239,12 @@ function renderReview(){
   const unit=esc(row?.unit||p.unitCode||'');
   const qty=row?.quantity==null?'':row.quantity;
   const note=esc(row?.notes||'');
-  return panel('Revisión por categoría',
+  const pendingIndicator=state.pendingReviewMode
+    ? '<div class="mp-warning">Modo Pendientes · '+pendingProducts().length+
+      ' por revisar. Al decidir pasarás al siguiente pendiente, incluso de otra categoría. '+
+      button('← Volver a Pendientes','back-pending')+'</div>'
+    : '';
+  return panel('Revisión por categoría',pendingIndicator+
     '<div class="mp-form">'+categorySelector+'<div><span class="mp-muted">Avance en categoría</span>'+
     '<h3>'+esc(state.cursor+1)+' de '+group.products.length+'</h3></div></div>'+
     '<div class="mp-card"><span class="mp-chip">'+esc(group.name)+'</span>'+
@@ -252,6 +262,40 @@ function renderReview(){
     '<div class="mp-inline">'+button('← Anterior','previous')+button('Siguiente →','next')+'</div></div>'
   );
 }
+// Cola global de pendientes (cruza categorías); mantiene orden del catálogo.
+function pendingProducts(){return productChoices().PENDING;}
+function showPendingProduct(product){
+  if(!product)return false;
+  const group=groups().find(x=>x.products.some(p=>p.id===product.id));
+  if(!group)return false;
+  state.currentCategory=group.id;
+  state.cursor=group.products.findIndex(x=>x.id===product.id);
+  state.page='review';
+  state.pendingReviewMode=true;
+  return true;
+}
+function advancePendingReview(currentId,direction=1){
+  const pending=pendingProducts();
+  if(!pending.length){
+    state.pendingReviewMode=false;
+    state.page='pending';
+    state.message='¡Listo! No quedan productos pendientes.';
+    return;
+  }
+  const from=state.products.findIndex(x=>x.id===currentId);
+  // Tras resolver el actual, el siguiente puede estar en OTRA categoría.
+  const ordered=direction>=0
+    ? pending.find(x=>state.products.findIndex(p=>p.id===x.id)>from)||pending[0]
+    : [...pending].reverse().find(x=>state.products.findIndex(p=>p.id===x.id)<from)||pending[pending.length-1];
+  if(ordered.id===currentId&&pending.length===1){
+    state.page='pending';
+    state.pendingReviewMode=false;
+    state.message='Este producto continúa pendiente.';
+    return;
+  }
+  showPendingProduct(ordered);
+}
+
 function renderPending(){
   const all=productChoices().PENDING;
   if(!all.length)return panel('Pendientes','<p>No tienes productos pendientes. Puedes seguir con otra categoría.</p>');
@@ -289,12 +333,66 @@ function renderExtras(){
     '<button class="mp-button mp-primary" style="margin-top:15px" type="submit">+ Guardar extra</button></form>');
 }
 function renderLists(){
-  const rows = selectedItems();
+  const rows=selectedItems();
+  const snapshot={
+    source:'monitor-weekly-review',weekStart:state.week,
+    lists:{
+      PURCHASE:rows.filter(x=>x.decision==='BUY').map(x=>({
+        itemKey:x.itemKey,kind:x.kind,productId:x.productId,
+        description:x.name,category:x.category,quantity:x.quantity,
+        unit:x.unit,notes:x.notes
+      })),
+      ORDER:rows.filter(x=>x.decision==='ORDER').map(x=>({
+        itemKey:x.itemKey,kind:x.kind,productId:x.productId,
+        description:x.name,category:x.category,quantity:x.quantity,
+        unit:x.unit,notes:x.notes
+      }))
+    }
+  };
+  const lists=buildMonitorNativeLists(snapshot,{ownerLabel:pilotOwnerLabel()});
+  const preview=lists.map(list=>renderProcurementTickets({
+    list,businessName:pilotBusinessName()
+  })).join('');
+  const warning=(state.local?.pendingCount||state.local?.conflictCount)
+    ? '<p class="mp-warning">Hay cambios por sincronizar o conflictos. Antes de imprimir se verificará la lista directamente con el servidor.</p>'
+    : '<p class="mp-muted">Mismo formato VIGÍA normal (80 mm). Imprimir no cierra ni altera la semana.</p>';
+  const buttons=state.printing?'<p>Enviando a impresora…</p>':
+    button('🖨 Imprimir compras','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="PURCHASE"'})+
+    button('🖨 Imprimir pedidos','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="ORDER"'});
   return panel('Mis listas semanales',
-    '<p class="mp-muted mp-no-print">Impresión de prueba del navegador. La impresora ESC/POS real se integrará tras validar el piloto. Imprimir no cierra la revisión.</p>' +
-    '<div class="mp-inline mp-no-print">' + button('Imprimir vista previa','print',{cls:'mp-button mp-primary'}) + '</div>' +
-    '<div class="mp-grid mp-ticket-grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">' +
-      renderMonitorTicketSet({ weekStart:state.week, items:rows }) + '</div>');
+    '<div class="mp-no-print">'+warning+'<div class="mp-inline">'+buttons+'</div></div>'+
+    '<div class="v6p-ticket-preview mp-ticket-grid">'+preview+'</div>');
+}
+
+function pilotBusinessName(){
+  try{return localStorage.getItem('vigia.procurement.businessName') || 'NOMBRE DEL NEGOCIO';}
+  catch{return 'NOMBRE DEL NEGOCIO';}
+}
+function pilotOwnerLabel(){
+  const user=state.session||{};
+  return String(user.email||'').split('@')[0] || (user.userId?'Usuario '+String(user.userId).slice(0,8):'Usuario VIGÍA');
+}
+async function pilotDirectPrint(kind){
+  if(state.printing)return;
+  if(!['PURCHASE','ORDER'].includes(kind))throw new Error('Tipo de lista inválido');
+  if(!state.options||!state.session)throw new Error('No hay sesión de Monitor');
+  state.printing=true;state.error='';paint();
+  try {
+    // Traer una copia FRESCA; jamás imprimir del estado local anterior.
+    const snapshot=await fetchMonitorMirrorForNormal({
+      session:state.session,products:state.products,categories:state.categories,
+      weekStart:state.week,syncBeforeFetch:true
+    });
+    assertMonitorPrintable(snapshot);
+    const list=buildMonitorNativeLists(snapshot,{ownerLabel:pilotOwnerLabel()})
+      .find(x=>x.kind===kind);
+    if(!list?.items.length)throw new Error('Lista sin artículos');
+    const result=await printThermalProcurementList(list);
+    state.message=result.copies+' copias enviadas a '+result.printer.name+
+      ' · '+result.itemCount+' productos. No se cerró la revisión.';
+  }finally{
+    state.printing=false;paint();
+  }
 }
 function decisionLabel(d){return ({
   BUY:'Comprar',ORDER:'Pedir',PENDING:'Pendiente',NOT_NEEDED:'No hace falta',UNREVIEWED:'Sin revisar'
@@ -321,9 +419,11 @@ async function handleClick(event){
   if(action==='sync'){await pushAndRefresh();return;}
   if(action==='page'){
     state.page=node.dataset.mpPage;
+    state.pendingReviewMode=false;
     state.message='';paint();return;
   }
   if(action==='category'){
+    state.pendingReviewMode=false;
     state.currentCategory=node.dataset.mpCategory;
     const group=groups().find(x=>x.id===state.currentCategory);
     state.cursor=Math.max(0,group?.products.findIndex(p=>!findRow(p.id))??0);
@@ -336,9 +436,20 @@ async function handleClick(event){
     const group=groups().find(x=>x.products.some(x=>x.id===id));
     state.currentCategory=group.id;
     state.cursor=group.products.findIndex(x=>x.id===id);
-    state.page='review';await persistPilotCursor();paint();return;
+    state.page='review';state.pendingReviewMode=true;
+    state.message='';await persistPilotCursor();paint();return;
   }
+  if(action==='back-pending'){
+    state.page='pending';state.pendingReviewMode=false;state.message='';paint();return;
+  }
+  if(action==='monitor-print'){await pilotDirectPrint(node.dataset.mpKind);return;}
   if(action==='previous'||action==='next'){
+    if(state.pendingReviewMode){
+      const group=groups().find(x=>x.id===state.currentCategory);
+      const current=group?.products[state.cursor];
+      if(current)advancePendingReview(current.id,action==='previous'?-1:1);
+      await persistPilotCursor();paint();return;
+    }
     const group=groups().find(x=>x.id===state.currentCategory);
     if(group){
       state.cursor=Math.max(0,Math.min(group.products.length-1,state.cursor+(action==='previous'?-1:1)));
@@ -355,7 +466,9 @@ async function handleClick(event){
       kind:'PRODUCT',itemId:p.id,decision:node.dataset.mpChoice,
       quantity,unit,notes
     });
-    moveToNextUndecided();await persistPilotCursor();paint();return;
+    if(state.pendingReviewMode)advancePendingReview(p.id);
+    else moveToNextUndecided();
+    await persistPilotCursor();paint();return;
   }
   if(action==='save-selection'){
     const item=selectedItems().find(x=>x.itemKey===node.dataset.mpItem);
@@ -377,6 +490,7 @@ async function handleChange(event){
   if(!picker)return;
   const chosen=groups().find(group=>group.id===picker.value);
   if(!chosen)return;
+  state.pendingReviewMode=false;
   state.currentCategory=chosen.id;
   state.cursor=Math.max(0,chosen.products.findIndex(product=>!findRow(product.id)));
   await persistPilotCursor();paint();
