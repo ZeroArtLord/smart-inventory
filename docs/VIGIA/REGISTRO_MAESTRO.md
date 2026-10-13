@@ -729,3 +729,11 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - Escritura preparada en GitHub, NO ejecutada en HP: docs/VIGIA/VIGIA_HP_MONITOR_STAGE_SAFE.ps1, commit d811d033c847bb220da9a555af9e3b7dbf60caaf. El script verifica versiones, estado de servicios y endpoints, obtiene Git solo en .git, repite preflight solo-lectura y crea un dump nuevo SIN purgar los viejos; NO detiene servicio, NO actualiza archivos productivos, NO migra ni habilita Monitor.
 - CI Windows PowerShell 5.1 parser agregado en workflow commit 826b72d09c438bf6997bcdb20a5631159d95c92e, run 38401247479: windows-snapshot-parse SUCCESS incl. Parse HP stage script; restantes trabajos en ejecución al escribir esta entrada.
 - Prevención: no ejecutar Etapa B si no aparece STAGE_PASS_SIN_PARAR_SERVICIO y se revisa el resultado. Recordar que el stage hace backup online, y antes del despliegue real se deben detener escrituras y asegurar respaldo reciente; no destruir IndexedDB ni datos históricos.
+
+
+### [REG-055] 2026-10-13 | Preparación Windows probada automáticamente | CI CINCO JOBS PASS / HP NO EJECUTADO
+
+- GitHub Actions run 38401247479 para commit 826b72d09c438bf6997bcdb20a5631159d95c92e: client-tests, server-integration, windows-snapshot-parse, server-syntax y browser-pilot SUCCESS.
+- Windows-snapshot-parse ejecutó Parse HP stage script with Windows PowerShell y devolvió success (sintaxis PowerShell Windows 5.1). No significa que el script se haya ejecutado en HP ni que el respaldo de hoy exista.
+- El script de etapa A listo para usuario es el archivo versionado del commit d811d033c847bb220da9a555af9e3b7dbf60caaf. Se debe ejecutar primero y entregar stdout con STAGE_PASS_SIN_PARAR_SERVICIO antes de hacer B.
+- No hubo intervención en servicio ni base del HP desde GitHub. Se mantiene bandera Monitor off hasta autorización para segundo paso. La autorización de la ventana ya consta en REG-054.
