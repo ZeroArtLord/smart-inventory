@@ -14,6 +14,7 @@ on:
       - ".github/workflows/v2-tests.yml"
 
 jobs:
+  # Validate the standalone GOD activation self-test on Windows.
   windows-snapshot-parse:
     runs-on: windows-latest
     timeout-minutes: 5
