@@ -47,6 +47,19 @@ jobs:
           }
           Write-Host "VIGIA_HP_STAGE_PARSE_PASS"
 
+      - name: Parse HP production deployment script with Windows PowerShell
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          $path = "docs/VIGIA/VIGIA_HP_MONITOR_DEPLOY_SAFE.ps1"
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+          Write-Host "VIGIA_HP_DEPLOY_PARSE_PASS"
+
   client-tests:
     runs-on: ubuntu-latest
     defaults:
