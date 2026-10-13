@@ -136,7 +136,7 @@ test('Ticket printing in BOTH views is safely isolated from old V6 global print 
   const normal=readFileSync(new URL('../src/ui/procurementWorkspaceV6Ui.js',import.meta.url),'utf8');
   const pilot=readFileSync(new URL('../src/ui/monitorReviewPilotUi.js',import.meta.url),'utf8');
   const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
-  assert.match(normal,/data\.v6pAction/);
+  assert.match(normal,/button\.dataset\.v6pAction/);
   assert.match(normal,/print-monitor-mirror/);
   assert.match(normal,/syncBeforeFetch:true/);
   assert.match(css,/body\.vigia-monitor-normal-print-active #v6MonitorPrintPage \*/);
