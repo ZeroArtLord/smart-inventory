@@ -66,7 +66,10 @@ jobs:
               if(sql==='BEGIN TRANSACTION READ ONLY'||sql==='COMMIT')return {rows:[]};
               if(sql.includes('AS monitor_mig'))return {rows:[{db:'smart_inventory',mig:21,monitor_mig:2,review_items:0,review_mutations:0,supply_deliveries:0}]};
               if(sql.includes('AS migrations'))return {rows:[{db:'smart_inventory',migrations:21}]};
-              if(sql.includes("wm.role_code='GOD'"))return {rows:[{user_id:'11111111-1111-4111-8111-111111111111',firebase_uid:'test_firebase_uid',display_name:'TEST GOD',workspace_id:'22222222-2222-4222-8222-222222222222',permissions:['*']}]};
+              if(sql.includes("wm.role_code='GOD'")){
+                const god={user_id:'11111111-1111-4111-8111-111111111111',firebase_uid:'test_firebase_uid',display_name:'TEST GOD',workspace_id:'22222222-2222-4222-8222-222222222222',permissions:['*']};
+                return {rows:process.env.VIGIA_TEST_MULTIPLE_GODS?[god,god]:[god]};
+              }
               return {rows:[{db:'smart_inventory',products:494,documents:132,lines:4196,movements:1019,sync:10075,audit:11370}]};
             }
             async end(){}
@@ -85,6 +88,11 @@ jobs:
           if($LASTEXITCODE -ne 0){ throw 'GOD identity helper syntax invalid' }
           $god = & node $godHelper
           if($LASTEXITCODE -ne 0 -or -not ($god -match '^VIGIA_GOD_IDENTIFIED .*"firebaseLinked":true')){ throw 'GOD lookup failed on Windows' }
+          $env:VIGIA_TEST_MULTIPLE_GODS = '1'
+          $two = & node $godHelper 2>&1
+          if($LASTEXITCODE -eq 0){ throw 'GOD lookup incorrectly accepted multiple identities' }
+          Remove-Item Env:\VIGIA_TEST_MULTIPLE_GODS -ErrorAction SilentlyContinue
+          Write-Host 'VIGIA_GOD_ID_UNIQUENESS_FAIL_CLOSED_PASS'
           Write-Host 'VIGIA_GOD_ID_LOOKUP_WINDOWS_PASS'
           Write-Host 'VIGIA_SQL_FILE_EXECUTION_WINDOWS_PASS'
           Remove-Item Env:\VIGIA_SERVER_DIR -ErrorAction SilentlyContinue
