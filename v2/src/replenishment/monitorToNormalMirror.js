@@ -61,6 +61,14 @@ export function projectMonitorToNormal({ serverItems = [], localState = null, pr
     }
     lists[item.decision === 'BUY' ? 'PURCHASE' : 'ORDER'].push(row);
   }
+  // La cola también puede contener NO HACE FALTA o PENDIENTE sin figurar
+  // en tickets. Cualquier cambio no enviado impide declarar la copia "sincronizada".
+  if (Number.isSafeInteger(localState?.pendingCount)) {
+    counts.pendingLocal = localState.pendingCount;
+  }
+  if (Number.isSafeInteger(localState?.conflictCount)) {
+    counts.conflicts = localState.conflictCount;
+  }
   for (const list of Object.values(lists)) {
     list.sort((a, b) => a.category.localeCompare(b.category, 'es') ||
       a.description.localeCompare(b.description, 'es') ||
