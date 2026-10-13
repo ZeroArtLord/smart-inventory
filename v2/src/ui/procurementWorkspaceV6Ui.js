@@ -21,7 +21,7 @@ import { getCurrentSession, can } from '../admin/adminClient.js';
 import { syncNow } from '../sync/syncEngine.js';
 import { renderWorkspace, renderReviewModal, renderManualModal, renderListModal, renderAddToListModal, esc } from './procurementWorkspaceV6Render.js';
 import { renderPrintModal } from './procurementWorkspaceV6Print.js';
-import { fetchMonitorMirrorForNormal, renderMonitorMirrorForNormal } from './monitorNormalMirrorUi.js';
+import { fetchMonitorMirrorForNormal, renderMonitorMirrorForNormal, printableMonitorMirror } from './monitorNormalMirrorUi.js';
 
 const BUSINESS_NAME_KEY = 'vigia.procurement.businessName';
 const app = document.getElementById('app');
@@ -238,7 +238,7 @@ function paint() {
   restoreModal();
 }
 
-async function refreshMonitorMirror() {
+async function refreshMonitorMirror({ syncBeforeFetch = false } = {}) {
   if(state.monitorMirrorLoading || !state.session)return;
   const context=procurementDraftContext();if(!context)return;
   const identity=context.workspaceId+':'+context.userId;
@@ -246,11 +246,12 @@ async function refreshMonitorMirror() {
   try{
     const snapshot=await fetchMonitorMirrorForNormal({
       session:state.session,products:state.products,
-      categories:[...state.categoriesById.values()]
+      categories:[...state.categoriesById.values()],syncBeforeFetch
     });
     if(state.monitorMirrorIdentity!==identity)return;
     state.monitorMirror=snapshot;
     state.monitorMirrorHidden=false;
+    return true;
   }catch(error){
     if(state.monitorMirrorIdentity!==identity)return;
     if(['MONITOR_PILOT_DISABLED','MONITOR_PILOT_NOT_ALLOWED','PERMISSION_DENIED'].includes(error?.code)||
@@ -263,6 +264,43 @@ async function refreshMonitorMirror() {
   }finally{
     state.monitorMirrorLoading=false;
     if(state.monitorMirrorIdentity===identity && isTargetView())paint();
+  }
+  return false;
+}
+
+async function printMonitorMirror() {
+  // Una sola acción: sincronizar este dispositivo -> consultar servidor -> imprimir.
+  // Jamás imprime datos viejos si la recarga falló.
+  const updated=await refreshMonitorMirror({syncBeforeFetch:true});
+  if(!updated || !isTargetView() || state.activeTab!=='lists') {
+    toast('No se pudo actualizar Monitor. No se imprimió ninguna lista.');
+    return;
+  }
+  let tickets;
+  try {
+    tickets=printableMonitorMirror(state.monitorMirror);
+  } catch(error) {
+    toast(error.message);
+    return;
+  }
+  const old=document.getElementById('v6MonitorPrintPage');
+  old?.remove();
+  const root=document.createElement('section');
+  root.id='v6MonitorPrintPage';
+  root.setAttribute('aria-label','Tickets de VIGÍA Monitor');
+  root.innerHTML=tickets;
+  document.body.appendChild(root);
+  document.body.classList.add('vigia-monitor-normal-print-active');
+  const clean=()=>{
+    document.body.classList.remove('vigia-monitor-normal-print-active');
+    root.remove();
+  };
+  window.addEventListener('afterprint',clean,{once:true});
+  try { window.print(); }
+  catch(error) {
+    window.removeEventListener('afterprint',clean);
+    clean();
+    toast('El navegador no pudo abrir impresión: '+String(error.message||error));
   }
 }
 
@@ -292,6 +330,7 @@ async function handleClick(event) {
     const action=button.dataset.v6pAction;
     if(action==='switch-tab'){state.activeTab=button.dataset.tab;state.listModalId=null;state.printListId=null;paint();if(state.activeTab==='lists')await refreshMonitorMirror();return;}
     if(action==='refresh-monitor-mirror'){await refreshMonitorMirror();return;}
+    if(action==='print-monitor-mirror'){await printMonitorMirror();return;}
     if(action==='prepare-visible'||action==='select-visible'){visibleDrafts().forEach(d=>{d.selected=true;d.dirty=true;});scheduleProcurementDraftSave();paint();toast('Sugerencias visibles preparadas.');return;}
     if(action==='clear-selection'){state.drafts.forEach(d=>{if(d.selected){d.selected=false;d.dirty=true;}});scheduleProcurementDraftSave();paint();return;}
     if(action==='toggle-details'){const d=draftFromNode(button);if(d){d.detailsOpen=!d.detailsOpen;paint();}return;}
