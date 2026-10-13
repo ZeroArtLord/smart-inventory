@@ -1,0 +1,76 @@
+/* VIGÍA Monitor pilot UI — standalone modal, never overrides V2 production flow. */
+#vigiaMonitorPilotLauncher{position:fixed;right:16px;bottom:18px;z-index:300;border:0;border-radius:18px;background:#0e526e;color:white;padding:14px 20px;box-shadow:0 8px 30px #102a3980;font:800 14px system-ui;cursor:pointer}
+#vigiaMonitorPilotLauncher[hidden]{display:none!important}
+#vigiaMonitorPilot{position:fixed;inset:0;z-index:500;background:#f3f6fb;color:#213247;font:15px/1.45 system-ui,sans-serif;overflow-y:auto;overscroll-behavior:contain}
+#vigiaMonitorPilot[hidden]{display:none!important}
+#vigiaMonitorPilot *{box-sizing:border-box}
+#vigiaMonitorPilot button,#vigiaMonitorPilot input,#vigiaMonitorPilot select,#vigiaMonitorPilot textarea{font:inherit}
+#vigiaMonitorPilot button{cursor:pointer}
+#vigiaMonitorPilot .mp-shell{max-width:1100px;margin:auto;padding:22px}
+#vigiaMonitorPilot .mp-head{background:#102a3f;border-radius:22px;color:#fff;padding:24px;display:flex;align-items:start;justify-content:space-between;gap:20px}
+#vigiaMonitorPilot .mp-head h1{font-size:27px;line-height:1.1;margin:4px 0 8px}
+#vigiaMonitorPilot .mp-head p{color:#c5d7e2;margin:0;font-size:13px}
+#vigiaMonitorPilot .mp-close{border:1px solid #95abb9;background:transparent;color:white;padding:11px 14px;border-radius:12px;flex-shrink:0}
+#vigiaMonitorPilot .mp-nav{display:flex;gap:8px;overflow-x:auto;padding:14px 0;scrollbar-width:thin}
+#vigiaMonitorPilot .mp-nav button{border:1px solid #cfdbe3;background:white;padding:12px 15px;border-radius:12px;white-space:nowrap;color:#254158;font-weight:700}
+#vigiaMonitorPilot .mp-nav button[aria-current=page]{background:#0e526e;color:#fff;border-color:#0e526e}
+#vigiaMonitorPilot .mp-card{border:1px solid #dbe4ee;background:white;border-radius:18px;padding:20px;margin-top:13px;box-shadow:0 2px 12px #112c430a}
+#vigiaMonitorPilot h2{font-size:22px;margin:0 0 14px}
+#vigiaMonitorPilot h3{font-size:18px;margin:0 0 7px}
+#vigiaMonitorPilot .mp-muted{font-size:13px;color:#60758a}
+#vigiaMonitorPilot .mp-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}
+#vigiaMonitorPilot .mp-tile{display:block;text-align:left;width:100%;background:#f6f9fc;border:1px solid #dae4ec;padding:19px;border-radius:14px}
+#vigiaMonitorPilot .mp-tile strong{display:block;font-size:17px;margin:4px 0}
+#vigiaMonitorPilot .mp-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+#vigiaMonitorPilot .mp-kpi{border:1px solid #d5e2ec;padding:14px;border-radius:13px;background:#f7fafd}
+#vigiaMonitorPilot .mp-kpi b{display:block;font-size:25px}
+#vigiaMonitorPilot .mp-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+#vigiaMonitorPilot label{display:block;font-weight:700;font-size:13px}
+#vigiaMonitorPilot input,#vigiaMonitorPilot select,#vigiaMonitorPilot textarea{width:100%;margin-top:6px;padding:13px 12px;border:1px solid #bed0dd;border-radius:12px;color:#1a3247;background:#fff;font-size:16px}
+#vigiaMonitorPilot button:focus-visible,#vigiaMonitorPilot input:focus-visible{outline:3px solid #40a6e3;outline-offset:2px}
+#vigiaMonitorPilot .mp-actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:16px 0}
+#vigiaMonitorPilot .mp-action{border:0;border-radius:13px;padding:19px 12px;color:white;font-weight:850;min-height:61px}
+#vigiaMonitorPilot .mp-buy{background:#0d6757}
+#vigiaMonitorPilot .mp-order{background:#2457a5}
+#vigiaMonitorPilot .mp-none{background:#63788c}
+#vigiaMonitorPilot .mp-pending{background:#a4600d}
+#vigiaMonitorPilot .mp-button{border:1px solid #bdd0dc;color:#18405b;background:white;padding:12px 16px;border-radius:12px;font-weight:700;min-height:44px}
+#vigiaMonitorPilot .mp-primary{background:#0e526e;color:white;border-color:#0e526e}
+#vigiaMonitorPilot .mp-inline{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+#vigiaMonitorPilot .mp-row{display:flex;align-items:center;justify-content:space-between;gap:14px;border-bottom:1px solid #e2e9ee;padding:12px 0}
+#vigiaMonitorPilot .mp-row:last-child{border:0}
+#vigiaMonitorPilot .mp-progress{height:8px;background:#e0e7ed;border-radius:99px;overflow:hidden;margin-top:12px}
+#vigiaMonitorPilot .mp-progress div{height:100%;background:#16a085}
+#vigiaMonitorPilot .mp-chip{display:inline-block;border-radius:99px;background:#e6eef4;color:#26495d;padding:4px 9px;font-size:12px;font-weight:750}
+#vigiaMonitorPilot .mp-warning{background:#fff3e0;color:#8b540c;border-radius:12px;padding:13px;margin:12px 0}
+#vigiaMonitorPilot .mp-error{background:#fff0f0;color:#8c2525;border-radius:12px;padding:13px;margin:12px 0}
+#vigiaMonitorPilot .mp-ticket{border:1px dashed #789;padding:14px;max-width:340px;background:white;font:13px/1.5 ui-monospace,monospace;break-inside:avoid;margin:16px auto}
+#vigiaMonitorPilot .mp-ticket h3{text-align:center;font-size:17px}
+#vigiaMonitorPilot .mp-ticket hr{border:0;border-top:1px dashed #777}
+#vigiaMonitorPilot .mp-ticket-line{display:flex;justify-content:space-between;gap:14px;margin:9px 0}
+#vigiaMonitorPilot .mp-ticket-line b{text-align:right}
+@media(max-width:700px){
+ #vigiaMonitorPilot .mp-shell{padding:10px;padding-bottom:85px}
+ #vigiaMonitorPilot .mp-head{border-radius:14px;padding:17px}
+ #vigiaMonitorPilot .mp-head h1{font-size:22px}
+ #vigiaMonitorPilot .mp-card{border-radius:14px;padding:14px}
+ #vigiaMonitorPilot .mp-grid{grid-template-columns:1fr}
+ #vigiaMonitorPilot .mp-kpis{grid-template-columns:repeat(2,1fr)}
+ #vigiaMonitorPilot .mp-form{grid-template-columns:1fr}
+ #vigiaMonitorPilot .mp-action{min-height:72px;font-size:15px}
+ #vigiaMonitorPilot .mp-row{align-items:stretch;flex-direction:column}
+ #vigiaMonitorPilot .mp-inline{width:100%}
+ #vigiaMonitorPilot .mp-inline button{flex:1}
+ #vigiaMonitorPilot input,#vigiaMonitorPilot select,#vigiaMonitorPilot textarea{font-size:16px}
+ #vigiaMonitorPilot h2{font-size:20px}
+ #vigiaMonitorPilotLauncher{bottom:72px;right:9px;padding:12px 14px}
+}
+@media print{
+ body>*:not(#vigiaMonitorPilot){display:none!important}
+ #vigiaMonitorPilot{position:static;overflow:visible;background:white;color:black}
+ #vigiaMonitorPilot .mp-head,#vigiaMonitorPilot .mp-nav,#vigiaMonitorPilot .mp-no-print{display:none!important}
+ #vigiaMonitorPilot .mp-shell{padding:0;max-width:80mm}
+ #vigiaMonitorPilot .mp-card{border:0;padding:0;box-shadow:none}
+ #vigiaMonitorPilot .mp-ticket{width:76mm;max-width:76mm;border:0;break-after:page;margin:0}
+ @page{size:80mm auto;margin:2mm}
+}

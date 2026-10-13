@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-64';
+const CACHE_NAME = 'smart-inventory-v2-shell-64-monitor-pilot-1';
 // procurement-weekly-edit-hotfix-2026-10-07
 // procurement-cancelled-line-visibility-hotfix-2026-10-07
 
@@ -119,6 +119,18 @@ const APP_SHELL = [
   './src/documents/supplyChecklistService.js',
   './src/documents/operationalDate.js',
   './src/documents/supplyHistoryGrouping.js',
+  './css/monitor-pilot.css',
+  './css/monitor-supply-pilot.css',
+  './src/ui/monitorReviewPilotUi.js',
+  './src/ui/monitorPilotEnabled.js',
+  './src/ui/monitorSupplyPilotUi.js',
+  './src/ui/monitorPilotPosition.js',
+  './src/replenishment/monitorPilotSession.js',
+  './src/replenishment/monitorWeeklyReview.js',
+  './src/replenishment/monitorReviewOffline.js',
+  './src/documents/monitorSupplyModel.js',
+  './src/documents/monitorSupplyOutbox.js',
+  './src/documents/monitorSupplyDraftStore.js',
   './src/documents/supplyReportContextService.js'
 ];
 
