@@ -5,7 +5,7 @@ import {
 } from '../replenishment/procurementListService.js';
 import { esc } from './procurementWorkspaceV6Render.js';
 
-export function renderPrintModal({ list, businessName }) {
+export function renderPrintModal({ list, businessName, monitor = false }) {
   const typeLabel = list.kind === 'ORDER'
     ? 'LISTA DE PEDIDOS'
     : 'LISTA DE COMPRAS';
@@ -50,21 +50,22 @@ export function renderPrintModal({ list, businessName }) {
         </div>
 
         <div class="v6p-ticket-preview">
-          ${copies
-            .map(copy =>
-              ticket({
-                list,
-                typeLabel,
-                copy,
-                groups,
-                businessName
-              })
-            )
-            .join('')}
+          ${renderProcurementTickets({list,businessName})}
         </div>
       </div>
     </div>
   `;
+}
+
+// Único render de los dos tickets. Lo consumen tanto las listas V6 tradicionales
+// como Monitor, que únicamente proyecta sus datos sin crear entidades V6.
+export function renderProcurementTickets({list,businessName}) {
+  const typeLabel=list.kind==='ORDER'?'LISTA DE PEDIDOS':'LISTA DE COMPRAS';
+  const copies=list.kind==='ORDER'
+    ? ['COPIA PEDIDO / PROVEEDOR','COPIA DEPÓSITO']
+    : ['COPIA CHÓFER','COPIA DEPÓSITO'];
+  const groups=groupByCategory((list.items||[]).filter(x=>x.status!=='CANCELLED'));
+  return copies.map(copy=>ticket({list,typeLabel,copy,groups,businessName})).join('');
 }
 
 function ticket({
@@ -127,8 +128,16 @@ function ticket({
 }
 
 function ticketRow(item) {
-  const display = procurementDisplayQuantity(item);
-  const extra = isProcurementExtra(item);
+  // Monitor conserva cantidad:null: la impresión debe mostrar un hueco,
+  // nunca convertirlo en 0 desde el contrato de reposición antiguo.
+  const override = Object.prototype.hasOwnProperty.call(item,'printQuantity');
+  const display = override
+    ? {quantity:item.printQuantity,unit:item.printUnit||''}
+    : procurementDisplayQuantity(item);
+  const extra = item.printExtra === true || isProcurementExtra(item);
+  const text = override && display.quantity == null
+    ? '________'
+    : formatNumber(display.quantity);
 
   return `
     <div class="v6p-ticket-row">
@@ -142,8 +151,8 @@ function ticketRow(item) {
         ${extra ? '<small>EXTRA</small>' : ''}
       </div>
       <b>${esc(
-        formatNumber(display.quantity)
-      )} ${esc(shortUnit(display.unit))}</b>
+        text
+      )}${display.unit ? ' '+esc(shortUnit(display.unit)) : ''}</b>
       <i></i>
     </div>
   `;
@@ -154,7 +163,7 @@ function groupByCategory(items) {
 
   for (const item of items) {
     const category =
-      procurementCategoryOf(item) ||
+      item.printCategory || procurementCategoryOf(item) ||
       'SIN CATEGORÍA';
 
     if (!groups.has(category)) {
