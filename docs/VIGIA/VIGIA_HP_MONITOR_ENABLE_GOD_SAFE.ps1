@@ -66,12 +66,12 @@ function ChangeEnv([byte[]]$bytes,[string]$userId){
   if($flag.Count -eq 1){
     $value=($flag[0].Value -replace '^[ \t]*MONITOR_PILOT_ENABLED[ \t]*=','').Trim().Trim('"').Trim("'")
     Need ($value -eq '' -or $value.ToLowerInvariant() -eq 'false') 'Monitor ya activado o configuracion no reconocida'
-    $body=[regex]::Replace($body,'(?m)^([ \t]*MONITOR_PILOT_ENABLED[ \t]*=)[^\r\n]*','1true')
+    $body=[regex]::Replace($body,'(?m)^[ \t]*MONITOR_PILOT_ENABLED[ \t]*=[^\r\n]*','MONITOR_PILOT_ENABLED=true')
   }
   if($ids.Count -eq 1){
     $value=($ids[0].Value -replace '^[ \t]*MONITOR_PILOT_USER_IDS[ \t]*=','').Trim().Trim('"').Trim("'")
     Need ([string]::IsNullOrWhiteSpace($value)) 'Allowlist existente; no sobrescribir'
-    $body=[regex]::Replace($body,'(?m)^([ \t]*MONITOR_PILOT_USER_IDS[ \t]*=)[^\r\n]*',('1'+$userId))
+    $body=[regex]::Replace($body,'(?m)^[ \t]*MONITOR_PILOT_USER_IDS[ \t]*=[^\r\n]*',('MONITOR_PILOT_USER_IDS='+$userId))
   }
   $nl=[string][char]10
   if($body.Contains(([string][char]13+[string][char]10))){$nl=[string][char]13+[string][char]10}
