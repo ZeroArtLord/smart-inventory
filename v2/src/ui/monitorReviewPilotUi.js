@@ -40,6 +40,11 @@ if(root){
   shell.addEventListener('submit',event=>handleSubmit(event).catch(showError));
   shell.addEventListener('change',event=>handleChange(event).catch(showError));
   window.addEventListener('online',()=>{if(state.visible)pushAndRefresh().catch(showError);});
+  window.addEventListener('beforeprint',()=>{
+    if(state.visible && state.page==='lists') document.body.classList.add('vigia-monitor-print-active');
+  });
+  window.addEventListener('afterprint',()=>document.body.classList.remove('vigia-monitor-print-active'));
+
 }
 
 function updateLauncher(){
