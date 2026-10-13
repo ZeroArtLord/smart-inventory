@@ -1,4 +1,6 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-61';
+const CACHE_NAME = 'smart-inventory-v2-shell-64';
+// procurement-weekly-edit-hotfix-2026-10-07
+// procurement-cancelled-line-visibility-hotfix-2026-10-07
 
 const APP_SHELL = [
   './',
@@ -60,6 +62,7 @@ const APP_SHELL = [
   './src/auth/authProvider.js',
   './src/auth/firebaseClient.js',
   './src/auth/authBootstrap.js',
+  './src/auth/offlineAccess.js',
   './src/api/apiClient.js',
   './src/core/mathExpression.js',
   './src/core/ids.js',
@@ -94,6 +97,7 @@ const APP_SHELL = [
   './src/replenishment/replenishmentService.js',
   './src/replenishment/warehouseProcurementService.js',
   './src/replenishment/procurementListService.js',
+  './src/replenishment/procurementWorkspaceDraft.js',
   './src/replenishment/manualProcurementRequestService.js',
   './src/scanner/barcodeScanner.js',
   './src/export/exportService.js',

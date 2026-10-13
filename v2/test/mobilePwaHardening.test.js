@@ -18,7 +18,7 @@ async function readBinary(relativePath) {
 test('PWA V8.7 precachea shell operativo completo y assets mobile reales', async () => {
   const sw = await read('../sw.js');
 
-  assert.match(sw, /smart-inventory-v2-shell-61/);
+  assert.match(sw, /smart-inventory-v2-shell-64/);
   assert.doesNotMatch(sw, /smart-inventory-v2-shell-56/);
 
   const requiredAssets = [
@@ -72,6 +72,7 @@ test('PWA V8.7 precachea shell operativo completo y assets mobile reales', async
     './src/documents/supplyReportContextService.js',
     './src/replenishment/warehouseProcurementService.js',
     './src/replenishment/procurementListService.js',
+    './src/replenishment/procurementWorkspaceDraft.js',
     './src/export/saintSupplyExport.js',
     './icons/vigia-apple-touch-icon.png',
     './icons/vigia-192.png',

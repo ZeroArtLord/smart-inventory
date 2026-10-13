@@ -17,5 +17,5 @@ test('B1 conflicto remoto de barcode identifica el evento exacto y no condena to
 
   assert.match(engine, /BARCODE_DUPLICATE/);
   assert.match(engine, /markConflict/);
-  assert.match(engine, /Lote revertido por conflicto en otro evento/);
+  assert.match(engine, /Lote reintentado sin el evento en conflicto/);
 });

@@ -15,6 +15,8 @@ const {
 
 const {
   createProcurementLists,
+  appendProcurementListItems,
+  reopenProcurementList,
   updateDraftProcurementLine,
   listProcurementLists,
   procurementCategoryOf,
@@ -26,7 +28,8 @@ const {
 } = await import('../src/replenishment/warehouseProcurementService.js');
 
 const {
-  REPLENISHMENT_STATUS
+  REPLENISHMENT_STATUS,
+  changeReplenishmentStatus
 } = await import('../src/replenishment/replenishmentService.js');
 
 async function fixture() {
@@ -215,4 +218,94 @@ test('valida todo el lote antes de escribir y evita listas parciales', async () 
 
   const after = await getAll(STORES.REPLENISHMENTS);
   assert.equal(after.length, before.length);
+});
+
+
+test('agrega productos a la misma lista abierta y actualiza existentes sin duplicarlos', async () => {
+  const { purchase } = await fixture();
+
+  const created = await createProcurementLists({
+    ownerId: 'warehouse-weekly',
+    ownerLabel: 'Armando',
+    lines: [{
+      productId: purchase.id,
+      method: 'PURCHASE',
+      requestedQuantity: 10,
+      displayQuantity: 10,
+      displayUnit: 'KG',
+      displayConversion: 1,
+      notes: 'lunes'
+    }]
+  });
+
+  const listId = created.purchaseListId;
+  const firstId = created.items[0].id;
+
+  const updated = await appendProcurementListItems(listId, {
+    ownerId: 'warehouse-weekly',
+    ownerLabel: 'Armando',
+    lines: [{
+      productId: purchase.id,
+      method: 'PURCHASE',
+      requestedQuantity: 14,
+      displayQuantity: 14,
+      displayUnit: 'KG',
+      displayConversion: 1,
+      notes: 'ajustado miércoles'
+    }]
+  });
+
+  assert.equal(updated.items.length, 1);
+  assert.equal(updated.items[0].id, firstId);
+  assert.equal(updated.items[0].requestedQuantity, 14);
+  assert.equal(updated.items[0].notes, 'ajustado miercoles');
+
+  const lists = await listProcurementLists();
+  const list = lists.find(item => item.id === listId);
+  const activeSameProduct = list.activeItems.filter(
+    item => item.productId === purchase.id
+  );
+
+  assert.equal(activeSameProduct.length, 1);
+  assert.equal(activeSameProduct[0].requestedQuantity, 14);
+});
+
+test('una lista realizada puede reabrirse si todavía no tiene recepción', async () => {
+  const { purchase } = await fixture();
+
+  const created = await createProcurementLists({
+    lines: [{
+      productId: purchase.id,
+      method: 'PURCHASE',
+      requestedQuantity: 8,
+      displayQuantity: 8,
+      displayUnit: 'KG',
+      displayConversion: 1
+    }]
+  });
+
+  const item = created.items[0];
+
+  await changeReplenishmentStatus(
+    item.id,
+    REPLENISHMENT_STATUS.ORDERED,
+    { userId: 'warehouse-weekly' }
+  );
+
+  await reopenProcurementList(
+    created.purchaseListId,
+    { userId: 'warehouse-weekly' }
+  );
+
+  const reopened = await get(
+    STORES.REPLENISHMENTS,
+    item.id
+  );
+
+  assert.equal(
+    reopened.status,
+    REPLENISHMENT_STATUS.DRAFT
+  );
+  assert.equal(reopened.orderedAt, null);
+  assert.ok(reopened.version >= item.version + 2);
 });

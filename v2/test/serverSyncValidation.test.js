@@ -293,3 +293,50 @@ test('rechaza marca Comprar si requested no es boolean', () => {
     payload
   }), /boolean/i);
 });
+
+
+test('normaliza residuos negativos de precisión en líneas de conteo', () => {
+  const payload = {
+    id: 'line_epsilon',
+    documentId: 'cnt_epsilon',
+    productId: 'prd_test',
+    expectedStock: -2.220446049250313e-16,
+    countedStock: 0,
+    difference: 2.220446049250313e-16,
+    version: 1,
+    createdAt: '2026-09-28T18:00:00.000Z',
+    updatedAt: '2026-09-28T18:00:00.000Z'
+  };
+
+  assert.doesNotThrow(() => validateSyncEvent({
+    entityType: 'documentLine',
+    entityId: payload.id,
+    operation: 'CREATE',
+    payload
+  }));
+
+  assert.equal(payload.expectedStock, 0);
+  assert.equal(payload.countedStock, 0);
+  assert.equal(payload.difference, 0);
+});
+
+test('sigue rechazando existencias esperadas realmente negativas', () => {
+  const payload = {
+    id: 'line_negative_real',
+    documentId: 'cnt_negative_real',
+    productId: 'prd_test',
+    expectedStock: -0.001,
+    countedStock: 0,
+    difference: 0.001,
+    version: 1,
+    createdAt: '2026-09-28T18:00:00.000Z',
+    updatedAt: '2026-09-28T18:00:00.000Z'
+  };
+
+  assert.throws(() => validateSyncEvent({
+    entityType: 'documentLine',
+    entityId: payload.id,
+    operation: 'CREATE',
+    payload
+  }), /Existencia esperada/i);
+});

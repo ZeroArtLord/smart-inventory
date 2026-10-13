@@ -196,6 +196,415 @@ export async function createProcurementLists({
   };
 }
 
+
+export async function appendProcurementListItems(
+  listId,
+  {
+    lines = [],
+    extras = [],
+    ownerId = null,
+    ownerLabel = null
+  } = {}
+) {
+  const normalizedLines = Array.isArray(lines) ? lines : [];
+  const normalizedExtras = Array.isArray(extras) ? extras : [];
+
+  if (!normalizedLines.length && !normalizedExtras.length) {
+    throw new Error('Selecciona al menos un producto o extra');
+  }
+
+  const [allItems, products, categories] = await Promise.all([
+    getAll(STORES.REPLENISHMENTS),
+    getAll(STORES.PRODUCTS),
+    getAll(STORES.CATEGORIES)
+  ]);
+
+  const listItems = allItems.filter(
+    item => procurementListIdOf(item) === listId
+  );
+
+  if (!listItems.length) {
+    throw new Error('Lista de compra/pedido no encontrada');
+  }
+
+  if (deriveListStatus(listItems) !== REPLENISHMENT_STATUS.DRAFT) {
+    throw new Error('La lista debe estar ABIERTA para agregar productos');
+  }
+
+  const activeItems = listItems.filter(
+    item => item.status !== REPLENISHMENT_STATUS.CANCELLED
+  );
+  const kind =
+    activeItems[0]?.method ||
+    listItems[0]?.method ||
+    PROCUREMENT_LIST_KIND.PURCHASE;
+  const groupId =
+    listItems[0]?.sourceSuggestion?.procurementGroupId ||
+    createLocalId('proc-group');
+  const defaultOwnerId =
+    ownerId ||
+    listItems[0]?.ownerId ||
+    null;
+  const defaultOwnerLabel =
+    cleanText(ownerLabel) ||
+    cleanText(
+      listItems[0]?.sourceSuggestion?.ownerLabelAtDecision
+    ) ||
+    null;
+
+  const productById = new Map(
+    products.map(product => [product.id, product])
+  );
+  const categoryById = new Map(
+    categories.map(category => [category.id, category])
+  );
+
+  const now = new Date().toISOString();
+  const writes = [];
+
+  for (const raw of normalizedLines) {
+    const productId = cleanText(raw.productId);
+    const product = productById.get(productId);
+
+    if (!product) {
+      throw new Error('Producto no encontrado en la lista');
+    }
+    if (product.active === false) {
+      throw new Error(`El producto está inactivo: ${product.name}`);
+    }
+
+    const method = normalizeMethod(raw.method || kind);
+    if (method !== kind) {
+      throw new Error(
+        `Esta lista solo admite ${kind === 'ORDER' ? 'PEDIDOS' : 'COMPRAS'}`
+      );
+    }
+
+    const requestedQuantity = positiveNumber(
+      raw.requestedQuantity ?? raw.quantity,
+      `Cantidad de ${product.name}`
+    );
+    const categoryName =
+      cleanText(raw.categoryName) ||
+      cleanText(categoryById.get(product.categoryId)?.name) ||
+      'SIN CATEGORÍA';
+    const source =
+      raw.source === PROCUREMENT_SOURCE.VIGIA_SUGGESTION
+        ? PROCUREMENT_SOURCE.VIGIA_SUGGESTION
+        : PROCUREMENT_SOURCE.MANUAL;
+
+    const existing = activeItems.find(item =>
+      !isProcurementExtra(item) &&
+      item.productId === product.id &&
+      item.status === REPLENISHMENT_STATUS.DRAFT
+    );
+
+    if (existing) {
+      const receivedQuantity = Number(
+        existing.receivedQuantity || 0
+      );
+      const pendingQuantity =
+        requestedQuantity - receivedQuantity;
+
+      if (pendingQuantity < 0) {
+        throw new Error(
+          `La cantidad de ${product.name} no puede ser menor a lo recibido`
+        );
+      }
+
+      const updated = {
+        ...existing,
+        requestedQuantity,
+        pendingQuantity,
+        notes:
+          raw.notes === undefined && raw.reason === undefined
+            ? existing.notes
+            : cleanText(raw.notes || raw.reason) || null,
+        sourceSuggestion: {
+          ...(existing.sourceSuggestion || {}),
+          source,
+          manualDecision: true,
+          vigiaSuggestedQuantity:
+            nonNegativeOrNull(raw.vigiaSuggestedQuantity) ??
+            existing.sourceSuggestion?.vigiaSuggestedQuantity ??
+            null,
+          stockAtDecision:
+            nonNegativeOrNull(raw.stockAtDecision) ??
+            existing.sourceSuggestion?.stockAtDecision ??
+            null,
+          pendingInboundAtDecision:
+            nonNegativeOrNull(raw.pendingInboundAtDecision) ??
+            existing.sourceSuggestion?.pendingInboundAtDecision ??
+            null,
+          decisionReason:
+            cleanText(raw.reason || raw.notes) ||
+            existing.sourceSuggestion?.decisionReason ||
+            null,
+          decidedAt: now,
+          ownerLabelAtDecision: defaultOwnerLabel,
+          procurementGroupId: groupId,
+          procurementListId: listId,
+          listKind: kind,
+          categoryNameAtDecision: categoryName,
+          displayQuantity:
+            positiveOrNull(raw.displayQuantity) ??
+            existing.sourceSuggestion?.displayQuantity ??
+            null,
+          displayUnit:
+            cleanText(raw.displayUnit) ||
+            existing.sourceSuggestion?.displayUnit ||
+            null,
+          displayConversion:
+            positiveOrNull(raw.displayConversion) ??
+            existing.sourceSuggestion?.displayConversion ??
+            null
+        },
+        updatedBy: defaultOwnerId,
+        version: nextEntityVersion(existing),
+        updatedAt: now
+      };
+
+      writes.push({
+        entity: updated,
+        operation: 'UPDATE'
+      });
+      continue;
+    }
+
+    const entity = {
+      id: raw.id || createLocalId('rep'),
+      productId: product.id,
+      productName: product.name,
+      supplierId: raw.supplierId || product.supplierId || null,
+      method: kind,
+      status: REPLENISHMENT_STATUS.DRAFT,
+      requestedQuantity,
+      receivedQuantity: 0,
+      pendingQuantity: requestedQuantity,
+      expectedAt: normalizeOptionalDate(raw.expectedAt),
+      reference: cleanText(raw.reference) || null,
+      notes: cleanText(raw.notes || raw.reason) || null,
+      ownerId: defaultOwnerId,
+      sourceSuggestion: {
+        kind: PROCUREMENT_KIND.PRODUCT,
+        source,
+        manualDecision: true,
+        configuredMethod: product.replenishmentMethod || null,
+        vigiaSuggestedQuantity:
+          nonNegativeOrNull(raw.vigiaSuggestedQuantity),
+        stockAtDecision:
+          nonNegativeOrNull(raw.stockAtDecision),
+        pendingInboundAtDecision:
+          nonNegativeOrNull(raw.pendingInboundAtDecision),
+        decisionReason:
+          cleanText(raw.reason || raw.notes) || null,
+        decidedAt: now,
+        ownerLabelAtDecision: defaultOwnerLabel,
+        procurementGroupId: groupId,
+        procurementListId: listId,
+        listKind: kind,
+        categoryNameAtDecision: categoryName,
+        displayQuantity: positiveOrNull(raw.displayQuantity),
+        displayUnit: cleanText(raw.displayUnit) || null,
+        displayConversion: positiveOrNull(raw.displayConversion)
+      },
+      receiptDocuments: [],
+      orderedAt: null,
+      receivedAt: null,
+      cancelledAt: null,
+      version: initialEntityVersion(),
+      createdAt: now,
+      updatedAt: now
+    };
+
+    writes.push({
+      entity,
+      operation: 'CREATE'
+    });
+  }
+
+  for (const raw of normalizedExtras) {
+    const method = normalizeMethod(raw.method || kind);
+    if (method !== kind) {
+      throw new Error(
+        `Esta lista solo admite ${kind === 'ORDER' ? 'PEDIDOS' : 'COMPRAS'}`
+      );
+    }
+
+    const description = cleanText(raw.description || raw.name);
+    if (!description) {
+      throw new Error('Describe el extra que debes comprar o pedir');
+    }
+
+    const requestedQuantity = positiveNumber(
+      raw.requestedQuantity ?? raw.quantity,
+      `Cantidad de ${description}`
+    );
+    const id = raw.id || createLocalId('rep-extra');
+    const unit =
+      cleanText(raw.unit || raw.displayUnit).toUpperCase() ||
+      'UND';
+
+    writes.push({
+      operation: 'CREATE',
+      entity: {
+        id,
+        productId: `${EXTRA_PREFIX}${id}`,
+        productName: description,
+        supplierId: raw.supplierId || null,
+        method: kind,
+        status: REPLENISHMENT_STATUS.DRAFT,
+        requestedQuantity,
+        receivedQuantity: 0,
+        pendingQuantity: requestedQuantity,
+        expectedAt: normalizeOptionalDate(raw.expectedAt),
+        reference: cleanText(raw.reference) || null,
+        notes: cleanText(raw.notes) || null,
+        ownerId: defaultOwnerId,
+        sourceSuggestion: {
+          kind: PROCUREMENT_KIND.EXTRA,
+          source: PROCUREMENT_SOURCE.EXTRA,
+          manualDecision: true,
+          unit,
+          outsideCatalog: true,
+          decidedAt: now,
+          ownerLabelAtDecision: defaultOwnerLabel,
+          procurementGroupId: groupId,
+          procurementListId: listId,
+          listKind: kind,
+          categoryNameAtDecision:
+            cleanText(raw.categoryName) || 'EXTRAS',
+          displayQuantity:
+            positiveOrNull(raw.displayQuantity) ||
+            requestedQuantity,
+          displayUnit: unit,
+          displayConversion: 1
+        },
+        receiptDocuments: [],
+        orderedAt: null,
+        receivedAt: null,
+        cancelledAt: null,
+        version: initialEntityVersion(),
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+  }
+
+  await runTransaction(
+    [STORES.REPLENISHMENTS, STORES.SYNC_QUEUE],
+    'readwrite',
+    async (replenishmentStore, queueStore) => {
+      for (const write of writes) {
+        await requestToPromise(
+          replenishmentStore.put(write.entity)
+        );
+        await requestToPromise(
+          queueStore.add(
+            createSyncItem(
+              write.entity,
+              write.operation
+            )
+          )
+        );
+      }
+    }
+  );
+
+  return {
+    listId,
+    kind,
+    items: writes.map(write => write.entity)
+  };
+}
+
+export async function reopenProcurementList(
+  listId,
+  { userId = null } = {}
+) {
+  const allItems = await getAll(STORES.REPLENISHMENTS);
+  const listItems = allItems.filter(
+    item => procurementListIdOf(item) === listId
+  );
+
+  if (!listItems.length) {
+    throw new Error('Lista de compra/pedido no encontrada');
+  }
+
+  const activeItems = listItems.filter(
+    item => item.status !== REPLENISHMENT_STATUS.CANCELLED
+  );
+
+  if (!activeItems.length) {
+    throw new Error('La lista no tiene renglones activos');
+  }
+
+  if (
+    activeItems.some(item =>
+      ![
+        REPLENISHMENT_STATUS.DRAFT,
+        REPLENISHMENT_STATUS.ORDERED
+      ].includes(item.status)
+    )
+  ) {
+    throw new Error(
+      'La lista ya está en tránsito o tiene recepción; no puede reabrirse'
+    );
+  }
+
+  if (
+    activeItems.some(item =>
+      Number(item.receivedQuantity || 0) > 0 ||
+      (item.receiptDocuments || []).length > 0
+    )
+  ) {
+    throw new Error(
+      'La lista ya tiene mercancía recibida y no puede reabrirse'
+    );
+  }
+
+  const now = new Date().toISOString();
+  const updates = activeItems
+    .filter(item => item.status === REPLENISHMENT_STATUS.ORDERED)
+    .map(item => ({
+      ...item,
+      status: REPLENISHMENT_STATUS.DRAFT,
+      orderedAt: null,
+      updatedBy: userId || null,
+      version: nextEntityVersion(item),
+      updatedAt: now
+    }));
+
+  if (!updates.length) {
+    return {
+      listId,
+      items: activeItems
+    };
+  }
+
+  await runTransaction(
+    [STORES.REPLENISHMENTS, STORES.SYNC_QUEUE],
+    'readwrite',
+    async (replenishmentStore, queueStore) => {
+      for (const entity of updates) {
+        await requestToPromise(
+          replenishmentStore.put(entity)
+        );
+        await requestToPromise(
+          queueStore.add(
+            createSyncItem(entity, 'UPDATE')
+          )
+        );
+      }
+    }
+  );
+
+  return {
+    listId,
+    items: updates
+  };
+}
+
 export async function updateDraftProcurementLine(
   id,
   {
