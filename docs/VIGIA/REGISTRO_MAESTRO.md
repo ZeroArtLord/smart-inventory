@@ -378,3 +378,30 @@ Limitación explícita:
 - Esta rama NO se ha desplegado. VIGÍA de producción permanece sin cambios.
 
 Siguiente paso: CI verde, revisión de rama, prueba segura sin borrar datos, y determinar si basta el espejo accesible desde normal o si se necesita evolución versionada de la lista nativa para edición bidireccional.
+
+
+### [REG-023] 2026-10-13 | Flujo directo Actualizar e imprimir Monitor desde VIGÍA normal | IMPLEMENTADO EN RAMA; PR #24 DRAFT; SIN DESPLEGAR
+
+Origen: El usuario pidió la solución más rápida y simple, en un solo trabajo, para terminar sus listas en Monitor y desde VIGÍA normal pulsar Actualizar e imprimir sin volver a capturar datos.
+
+Decisión: El Monitor PostgreSQL permanece como única fuente de verdad para la lista semanal. El área normal "Comprar/Pedir > Mis listas" muestra su espejo de solo lectura y un botón **"Actualizar e imprimir"**. Ese botón primero reintenta la cola Monitor del mismo dispositivo, consulta el servidor y, SOLO si no hay conflictos/pendientes locales/productos irresueltos, abre el diálogo de impresión del navegador. Requiere escoger la impresora y el tamaño 80 mm en el sistema operativo; no equivale a impresión ESC/POS directa. Las 4 copias son COMPRAR CHÓFER/DEPÓSITO y PEDIR PROVEEDOR/DEPÓSITO.
+
+Código en rama: 
+- \`v2/src/ui/monitorTicketTemplate.js\` es la plantilla HTML compartida por Monitor piloto y espejo normal: mismas cantidades, unidades (sin conversión inventada), observaciones, extras, grupos, huecos de cantidad null, semana y firma.
+- \`v2/src/ui/monitorReviewPilotUi.js\` ahora utiliza la plantilla común, preserva la impresión propia mediante una clase de impresión condicional.
+- \`v2/src/ui/monitorNormalMirrorUi.js\` construye el espejo y valida que sea imprimible; consulta la API con autorización y puede reintentar eventos locales pendientes.
+- \`v2/src/ui/procurementWorkspaceV6Ui.js\` agrega el botón y el flujo síncrono/asíncrono de lectura + impresión; sin escribir replenishments ni stock.
+- \`v2/css/monitor-pilot.css\` aísla el formato 80 mm e impide que CSS legacy de impresión oculte el papel con \`visibility:hidden!important\`.
+- \`v2/sw.js\` incluye la nueva plantilla en shell 66 (no borrar cachés manualmente).
+- Pruebas de proyección, integridad, impresión nula, escape de texto y navegador Chromium, además de la suite completa en GitHub Actions.
+
+Protecciones:
+- NO genera ni actualiza compras/pedidos legacy de V2, NO realiza movimientos de stock, NO migra bases de datos ni modifica .env.
+- Los cambios en otro dispositivo que aún NO llegaron al servidor NO pueden incluirse al imprimir desde esta estación. Exigir que los emisores terminen de sincronizar antes de imprimir; una impresión nunca debe asumir "sincronizado" en un teléfono distinto.
+- Sin actualización o con conflictos, se bloquea impresión en vez de presentar datos viejos como actuales.
+- El botón imprime a través del navegador; impresión ESC/POS TCP/IP directa quedará para otro hito, sin mezclarlo con esta entrega urgente.
+- Si el navegador bloquea la invocación de imprimir tras una consulta asíncrona, usar la funcionalidad equivalente desde el botón de impresión del navegador con la vista actual y registrar un ajuste posterior.
+
+Verificación: CI/pruebas automáticas requeridas; ver PR #24. Aún falta cotejar la vista impresa con los datos de producción y con la impresora física. **No se ha ejecutado despliegue en HP**.
+
+Siguiente paso: completar CI, confirmar HEAD/backup del HP antes de una instalación controlada, desplegar sin pérdida de datos cuando el usuario termine su lista y autorice ventana de mantenimiento, probar impresión física de 80 mm.
