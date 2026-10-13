@@ -65,6 +65,8 @@ jobs:
             async query(sql){
               if(sql==='BEGIN TRANSACTION READ ONLY'||sql==='COMMIT')return {rows:[]};
               if(sql.includes('AS monitor_mig'))return {rows:[{db:'smart_inventory',mig:21,monitor_mig:2,review_items:0,review_mutations:0,supply_deliveries:0}]};
+              if(sql.includes('AS migrations'))return {rows:[{db:'smart_inventory',migrations:21}]};
+              if(sql.includes("wm.role_code='GOD'"))return {rows:[{user_id:'11111111-1111-4111-8111-111111111111',firebase_uid:'test_firebase_uid',display_name:'TEST GOD',workspace_id:'22222222-2222-4222-8222-222222222222',permissions:['*']}]};
               return {rows:[{db:'smart_inventory',products:494,documents:132,lines:4196,movements:1019,sync:10075,audit:11370}]};
             }
             async end(){}
@@ -78,6 +80,12 @@ jobs:
           if($LASTEXITCODE -ne 0 -or -not ($counts -match '^COUNTS=.*"products":494')){ throw 'Counts mode failed on Windows' }
           $schema = & node $helper schema
           if($LASTEXITCODE -ne 0 -or -not ($schema -match '^MONITOR_MIGRATIONS_21_PASS$')){ throw 'Schema mode failed on Windows' }
+          $godHelper = 'docs/VIGIA/VIGIA_HP_GOD_ID_READONLY.cjs'
+          & node --check $godHelper
+          if($LASTEXITCODE -ne 0){ throw 'GOD identity helper syntax invalid' }
+          $god = & node $godHelper
+          if($LASTEXITCODE -ne 0 -or -not ($god -match '^VIGIA_GOD_IDENTIFIED .*"firebaseLinked":true')){ throw 'GOD lookup failed on Windows' }
+          Write-Host 'VIGIA_GOD_ID_LOOKUP_WINDOWS_PASS'
           Write-Host 'VIGIA_SQL_FILE_EXECUTION_WINDOWS_PASS'
           Remove-Item Env:\VIGIA_SERVER_DIR -ErrorAction SilentlyContinue
 
@@ -93,6 +101,21 @@ jobs:
             exit 1
           }
           Write-Host "VIGIA_HP_DEPLOY_PARSE_PASS"
+
+      - name: Parse and self-test GOD selective activation with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          $path = "docs/VIGIA/VIGIA_HP_MONITOR_ENABLE_GOD_SAFE.ps1"
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'Environment flag self-test failed' }
+          Write-Host "VIGIA_MONITOR_GOD_ACTIVATION_PARSE_AND_SELFTEST_PASS"
 
   client-tests:
     runs-on: ubuntu-latest
