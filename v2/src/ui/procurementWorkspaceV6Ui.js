@@ -23,7 +23,7 @@ import { renderWorkspace, renderReviewModal, renderManualModal, renderListModal,
 import { renderPrintModal } from './procurementWorkspaceV6Print.js';
 import { printThermalProcurementList } from '../printing/thermalPrinterClient.js';
 import { buildMonitorNativeLists } from '../replenishment/monitorNativeTicketAdapter.js';
-import { fetchMonitorMirrorForNormal, renderMonitorMirrorForNormal, printableMonitorMirror, assertMonitorPrintable } from './monitorNormalMirrorUi.js';
+import { fetchMonitorMirrorForNormal, renderMonitorMirrorForNormal, assertMonitorPrintable } from './monitorNormalMirrorUi.js';
 
 const BUSINESS_NAME_KEY = 'vigia.procurement.businessName';
 const app = document.getElementById('app');
@@ -270,42 +270,6 @@ async function refreshMonitorMirror({ syncBeforeFetch = false } = {}) {
   return false;
 }
 
-async function printMonitorMirror() {
-  // Una sola acción: sincronizar este dispositivo -> consultar servidor -> imprimir.
-  // Jamás imprime datos viejos si la recarga falló.
-  const updated=await refreshMonitorMirror({syncBeforeFetch:true});
-  if(!updated || !isTargetView() || state.activeTab!=='lists') {
-    toast('No se pudo actualizar Monitor. No se imprimió ninguna lista.');
-    return;
-  }
-  let tickets;
-  try {
-    tickets=printableMonitorMirror(state.monitorMirror,{ownerLabel:actorLabel(),businessName:businessName()});
-  } catch(error) {
-    toast(error.message);
-    return;
-  }
-  const old=document.getElementById('v6MonitorPrintPage');
-  old?.remove();
-  const root=document.createElement('section');
-  root.id='v6MonitorPrintPage';
-  root.setAttribute('aria-label','Tickets de VIGÍA Monitor');
-  root.innerHTML=tickets;
-  document.body.appendChild(root);
-  document.body.classList.add('vigia-monitor-normal-print-active');
-  const clean=()=>{
-    document.body.classList.remove('vigia-monitor-normal-print-active');
-    root.remove();
-  };
-  window.addEventListener('afterprint',clean,{once:true});
-  try { window.print(); }
-  catch(error) {
-    window.removeEventListener('afterprint',clean);
-    clean();
-    toast('El navegador no pudo abrir impresión: '+String(error.message||error));
-  }
-}
-
 // Monitor no escribe listas legacy. Reutiliza directamente la vista 80 mm
 // y la misma impresora ESC/POS del sistema normal para una foto sincronizada.
 function openMonitorPrintPreview(kind,remember=true) {
@@ -370,7 +334,6 @@ async function handleClick(event) {
     const action=button.dataset.v6pAction;
     if(action==='switch-tab'){state.activeTab=button.dataset.tab;state.listModalId=null;state.printListId=null;state.monitorPrintKind=null;paint();if(state.activeTab==='lists')await refreshMonitorMirror();return;}
     if(action==='refresh-monitor-mirror'){await refreshMonitorMirror();return;}
-    if(action==='print-monitor-mirror'){await printMonitorMirror();return;}
     if(action==='monitor-open-print'){await monitorNativePrintFlow(button.dataset.monitorKind);return;}
     if(action==='monitor-direct-print'){await monitorNativePrintFlow(button.dataset.monitorKind,{direct:true});return;}
     if(action==='prepare-visible'||action==='select-visible'){visibleDrafts().forEach(d=>{d.selected=true;d.dirty=true;});scheduleProcurementDraftSave();paint();toast('Sugerencias visibles preparadas.');return;}
