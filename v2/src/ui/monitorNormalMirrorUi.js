@@ -74,8 +74,7 @@ export function renderMonitorMirrorForNormal(snapshot, { loading = false, error 
     '<div><strong style="font-size:1.13rem">✦ Listas de Monitor (espejo)</strong>' +
     '<p style="margin:4px 0;font-size:.85rem">La misma revisión semanal de Monitor, sin duplicar operaciones en las listas tradicionales.</p></div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:8px">' +
-    '<button type="button" data-v6p-action="refresh-monitor-mirror" class="v6p-ghost">↻ Actualizar</button>' +
-    '<button type="button" data-v6p-action="print-monitor-mirror" class="v6p-primary">↻ Actualizar y ver listas</button></div></div>';
+    '<button type="button" data-v6p-action="refresh-monitor-mirror" class="v6p-primary">↻ Actualizar listas</button></div></div>';
   if (loading) return header + '<p role="status">Consultando Monitor…</p></section>';
   if (error) return header + '<p role="alert">No se pudo leer Monitor: ' + escapeHtml(error) +
     '. No se modificó ninguna lista.</p></section>';
