@@ -21,8 +21,8 @@ $prepFile=Join-Path $base ('VIGIA_MONITOR_STAGE_'+$stamp+'.txt')
 $log=New-Object 'System.Collections.Generic.List[string]'
 function Say([string]$message) {$log.Add($message);Write-Host $message}
 function Need([bool]$ok,[string]$message) {if(-not $ok){throw $message}}
-function Git([string[]]$arguments){
-    $v= & git -C $root @arguments 2>&1
+function Invoke-GitChecked([string[]]$arguments){
+    $v= & git.exe -C $root @arguments 2>&1
     if($LASTEXITCODE -ne 0){throw ('Git fallo: '+($arguments -join ' '))}
     return (($v -join [Environment]::NewLine).Trim())
 }
@@ -36,7 +36,7 @@ try {
     Say '[1/7] Servicio y archivos...'
     Need (Test-Path -LiteralPath (Join-Path $server '.env') -PathType Leaf) 'Falta .env en servidor'
     Need (Test-Path -LiteralPath $node -PathType Leaf) 'Node no encontrado'
-    Need ([bool](Get-Command git -ErrorAction SilentlyContinue)) 'Git no encontrado'
+    Need ([bool](Get-Command git.exe -ErrorAction SilentlyContinue)) 'Git no encontrado'
     $svc=Get-Service -Name 'SmartInventoryV2' -ErrorAction Stop
     Need ($svc.Status -eq 'Running') 'SmartInventoryV2 no esta ejecutandose'
     $pg=Get-Service -Name 'postgresql-x64-18' -ErrorAction Stop
@@ -46,20 +46,20 @@ try {
     Need ($health.ok -eq $true -and $ready.ok -eq $true) '/health o /ready no estan OK'
     Say '[OK] VIGIA y PostgreSQL en ejecucion; API lista.'
     Say '[2/7] Version local y modificaciones rastreadas...'
-    $head=Git @('rev-parse','HEAD')
+    $head=Invoke-GitChecked @('rev-parse','HEAD')
     Need ($head -eq $old) 'El HP no esta en el SHA esperado. No instalar.'
-    $dirty=Git @('status','--porcelain','--untracked-files=no')
+    $dirty=Invoke-GitChecked @('status','--porcelain','--untracked-files=no')
     Need ([string]::IsNullOrWhiteSpace($dirty)) 'Existen cambios locales rastreados. No instalar.'
     Say ('[OK] Git HEAD '+$head.Substring(0,12)+' | tracked clean')
     Say '[3/7] Descargando codigo aprobado solo a .git (SIN cambiar el runtime)...'
-    [void](Git @('fetch','--no-tags','origin',$branch))
-    $remote=Git @('rev-parse','FETCH_HEAD')
-    [void](Git @('cat-file','-e',($target+'^{commit}')))
-    & git -C $root merge-base --is-ancestor $old $target
+    [void](Invoke-GitChecked @('fetch','--quiet','--no-tags','origin',$branch))
+    $remote=Invoke-GitChecked @('rev-parse','FETCH_HEAD')
+    [void](Invoke-GitChecked @('cat-file','-e',($target+'^{commit}')))
+    & git.exe -C $root merge-base --is-ancestor $old $target
     Need ($LASTEXITCODE -eq 0) 'El SHA del candidato NO desciende del actual'
-    & git -C $root merge-base --is-ancestor $target $remote
+    & git.exe -C $root merge-base --is-ancestor $target $remote
     Need ($LASTEXITCODE -eq 0) 'El SHA aprobado ya no es antecesor del remoto'
-    $deps=Git @('diff','--name-only',$old,$target,'--','v2/server/package.json','v2/server/package-lock.json')
+    $deps=Invoke-GitChecked @('diff','--name-only',$old,$target,'--','v2/server/package.json','v2/server/package-lock.json')
     Need ([string]::IsNullOrWhiteSpace($deps)) 'Cambios en dependencias del servidor: analizar antes'
     Say ('[OK] SHA aprobado '+$target.Substring(0,12)+'; remoto '+$remote.Substring(0,12))
     Say '[4/7] Repitiendo preflight real de SOLO LECTURA...'
@@ -81,9 +81,9 @@ try {
     Say '[OK] Dump nuevo generado, TOC y lectura completa verificados.'
     Say '[6/7] Comprobacion final de servicio y Git...'
     Need ((Get-Service -Name 'SmartInventoryV2').Status -eq 'Running') 'Servicio no esta en ejecucion'
-    $after=Git @('rev-parse','HEAD')
+    $after=Invoke-GitChecked @('rev-parse','HEAD')
     Need ($after -eq $old) 'Git HEAD cambio inesperadamente'
-    $changes=Git @('status','--porcelain','--untracked-files=no')
+    $changes=Invoke-GitChecked @('status','--porcelain','--untracked-files=no')
     Need ([string]::IsNullOrWhiteSpace($changes)) 'Cambios locales posteriores al preflight'
     $r=Invoke-RestMethod 'http://127.0.0.1:5190/ready' -TimeoutSec 8
     Need ($r.ok -eq $true) '/ready dejo de estar OK'
