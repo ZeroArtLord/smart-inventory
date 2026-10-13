@@ -2,7 +2,7 @@
 # NO cambia codigo, DB, roles, credenciales ni existencias.
 # Conserva .env original en backup privado; rollback automatico si falla.
 [CmdletBinding()]
-param()
+param([switch]$SelfTest)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
@@ -56,7 +56,7 @@ function ConfirmApi([bool]$enabled,[int]$secs){
   throw ('Fallo salud/API o monitorPilotEnabled distinto de '+$enabled)
 }
 function ChangeEnv([byte[]]$bytes,[string]$userId){
-  $utf8=New-Object System.Text.UTF8Encoding($false,$true)
+  $utf8=[System.Text.UTF8Encoding]::new($false,$true)
   $bom=0
   if($bytes.Length -ge 3 -and $bytes[0] -eq 239 -and $bytes[1] -eq 187 -and $bytes[2] -eq 191){$bom=3}
   $body=$utf8.GetString($bytes,$bom,$bytes.Length-$bom)
@@ -86,6 +86,24 @@ function ChangeEnv([byte[]]$bytes,[string]$userId){
   $output[0]=239;$output[1]=187;$output[2]=191
   [Array]::Copy($fresh,0,$output,3,$fresh.Length)
   return ,$output
+}
+if($SelfTest){
+  $nl=[string][char]10
+  $fakeId='11111111-1111-4111-8111-111111111111'
+  $sample='DATABASE_URL=KEEP_PRIVATE'+$nl+'MONITOR_PILOT_ENABLED=false'+$nl+'MONITOR_PILOT_USER_IDS='+$nl
+  $original=[Text.Encoding]::UTF8.GetBytes($sample)
+  $changedBytes=ChangeEnv $original $fakeId
+  $changedText=[Text.Encoding]::UTF8.GetString($changedBytes)
+  Need ($changedText.Contains('DATABASE_URL=KEEP_PRIVATE')) 'Selftest perdiendo campo anterior'
+  Need ($changedText.Contains('MONITOR_PILOT_ENABLED=true')) 'Selftest no activo bandera'
+  Need ($changedText.Contains('MONITOR_PILOT_USER_IDS='+$fakeId)) 'Selftest no dejo UID unico'
+  Need ((Sha $original) -ne (Sha $changedBytes)) 'Selftest sin cambio'
+  $fresh=[Text.Encoding]::UTF8.GetBytes('NODE_ENV=production'+$nl)
+  $freshText=[Text.Encoding]::UTF8.GetString((ChangeEnv $fresh $fakeId))
+  Need ($freshText.Contains('MONITOR_PILOT_ENABLED=true')) 'Selftest append flag'
+  Need ($freshText.Contains('MONITOR_PILOT_USER_IDS='+$fakeId)) 'Selftest append allowlist'
+  Write-Host 'VIGIA_MONITOR_ENV_REWRITE_SELFTEST_PASS'
+  exit 0
 }
 try{
   Log '====================================================='
