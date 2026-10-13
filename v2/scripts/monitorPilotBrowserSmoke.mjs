@@ -246,6 +246,43 @@ try{
   }));
   assert.ok(weeklyLayout.width<=weeklyLayout.viewport+2,
     'weekly review overflow on mobile: '+JSON.stringify(weeklyLayout));
+  // El mismo ticket debe ser imprimible desde la vista VIGÍA NORMAL (sin
+  // que el viejo CSS "body * visibility:hidden" genere una página en blanco).
+  await page.locator('#vigiaMonitorPilot [data-mp-action="close"]').click();
+  await page.evaluate(async()=>{
+    const {projectMonitorToNormal}=await import('/src/replenishment/monitorToNormalMirror.js');
+    const {printableMonitorMirror}=await import('/src/ui/monitorNormalMirrorUi.js');
+    const snapshot=projectMonitorToNormal({
+      weekStart:'2026-10-12',
+      products:[{id:'prod-agua',name:'Agua mineral',categoryId:'bebidas',unitCode:'UND'}],
+      categories:[{id:'bebidas',name:'BEBIDAS'}],
+      serverItems:[{itemKey:'product:prod-agua',kind:'PRODUCT',productId:'prod-agua',
+        decision:'BUY',quantity:null,unit:'CJ',notes:'Test impresora'}]
+    });
+    const host=document.createElement('section');
+    host.id='v6MonitorPrintPage';
+    host.innerHTML=printableMonitorMirror(snapshot);
+    document.body.append(host);
+    document.body.classList.add('vigia-monitor-normal-print-active');
+  });
+  await page.emulateMedia({media:'print'});
+  const printView=await page.evaluate(()=>({
+    host:getComputedStyle(document.getElementById('v6MonitorPrintPage')).display,
+    ticket:getComputedStyle(document.querySelector('#v6MonitorPrintPage .mp-ticket')).visibility,
+    app:getComputedStyle(document.getElementById('app')).display,
+    tickets:document.querySelectorAll('#v6MonitorPrintPage .mp-ticket').length,
+    text:document.getElementById('v6MonitorPrintPage').innerText
+  }));
+  assert.notEqual(printView.host,'none','Normal print host hidden in print media');
+  assert.equal(printView.ticket,'visible','Legacy V6 CSS hid the print ticket');
+  assert.equal(printView.app,'none','Normal app background leaks into printed ticket');
+  assert.equal(printView.tickets,4,'Expected four receipts on 80mm roll');
+  assert.match(printView.text,/________ CJ/);
+  await page.emulateMedia({media:'screen'});
+  await page.evaluate(()=>{
+    document.body.classList.remove('vigia-monitor-normal-print-active');
+    document.getElementById('v6MonitorPrintPage')?.remove();
+  });
   assert.equal(errors.length,0,'browser errors: '+errors.join('\n'));
   console.log('MONITOR_BROWSER_SMOKE_PASS: Chromium desktop/mobile, real pilot screens, IndexedDB autosave/reload, failed API retry, no duplicate, legacy queue untouched, new reports, manual extras');
 }catch(error){
