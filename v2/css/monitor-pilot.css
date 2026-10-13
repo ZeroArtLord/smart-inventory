@@ -95,6 +95,10 @@
   /* La vieja regla global de Monitor ocultaba también las impresiones de VIGÍA normal
      incluso con el piloto cerrado. Ahora cada clase activa SOLO su propio trabajo. */
   body.vigia-monitor-normal-print-active>*:not(#v6MonitorPrintPage){display:none!important}
+  body.vigia-monitor-normal-print-active #v6MonitorPrintPage,
+  body.vigia-monitor-normal-print-active #v6MonitorPrintPage *,
+  body.vigia-monitor-print-active #vigiaMonitorPilot,
+  body.vigia-monitor-print-active #vigiaMonitorPilot *{visibility:visible!important}
   body.vigia-monitor-normal-print-active #v6MonitorPrintPage{display:block!important;position:static!important;overflow:visible!important;max-width:80mm!important;width:80mm!important;margin:0!important;padding:0!important;border:0!important;background:white!important;color:black!important;font:13px/1.5 ui-monospace,monospace!important}
   #v6MonitorPrintPage .mp-ticket{display:block;width:76mm;max-width:76mm;margin:0;padding:14px 0;box-sizing:border-box;border:0;background:white;color:black;font:13px/1.5 ui-monospace,monospace;break-after:page;page-break-after:always;break-inside:avoid}
   #v6MonitorPrintPage .mp-ticket h3{text-align:center;font-size:17px;line-height:1.3}
