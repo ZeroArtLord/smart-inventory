@@ -187,6 +187,8 @@ try{
     $stage=@(Get-ChildItem -LiteralPath $stageDir -Filter 'VIGIA_MONITOR_STAGE_*.txt' -File -ErrorAction Stop|Sort-Object LastWriteTime -Descending|Select-Object -First 1)
     Insist ($stage.Count -eq 1) 'No se encontro informe de STAGE'
     Insist ((Get-Content -LiteralPath $stage[0].FullName -Raw).Contains('STAGE_PASS_SIN_PARAR_SERVICIO')) 'STAGE no aprobo'
+    Insist ($stage[0].LastWriteTime.Date -eq (Get-Date).Date) 'STAGE no es de hoy; regenerar preparacion'
+    Insist (((Get-Date)-(Get-Item -LiteralPath $newDump).LastWriteTime).TotalHours -lt 4) 'Dump demasiado antiguo para ventana; generar otro respaldo'
     [void](GitChecked @('cat-file','-e',($target+'^{commit}')))
     & git.exe -C $root merge-base --is-ancestor $old $target
     Insist ($LASTEXITCODE -eq 0) 'El SHA Monitor no es fast-forward del anterior'
