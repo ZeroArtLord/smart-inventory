@@ -21,6 +21,7 @@ import { getCurrentSession, can } from '../admin/adminClient.js';
 import { syncNow } from '../sync/syncEngine.js';
 import { renderWorkspace, renderReviewModal, renderManualModal, renderListModal, renderAddToListModal, esc } from './procurementWorkspaceV6Render.js';
 import { renderPrintModal } from './procurementWorkspaceV6Print.js';
+import { fetchMonitorMirrorForNormal, renderMonitorMirrorForNormal } from './monitorNormalMirrorUi.js';
 
 const BUSINESS_NAME_KEY = 'vigia.procurement.businessName';
 const app = document.getElementById('app');
@@ -31,7 +32,9 @@ const state = {
   lists:[], session:null, manualResults:[], manualProduct:null,
   listModalId:null, printListId:null,
   addListId:null, addListResults:[], addListProduct:null,
-  draftRestoreNoticeShown:false
+  draftRestoreNoticeShown:false,
+  monitorMirror:null, monitorMirrorLoading:false, monitorMirrorError:'',
+  monitorMirrorHidden:false, monitorMirrorIdentity:''
 };
 
 let procurementDraftSaveTimer = null;
@@ -84,6 +87,11 @@ async function reload() {
   state.productsById=new Map(state.products.map(p=>[p.id,p]));
   state.categoriesById=new Map(categories.map(c=>[c.id,c]));
   state.session=session;
+  const identity=String(session?.workspaceId||session?.workspace?.id||'')+':'+String(session?.userId||'');
+  if(state.monitorMirrorIdentity!==identity){
+    state.monitorMirror=null;state.monitorMirrorError='';state.monitorMirrorHidden=false;
+    state.monitorMirrorIdentity=identity;
+  }
   const pending=calculatePendingInboundByProduct(replenishments.filter(r=>!isProcurementExtra(r)));
   state.rows=buildInventoryReport(state.products,movements,{now:new Date(),pendingInboundByProduct:pending});
   state.rowsById=new Map(state.rows.map(r=>[r.productId,r]));
@@ -221,7 +229,41 @@ function paint() {
     pendingExtras:state.pendingExtras,lists:state.lists,selectedCount:selected.length+state.pendingExtras.length,
     purchaseCount,orderCount,query:state.query,filter:state.filter
   });
+  if(state.activeTab==='lists' && !state.monitorMirrorHidden){
+    const active=root.querySelector('.v6p-panel.is-active');
+    active?.insertAdjacentHTML('afterbegin',renderMonitorMirrorForNormal(state.monitorMirror,{
+      loading:state.monitorMirrorLoading,error:state.monitorMirrorError
+    }));
+  }
   restoreModal();
+}
+
+async function refreshMonitorMirror() {
+  if(state.monitorMirrorLoading || !state.session)return;
+  const context=procurementDraftContext();if(!context)return;
+  const identity=context.workspaceId+':'+context.userId;
+  state.monitorMirrorLoading=true;state.monitorMirrorError='';paint();
+  try{
+    const snapshot=await fetchMonitorMirrorForNormal({
+      session:state.session,products:state.products,
+      categories:[...state.categoriesById.values()]
+    });
+    if(state.monitorMirrorIdentity!==identity)return;
+    state.monitorMirror=snapshot;
+    state.monitorMirrorHidden=false;
+  }catch(error){
+    if(state.monitorMirrorIdentity!==identity)return;
+    if(['MONITOR_PILOT_DISABLED','MONITOR_PILOT_NOT_ALLOWED','PERMISSION_DENIED'].includes(error?.code)||
+      error?.status===403||error?.status===404){
+      // Otras cuentas siguen usando Comprar/Pedir sin ver el piloto.
+      state.monitorMirrorHidden=true;state.monitorMirror=null;
+    }else{
+      state.monitorMirrorError=String(error?.message||'No disponible');
+    }
+  }finally{
+    state.monitorMirrorLoading=false;
+    if(state.monitorMirrorIdentity===identity && isTargetView())paint();
+  }
 }
 
 function hydrateDraftView(row) {
@@ -248,7 +290,8 @@ async function handleClick(event) {
   const button=event.target.closest('[data-v6p-action]'); if(!button) return;
   try {
     const action=button.dataset.v6pAction;
-    if(action==='switch-tab'){state.activeTab=button.dataset.tab;state.listModalId=null;state.printListId=null;paint();return;}
+    if(action==='switch-tab'){state.activeTab=button.dataset.tab;state.listModalId=null;state.printListId=null;paint();if(state.activeTab==='lists')await refreshMonitorMirror();return;}
+    if(action==='refresh-monitor-mirror'){await refreshMonitorMirror();return;}
     if(action==='prepare-visible'||action==='select-visible'){visibleDrafts().forEach(d=>{d.selected=true;d.dirty=true;});scheduleProcurementDraftSave();paint();toast('Sugerencias visibles preparadas.');return;}
     if(action==='clear-selection'){state.drafts.forEach(d=>{if(d.selected){d.selected=false;d.dirty=true;}});scheduleProcurementDraftSave();paint();return;}
     if(action==='toggle-details'){const d=draftFromNode(button);if(d){d.detailsOpen=!d.detailsOpen;paint();}return;}
