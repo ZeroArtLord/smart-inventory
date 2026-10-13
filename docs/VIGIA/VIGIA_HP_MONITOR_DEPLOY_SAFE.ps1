@@ -37,7 +37,8 @@ function CurrentSha(){return (GitChecked @('rev-parse','HEAD'))}
 function TrackedChanges(){return (GitChecked @('status','--porcelain','--untracked-files=no'))}
 function WaitService([string]$name,[string]$expected,[int]$seconds) {
     $svc=Get-Service -Name $name -ErrorAction Stop
-    $svc.WaitForStatus([ServiceProcess.ServiceControllerStatus]::$expected,[TimeSpan]::FromSeconds($seconds))
+    $desired=[Enum]::Parse([ServiceProcess.ServiceControllerStatus],$expected)
+    $svc.WaitForStatus($desired,[TimeSpan]::FromSeconds($seconds))
     $svc.Refresh()
     Insist ($svc.Status.ToString() -eq $expected) ($name+' no alcanzo '+$expected)
 }
@@ -113,7 +114,7 @@ try{
 }finally{await c.end().catch(()=>{});}
 })().catch(()=>{console.error("MONITOR_SCHEMA_CHECK_FAILED");process.exitCode=1});
 '@
-        NodeChecked @('-e',$js) 'Validacion SQL de Monitor'
+        NodeChecked -arguments @('-e',$js) -purpose 'Validacion SQL de Monitor'
     }finally{Pop-Location}
 }
 function SecureFlagIsOff {
@@ -124,10 +125,16 @@ function SecureFlagIsOff {
     Insist ($enabled.Count -eq 0) 'El .env tiene Monitor habilitado antes del despliegue'
     Insist ($env:MONITOR_PILOT_ENABLED -ne 'true') 'La sesion de PowerShell tiene Monitor activado'
 }
-function CheckHealthFlag {
+function CheckHealthFlag([bool]$strict) {
     WaitApi 75
     $cfg=Invoke-RestMethod -Uri 'http://127.0.0.1:5190/api/v1/public/config' -TimeoutSec 7
-    Insist ($cfg.ok -eq $true -and $cfg.monitorPilotEnabled -eq $false) 'Monitor NO esta apagado en config publica'
+    Insist ($cfg.ok -eq $true) 'Config publica no responde ok=true'
+    $prop=$cfg.PSObject.Properties['monitorPilotEnabled']
+    if($strict){
+        Insist ($null -ne $prop -and $cfg.monitorPilotEnabled -eq $false) 'Monitor NO esta apagado en config publica nueva'
+    }else{
+        Insist ($null -eq $prop -or $cfg.monitorPilotEnabled -eq $false) 'Piloto se encuentra habilitado ANTES de instalar'
+    }
 }
 function StartOldVersionOnFailure {
     Say 'RECUPERACION: verificando version y cambios locales antes de actuar...'
@@ -178,7 +185,7 @@ try{
     $dep=GitChecked @('diff','--name-only',$old,$target,'--','v2/server/package.json','v2/server/package-lock.json')
     Insist ([string]::IsNullOrWhiteSpace($dep)) 'Cambios de dependencias no previstos'
     SecureFlagIsOff
-    CheckHealthFlag
+    CheckHealthFlag $false
     $baseline=ReadCounts
     Say ('[OK] Precheck: git '+$old.Substring(0,12)+'; dump SHA256; snapshot; Monitor off')
     Say ('COUNTS_ANTES '+$baseline)
@@ -197,13 +204,13 @@ try{
     $step='Avance de Git fast-forward'
     Say '[2/7] Avanzando archivos rastreados hasta SHA probado...'
     [void](GitChecked @('merge','--ff-only','--no-stat',$target))
-    Insist ((CurrentSha) -eq $target) 'El HEAD no coincide con el candidato exacto'
     $codeUpdated=$true
+    Insist ((CurrentSha) -eq $target) 'El HEAD no coincide con el candidato exacto'
     SecureFlagIsOff
     $step='Migraciones 020/021'
     Say '[3/7] Aplicando solamente nuevas migraciones 020/021 (SQL transaccional)...'
     Push-Location $server
-    try {NodeChecked @('scripts/migrate.js') 'Migrador transaccional'}finally{Pop-Location}
+    try {NodeChecked -arguments @('scripts/migrate.js') -purpose 'Migrador transaccional'}finally{Pop-Location}
     $step='Comprobando migraciones y datos'
     Say '[4/7] Comprobando 21 migraciones y tablas Monitor inicialmente vacias...'
     ValidateMonitorSchema
@@ -213,12 +220,12 @@ try{
     $step='Preflight de produccion'
     Say '[5/7] Ejecutando preflight de produccion (Firebase, DB, integridad)...'
     Push-Location $server
-    try {NodeChecked @('scripts/preflightProduction.js') 'Preflight produccion'}finally{Pop-Location}
+    try {NodeChecked -arguments @('scripts/preflightProduction.js') -purpose 'Preflight produccion'}finally{Pop-Location}
     $step='Iniciando servicio y comprobando API'
     Say '[6/7] Iniciando servicio SmartInventoryV2...'
     Start-Service -Name 'SmartInventoryV2' -ErrorAction Stop
     WaitService 'SmartInventoryV2' 'Running' 40
-    CheckHealthFlag
+    CheckHealthFlag $true
     $step='Revision final'
     Say '[7/7] Revisando version final y conteos...'
     Insist ((CurrentSha) -eq $target) 'Version final no coincide'
