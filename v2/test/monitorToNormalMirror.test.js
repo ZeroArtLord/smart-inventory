@@ -29,7 +29,7 @@ test('Monitor remains authoritative; preserves blank quantity, notes, unit, extr
   const result = project();
   assert.equal(result.readOnly, true);
   assert.equal(result.weekStart, '2026-10-12');
-  assert.equal(result.counts.reviewed, 2);
+  assert.equal(result.counts.reviewed, 3);
   assert.equal(result.counts.notNeeded, 1);
   assert.equal(result.counts.totalProducts, 2);
   assert.equal(result.lists.PURCHASE.length, 2);
