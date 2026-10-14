@@ -412,7 +412,7 @@ function scheduleSelectedSave(row,delay=SELECTED_DELAY_MS){
     if(!change)return;
     rec.change=change;
     rec.revision++;
-    showSelectedStatus(row,delay?'● Guardando…':'● Guardando…','saving');
+    showSelectedStatus(row,'● Guardando…','saving');
     rec.timer=setTimeout(()=>{
       rec.timer=null;
       flushSelectedRecord(rec).catch(error=>{
@@ -454,6 +454,14 @@ async function flushSelectedRecord(rec){
   finally{rec.task=null;}
 }
 async function flushAllSelected(){
+  if(state.page==='selected'){
+    for(const row of shell.querySelectorAll('.mp-selected-row')){
+      try{selectedRowChange(row);}catch(error){
+        showSelectedStatus(row,'⚠ '+String(error.message||error),'error');
+        throw error; // No cerrar ni navegar con una unidad OTRA sin definir.
+      }
+    }
+  }
   for(const rec of selectedDrafts.values()){
     if(rec.timer||rec.doneRevision<rec.revision)await flushSelectedRecord(rec);
   }
