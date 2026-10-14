@@ -44,10 +44,10 @@ test('Cantidad 2 + CAJA llega intacta a vista 80mm y ESC/POS',()=>{
   };
   const [list]=buildMonitorNativeLists(snapshot,{ownerLabel:'Operador'});
   const html=renderProcurementTickets({list,businessName:'El Establo'});
-  assert.match(html,/2 CAJA/);
+  assert.match(html,/2 CJ/); // V6 original abrevia CAJA al imprimir
   assert.match(html,/Refresco prueba/);
   const thermal=buildThermalPrintPayload(list);
-  assert.equal(thermal.items[0].quantityText,'2 CAJA');
+  assert.equal(thermal.items[0].quantityText,'2 CJ');
   assert.equal(thermal.items[0].category,'BEBIDAS');
   assert.equal(thermal.items[0].note,'sin azúcar');
   assert.equal(snapshot.lists.PURCHASE[0].quantity,2);
