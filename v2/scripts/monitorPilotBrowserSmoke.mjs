@@ -290,7 +290,7 @@ try{
   await page.screenshot({path:path.join(screenshots,'seleccionados-unidades-mobile.png')});
   console.log('MONITOR_SELECTED_UNITS_PASS: CAJA + GAVETA + Enter + IndexedDB');
 
-  await page.locator('#vigiaMonitorPilot [data-mp-page="extras"]').click();
+  await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Cinta métrica');
   await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
   await page.locator('#vigiaMonitorPilot [data-mp-page="lists"]').click();
