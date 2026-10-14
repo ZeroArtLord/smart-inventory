@@ -266,7 +266,7 @@ try{
   await page.evaluate(async()=>{
     const mod=await import('/src/replenishment/monitorReviewOffline.js');
     const opts={workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',
-      weekStart:new Date().getDay()===0?'2026-10-12':'2026-10-12'};
+      weekStart:'2026-10-12'};
     await mod.queueMonitorReviewChange(opts,{
       kind:'PRODUCT',itemId:'prod-cafe',decision:'PENDING',quantity:null
     });
@@ -278,11 +278,11 @@ try{
   await page.locator('#vigiaMonitorPilot [data-mp-page="pending"]').click();
   assert.equal(await page.locator('#vigiaMonitorPilot .mp-row').count(),2);
   await page.locator('#vigiaMonitorPilot .mp-row').first().getByRole('button',{name:'Revisar ahora'}).click();
-  let active=await page.locator('#vigiaMonitorPilot .mp-card h2').first().innerText();
+  let active=await page.locator('#vigiaMonitorPilot .mp-card h2[style]').first().innerText();
   assert.match(active,/Café de prueba/);
   await page.locator('#vigiaMonitorPilot #mpQuantity').fill('5');
   await page.locator('#vigiaMonitorPilot [data-mp-choice="BUY"]').click();
-  active=await page.locator('#vigiaMonitorPilot .mp-card h2').first().innerText();
+  active=await page.locator('#vigiaMonitorPilot .mp-card h2[style]').first().innerText();
   assert.match(active,/Yuca de prueba/,
     'BUY should advance to pending product in another category, not Inicio');
   await page.locator('#vigiaMonitorPilot #mpQuantity').fill('');
