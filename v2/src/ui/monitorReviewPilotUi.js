@@ -349,8 +349,7 @@ function renderSelected(){
       ).join('');
       return '<div class="mp-row mp-selected-row" data-mp-edit-row="'+i+'" data-mp-item="'+esc(item.itemKey)+'">'+
         '<div class="mp-selected-description"><strong>'+esc(item.name)+'</strong>'+
-        '<div class="mp-muted">'+esc(item.category)+' · '+esc(decisionLabel(item.decision))+'</div>'+ 
-        (item.notes?'<small class="mp-selected-note">('+esc(item.notes)+')</small>':'')+'</div>'+
+        '<div class="mp-muted">'+esc(item.category)+' · '+esc(decisionLabel(item.decision))+'</div></div>'+
         '<div class="mp-selected-edit">'+
         '<label>Cantidad<input class="mp-edit-quantity" inputmode="decimal" type="number" min="0.001" step="any" placeholder="Vacío" value="'+esc(item.quantity??'')+'"></label>'+
         '<label>Unidad<select class="mp-edit-unit-select" aria-label="Unidad de '+esc(item.name)+'">'+options+
