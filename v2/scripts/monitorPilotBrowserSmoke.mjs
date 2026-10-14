@@ -252,11 +252,51 @@ try{
   await page.locator('#vigiaMonitorPilot .mp-tile').first().click();
   await page.locator('#vigiaMonitorPilot #mpQuantity').fill('');
   await page.locator('#vigiaMonitorPilot [data-mp-choice="BUY"]').click();
+
+  // Seleccionados: cantidad + unidad del catálogo, manual, Enter y persistencia.
+  await page.locator('#vigiaMonitorPilot [data-mp-page="selected"]').click();
+  const editRow=page.locator('#vigiaMonitorPilot .mp-selected-row').first();
+  await editRow.locator('.mp-edit-unit-select').waitFor();
+  for(const unit of ['CAJA','BULTO','UND','KG','CJ']){
+    assert.ok((await editRow.locator('.mp-edit-unit-select option').allTextContents()).includes(unit),
+      'unit unavailable in selected: '+unit);
+  }
+  await editRow.locator('.mp-edit-quantity').fill('2');
+  await editRow.locator('.mp-edit-unit-select').selectOption('CAJA');
+  await editRow.locator('[data-mp-action="save-selection"]').click();
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return state.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
+  },null,{timeout:12000});
+
+  await editRow.locator('.mp-edit-unit-select').selectOption('__OTHER__');
+  await editRow.locator('.mp-edit-unit-other').fill('GAVETA');
+  await editRow.locator('.mp-edit-quantity').fill('3');
+  await editRow.locator('.mp-edit-unit-other').press('Enter');
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return state.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='GAVETA'&&x.quantity===3);
+  },null,{timeout:12000});
+  await editRow.locator('.mp-edit-unit-select').selectOption('CAJA');
+  await editRow.locator('.mp-edit-quantity').fill('2');
+  await editRow.locator('.mp-edit-quantity').press('Enter');
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return state.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
+  },null,{timeout:12000});
+  await page.screenshot({path:path.join(screenshots,'seleccionados-unidades-mobile.png')});
+  console.log('MONITOR_SELECTED_UNITS_PASS: CAJA + GAVETA + Enter + IndexedDB');
+
   await page.locator('#vigiaMonitorPilot [data-mp-page="extras"]').click();
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Cinta métrica');
   await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
   await page.locator('#vigiaMonitorPilot [data-mp-page="lists"]').click();
   await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().waitFor();
+  assert.match(await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().innerText(),/2 CAJA/,
+    'native ticket must preserve chosen unit and quantity');
   await page.getByText('Cinta métrica',{exact:true}).first().waitFor();
   await page.screenshot({path:path.join(screenshots,'comprar-pedir-mobile.png')});
   const weeklyLayout=await page.evaluate(()=>({
