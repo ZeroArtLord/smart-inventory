@@ -13,7 +13,7 @@ $approvedBases = @(
   '2aaefe9b34a773f1d9d2682393e22301c95d955f'
 )
 $base = ''
-$target = '455bd3dc86e83827ee9b70fe5706e0c26347ffdb'
+$target = 'c8ec87a56e9fc7910c272af771b2b833aabad178'
 $branch = 'feature/vigia-monitor-normal-mirror-20261013'
 $backupRoot = 'F:\SmartInventoryBackups\VIGIA_MONITOR_SELECTED_UNITS'
 $logFile = Join-Path $env:TEMP ('VIGIA_MONITOR_SELECTED_UNITS_DEPLOY_'+(Get-Date -Format 'yyyyMMdd_HHmmss')+'.txt')
@@ -80,6 +80,7 @@ try {
     '.github/workflows/v2-tests.yml',
     'docs/VIGIA/VIGIA_HP_MONITOR_NATIVE_80MM_PENDING_DEPLOY_SAFE.ps1',
     'docs/VIGIA/VIGIA_HP_MONITOR_NORMAL_PRINT_DEPLOY_SAFE.ps1',
+    'docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_UNITS_DEPLOY_SAFE.ps1',
     'v2/css/monitor-pilot.css',
     'v2/scripts/monitorPilotBrowserSmoke.mjs',
     'v2/src/printing/thermalPrinterClient.js',
