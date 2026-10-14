@@ -141,7 +141,8 @@ jobs:
             "docs/VIGIA/VIGIA_HP_MONITOR_NORMAL_PRINT_DEPLOY_SAFE.ps1",
             "docs/VIGIA/VIGIA_HP_MONITOR_NATIVE_80MM_PENDING_DEPLOY_SAFE.ps1",
             "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_UNITS_DEPLOY_SAFE.ps1",
-            "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_AUTOSAVE_DEPLOY_SAFE.ps1"
+            "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_AUTOSAVE_DEPLOY_SAFE.ps1",
+            "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_NOTES_DEPLOY_SAFE.ps1"
           )
           foreach ($path in $paths) {
           [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
