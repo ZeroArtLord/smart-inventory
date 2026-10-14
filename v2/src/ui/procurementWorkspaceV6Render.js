@@ -125,7 +125,7 @@ function renderLists(lists) {
   `;
 }
 
-function listCard(list) {
+export function listCard(list,{monitor=false}={}) {
   const active = list.activeItems || [];
   const categories = new Set(active.map(procurementCategoryOf));
   const extras = active.filter(isProcurementExtra).length;
@@ -133,7 +133,7 @@ function listCard(list) {
     <article class="v6p-list-card">
       <div class="v6p-list-head"><div><strong>${esc(list.code)}</strong><small>${esc(list.dateLabel)} · ${active.length} producto(s) · ${categories.size} categoría(s)</small></div><span class="v6p-status">${esc(list.statusLabel)}</span></div>
       <div class="v6p-list-summary"><div><small>Tipo</small><strong>${list.kind === 'ORDER' ? 'PEDIDO' : 'COMPRA'}</strong></div><div><small>Extras</small><strong>${extras}</strong></div><div><small>Almacenista</small><strong>${esc(list.ownerLabel || 'Usuario VIGÍA')}</strong></div></div>
-      <div class="v6p-list-actions"><button class="v6p-ghost" data-v6p-action="open-list" data-list-id="${esc(list.id)}" type="button">Abrir lista</button><button class="v6p-primary" data-v6p-action="open-print" data-list-id="${esc(list.id)}" type="button">👁 Vista 80mm</button></div>
+      <div class="v6p-list-actions"><button class="v6p-ghost" data-v6p-action="${monitor?'monitor-open-print':'open-list'}" ${monitor?`data-monitor-kind="${list.kind}"`:`data-list-id="${esc(list.id)}"`} type="button">Abrir lista</button><button class="v6p-primary" data-v6p-action="${monitor?'monitor-open-print':'open-print'}" ${monitor?`data-monitor-kind="${list.kind}"`:`data-list-id="${esc(list.id)}"`} type="button">👁 Vista 80mm</button></div>
     </article>
   `;
 }

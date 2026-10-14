@@ -132,6 +132,27 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Environment flag self-test failed' }
           Write-Host "VIGIA_MONITOR_GOD_ACTIVATION_PARSE_AND_SELFTEST_PASS"
 
+      - name: Parse safe Monitor normal printing rollout script
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          $paths = @(
+            "docs/VIGIA/VIGIA_HP_MONITOR_NORMAL_PRINT_DEPLOY_SAFE.ps1",
+            "docs/VIGIA/VIGIA_HP_MONITOR_NATIVE_80MM_PENDING_DEPLOY_SAFE.ps1",
+            "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_UNITS_DEPLOY_SAFE.ps1",
+            "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_AUTOSAVE_DEPLOY_SAFE.ps1",
+            "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_NOTES_DEPLOY_SAFE.ps1"
+          )
+          foreach ($path in $paths) {
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+          }
+          Write-Host "VIGIA_MONITOR_NATIVE_80MM_PENDING_DEPLOY_PARSE_PASS"
+
   client-tests:
     runs-on: ubuntu-latest
     defaults:

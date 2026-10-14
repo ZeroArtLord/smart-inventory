@@ -120,6 +120,24 @@ try{
     await storage.put(storage.STORES.CATEGORIES,{
       id:'bebidas',name:'Bebidas',active:true
     });
+    await storage.put(storage.STORES.PRODUCTS,{
+      id:'prod-cafe',name:'Café de prueba',categoryId:'viveres',sku:'CAFE',
+      unitCode:'UND',active:true
+    });
+    await storage.put(storage.STORES.PRODUCTS,{
+      id:'prod-yuca',name:'Yuca de prueba',categoryId:'hortalizas',sku:'YUCA',
+      unitCode:'KG',active:true
+    });
+    await storage.put(storage.STORES.PRODUCTS,{
+      id:'prod-pan',name:'Pan de prueba',categoryId:'viveres',sku:'PAN',
+      unitCode:'UND',active:true
+    });
+    await storage.put(storage.STORES.CATEGORIES,{
+      id:'viveres',name:'Viveres',active:true
+    });
+    await storage.put(storage.STORES.CATEGORIES,{
+      id:'hortalizas',name:'Hortalizas',active:true
+    });
     await storage.put(storage.STORES.AREAS,{
       id:'area-cocina',name:'Cocina',active:true,sortOrder:1
     });
@@ -234,11 +252,119 @@ try{
   await page.locator('#vigiaMonitorPilot .mp-tile').first().click();
   await page.locator('#vigiaMonitorPilot #mpQuantity').fill('');
   await page.locator('#vigiaMonitorPilot [data-mp-choice="BUY"]').click();
-  await page.locator('#vigiaMonitorPilot [data-mp-page="extras"]').click();
+
+  // Seleccionados: cantidad + unidad del catálogo, manual, Enter y persistencia.
+  await page.locator('#vigiaMonitorPilot [data-mp-page="selected"]').click();
+  const editRow=page.locator('#vigiaMonitorPilot .mp-selected-row').first();
+  await editRow.locator('.mp-edit-unit-select').waitFor();
+  for(const unit of ['CAJA','BULTO','UND','KG','CJ']){
+    assert.ok((await editRow.locator('.mp-edit-unit-select option').allTextContents()).includes(unit),
+      'unit unavailable in selected: '+unit);
+  }
+  assert.equal(await editRow.locator('[data-mp-action="save-selection"]').count(),0,
+    'No debe existir Guardar por producto');
+  await editRow.locator('.mp-edit-quantity').fill('2');
+  await editRow.locator('.mp-edit-unit-select').selectOption('CAJA');
+  // No click/Enter: el autosave debe ejecutarse por cambios de campo.
+  await page.waitForFunction(async()=>{
+    const mod=await import('/src/replenishment/monitorReviewOffline.js');
+    const record=await mod.readMonitorReview({workspaceId:'workspace-browser-lab',
+      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return record.items.some(x=>x.kind==='PRODUCT'&&x.unit==='CAJA'&&x.quantity===2);
+  },null,{timeout:12000});
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return state.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
+  },null,{timeout:12000});
+
+  await editRow.locator('.mp-edit-unit-select').selectOption('__OTHER__');
+  await editRow.locator('.mp-edit-unit-other').fill('GAVETA');
+  await editRow.locator('.mp-edit-quantity').fill('3');
+  await editRow.locator('.mp-edit-unit-other').press('Enter');
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return state.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='GAVETA'&&x.quantity===3);
+  },null,{timeout:12000});
+  await editRow.locator('.mp-edit-unit-select').selectOption('CAJA');
+  await editRow.locator('.mp-edit-quantity').fill('2');
+  await editRow.locator('.mp-edit-quantity').press('Enter'); // Solo avanza, no hace falta para guardar.
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return state.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
+  },null,{timeout:12000});
+  // La sincronización de una edición anterior no puede restaurar GAVETA tras
+  // confirmar CAJA: se espera el ACK y se comprueba también el DOM, no solo IDB.
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return state.pendingCount===0 && state.items.some(x=>
+      x.kind==='PRODUCT' && x.unit==='CAJA' && x.quantity===2);
+  },null,{timeout:15000});
+  const finalRow=page.locator('#vigiaMonitorPilot .mp-selected-row').first();
+  assert.equal(await finalRow.locator('.mp-edit-unit-select').inputValue(),'CAJA',
+    'a stale sync response restored an older unit into the DOM');
+  assert.equal(await finalRow.locator('.mp-edit-quantity').inputValue(),'2');
+  // Cambiar Comprar/Pedir debe guardarse solo, aun mientras editamos otra fila.
+  await finalRow.locator('.mp-edit-decision').selectOption('ORDER');
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
+      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='ORDER'&&x.unit==='CAJA'&&x.quantity===2);
+  },null,{timeout:12000});
+  await finalRow.locator('.mp-edit-decision').selectOption('BUY');
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
+      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
+  },null,{timeout:12000});
+  // Edición rápida y navegación: al pulsar Extras, el último número aún en
+  // debounce debe persistir en IndexedDB antes de cambiar de pantalla.
+  await finalRow.locator('.mp-edit-quantity').fill('4');
+  await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
+  const beforeNavSaved=await page.evaluate(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return record.items.find(x=>x.kind==='PRODUCT'&&x.decision==='BUY');
+  });
+  assert.equal(beforeNavSaved?.quantity,4,'Autosave must flush when leaving selected');
+  await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="selected"]').click();
+  const returnRow=page.locator('#vigiaMonitorPilot .mp-selected-row').first();
+  await returnRow.locator('.mp-edit-quantity').fill('2');
+  // Observación EXACTAMENTE como en VIGÍA: 180 caracteres, autoguardada
+  // junto a cantidad, unidad y método. Ejemplo del usuario: REBANADAS.
+  const noteField=returnRow.locator('.mp-edit-note');
+  assert.equal(await noteField.getAttribute('maxlength'),'180');
+  await noteField.fill('rebanadas');
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
+      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return state.items.some(x=>x.kind==='PRODUCT'&&x.notes==='rebanadas'&&x.quantity===2&&x.unit==='CAJA');
+  },null,{timeout:12000});
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
+  },null,{timeout:12000});
+  await page.screenshot({path:path.join(screenshots,'seleccionados-unidades-mobile.png')});
+  console.log('MONITOR_SELECTED_NOTES_PASS: quantity/unit/type/note autosaved; exact V6 ticket observation');
+
+  await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Cinta métrica');
   await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
   await page.locator('#vigiaMonitorPilot [data-mp-page="lists"]').click();
-  await page.locator('#vigiaMonitorPilot .mp-ticket').filter({hasText:'COPIA CHÓFER'}).first().waitFor();
+  await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().waitFor();
+  const nativeTicketText=await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().innerText();
+  console.log('MONITOR_SELECTED_NATIVE_PRINT_TEXT',JSON.stringify(nativeTicketText.slice(0,900)));
+  assert.match(nativeTicketText,/2\s+CJ/,
+    'native ticket must use original CAJA->CJ abbreviation');
+  assert.match(nativeTicketText,/\(rebanadas\)/,
+    'Original VIGIA ticket must print the per-product observation in parentheses');
   await page.getByText('Cinta métrica',{exact:true}).first().waitFor();
   await page.screenshot({path:path.join(screenshots,'comprar-pedir-mobile.png')});
   const weeklyLayout=await page.evaluate(()=>({
@@ -246,6 +372,98 @@ try{
   }));
   assert.ok(weeklyLayout.width<=weeklyLayout.viewport+2,
     'weekly review overflow on mobile: '+JSON.stringify(weeklyLayout));
+
+  // Regresión Pendientes: BUY -> autoavance al siguiente pendiente
+  // incluso en una categoría distinta; ORDER/NOT_NEEDED -> final sin Inicio.
+  await page.evaluate(async()=>{
+    const mod=await import('/src/replenishment/monitorReviewOffline.js');
+    const opts={workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',
+      weekStart:'2026-10-12'};
+    await mod.queueMonitorReviewChange(opts,{
+      kind:'PRODUCT',itemId:'prod-cafe',decision:'PENDING',quantity:null
+    });
+    await mod.queueMonitorReviewChange(opts,{
+      kind:'PRODUCT',itemId:'prod-yuca',decision:'PENDING',quantity:null
+    });
+    await mod.queueMonitorReviewChange(opts,{
+      kind:'PRODUCT',itemId:'prod-pan',decision:'PENDING',quantity:null
+    });
+  });
+  await page.locator('#vigiaMonitorPilot [data-mp-action="sync"]').click();
+  await page.locator('#vigiaMonitorPilot [data-mp-page="pending"]').click();
+  assert.equal(await page.locator('#vigiaMonitorPilot .mp-row').count(),3);
+  await page.locator('#vigiaMonitorPilot .mp-row').first().getByRole('button',{name:'Revisar ahora'}).click();
+  let active=await page.locator('#vigiaMonitorPilot .mp-card h2[style]').first().innerText();
+  assert.match(active,/Café de prueba/);
+  await page.locator('#vigiaMonitorPilot #mpQuantity').fill('5');
+  await page.locator('#vigiaMonitorPilot [data-mp-choice="BUY"]').click();
+  await page.waitForFunction(()=>
+    document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent.includes('Pan de prueba')
+  ,null,{timeout:12000});
+  active=await page.locator('#vigiaMonitorPilot .mp-card h2[style]').first().innerText();
+  assert.match(active,/Pan de prueba/,
+    'BUY should advance to next pending product, not Inicio');
+  await page.locator('#vigiaMonitorPilot #mpQuantity').fill('3');
+  await page.locator('#vigiaMonitorPilot [data-mp-choice="ORDER"]').click();
+  await page.waitForFunction(()=>
+    document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent.includes('Yuca de prueba')
+  ,null,{timeout:12000});
+  await page.locator('#vigiaMonitorPilot #mpQuantity').fill('');
+  await page.locator('#vigiaMonitorPilot [data-mp-choice="NOT_NEEDED"]').click();
+  await page.waitForFunction(()=>
+    document.querySelector('#vigiaMonitorPilot .mp-card h2')?.textContent.startsWith('Pendientes')
+  ,null,{timeout:12000});
+  assert.match(await page.locator('#vigiaMonitorPilot .mp-card h2').first().innerText(),/Pendientes/);
+  assert.match(await page.locator('#vigiaMonitorPilot').innerText(),/No tienes productos pendientes/);
+  const storedPending=await page.evaluate(async()=>{
+    const mod=await import('/src/replenishment/monitorReviewOffline.js');
+    const s=await mod.readMonitorReview({workspaceId:'workspace-browser-lab',
+      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return s.items.filter(x=>['product:prod-cafe','product:prod-pan','product:prod-yuca'].includes(x.itemKey))
+      .map(x=>({id:x.itemKey,decision:x.decision,qty:x.quantity}));
+  });
+  assert.ok(storedPending.some(x=>x.id==='product:prod-cafe'&&x.decision==='BUY'&&x.qty===5));
+  assert.ok(storedPending.some(x=>x.id==='product:prod-pan'&&x.decision==='ORDER'&&x.qty===3));
+  assert.ok(storedPending.some(x=>x.id==='product:prod-yuca'&&x.decision==='NOT_NEEDED'));
+  console.log('MONITOR_PENDING_AUTOADVANCE_PASS',JSON.stringify(storedPending));
+
+  // El mismo ticket debe ser imprimible desde la vista VIGÍA NORMAL (sin
+  // que el viejo CSS "body * visibility:hidden" genere una página en blanco).
+  await page.locator('#vigiaMonitorPilot [data-mp-action="close"]').click();
+  await page.evaluate(async()=>{
+    const {projectMonitorToNormal}=await import('/src/replenishment/monitorToNormalMirror.js');
+    const {printableMonitorMirror}=await import('/src/ui/monitorNormalMirrorUi.js');
+    const snapshot=projectMonitorToNormal({
+      weekStart:'2026-10-12',
+      products:[{id:'prod-agua',name:'Agua mineral',categoryId:'bebidas',unitCode:'UND'}],
+      categories:[{id:'bebidas',name:'BEBIDAS'}],
+      serverItems:[{itemKey:'product:prod-agua',kind:'PRODUCT',productId:'prod-agua',
+        decision:'BUY',quantity:null,unit:'CJ',notes:'Test impresora'}]
+    });
+    const host=document.createElement('section');
+    host.id='v6MonitorPrintPage';
+    host.innerHTML=printableMonitorMirror(snapshot);
+    document.body.append(host);
+    document.body.classList.add('vigia-monitor-normal-print-active');
+  });
+  await page.emulateMedia({media:'print'});
+  const printView=await page.evaluate(()=>({
+    host:getComputedStyle(document.getElementById('v6MonitorPrintPage')).display,
+    ticket:getComputedStyle(document.querySelector('#v6MonitorPrintPage .v6p-ticket')).visibility,
+    app:getComputedStyle(document.getElementById('app')).display,
+    tickets:document.querySelectorAll('#v6MonitorPrintPage .v6p-ticket').length,
+    text:document.getElementById('v6MonitorPrintPage').innerText
+  }));
+  assert.notEqual(printView.host,'none','Normal print host hidden in print media');
+  assert.equal(printView.ticket,'visible','Legacy V6 CSS hid the print ticket');
+  assert.equal(printView.app,'none','Normal app background leaks into printed ticket');
+  assert.equal(printView.tickets,4,'Expected four receipts on 80mm roll');
+  assert.match(printView.text,/________ CJ/);
+  await page.emulateMedia({media:'screen'});
+  await page.evaluate(()=>{
+    document.body.classList.remove('vigia-monitor-normal-print-active');
+    document.getElementById('v6MonitorPrintPage')?.remove();
+  });
   assert.equal(errors.length,0,'browser errors: '+errors.join('\n'));
   console.log('MONITOR_BROWSER_SMOKE_PASS: Chromium desktop/mobile, real pilot screens, IndexedDB autosave/reload, failed API retry, no duplicate, legacy queue untouched, new reports, manual extras');
 }catch(error){

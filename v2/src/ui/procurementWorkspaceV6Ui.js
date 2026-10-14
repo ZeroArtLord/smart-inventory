@@ -21,6 +21,9 @@ import { getCurrentSession, can } from '../admin/adminClient.js';
 import { syncNow } from '../sync/syncEngine.js';
 import { renderWorkspace, renderReviewModal, renderManualModal, renderListModal, renderAddToListModal, esc } from './procurementWorkspaceV6Render.js';
 import { renderPrintModal } from './procurementWorkspaceV6Print.js';
+import { printThermalProcurementList } from '../printing/thermalPrinterClient.js';
+import { buildMonitorNativeLists } from '../replenishment/monitorNativeTicketAdapter.js';
+import { fetchMonitorMirrorForNormal, renderMonitorMirrorForNormal, assertMonitorPrintable } from './monitorNormalMirrorUi.js';
 
 const BUSINESS_NAME_KEY = 'vigia.procurement.businessName';
 const app = document.getElementById('app');
@@ -31,7 +34,9 @@ const state = {
   lists:[], session:null, manualResults:[], manualProduct:null,
   listModalId:null, printListId:null,
   addListId:null, addListResults:[], addListProduct:null,
-  draftRestoreNoticeShown:false
+  draftRestoreNoticeShown:false,
+  monitorMirror:null, monitorMirrorLoading:false, monitorMirrorError:'',
+  monitorMirrorHidden:false, monitorMirrorIdentity:'', monitorPrintKind:null,monitorDirectPrinting:false
 };
 
 let procurementDraftSaveTimer = null;
@@ -84,6 +89,11 @@ async function reload() {
   state.productsById=new Map(state.products.map(p=>[p.id,p]));
   state.categoriesById=new Map(categories.map(c=>[c.id,c]));
   state.session=session;
+  const identity=String(session?.workspaceId||session?.workspace?.id||'')+':'+String(session?.userId||'');
+  if(state.monitorMirrorIdentity!==identity){
+    state.monitorMirror=null;state.monitorMirrorError='';state.monitorMirrorHidden=false;state.monitorPrintKind=null;
+    state.monitorMirrorIdentity=identity;
+  }
   const pending=calculatePendingInboundByProduct(replenishments.filter(r=>!isProcurementExtra(r)));
   state.rows=buildInventoryReport(state.products,movements,{now:new Date(),pendingInboundByProduct:pending});
   state.rowsById=new Map(state.rows.map(r=>[r.productId,r]));
@@ -221,7 +231,80 @@ function paint() {
     pendingExtras:state.pendingExtras,lists:state.lists,selectedCount:selected.length+state.pendingExtras.length,
     purchaseCount,orderCount,query:state.query,filter:state.filter
   });
+  if(state.activeTab==='lists' && !state.monitorMirrorHidden){
+    const active=root.querySelector('.v6p-panel.is-active');
+    active?.insertAdjacentHTML('afterbegin',renderMonitorMirrorForNormal(state.monitorMirror,{
+      loading:state.monitorMirrorLoading,error:state.monitorMirrorError,ownerLabel:actorLabel()
+    }));
+  }
   restoreModal();
+}
+
+async function refreshMonitorMirror({ syncBeforeFetch = false } = {}) {
+  if(state.monitorMirrorLoading || !state.session)return;
+  const context=procurementDraftContext();if(!context)return;
+  const identity=context.workspaceId+':'+context.userId;
+  state.monitorMirrorLoading=true;state.monitorMirrorError='';paint();
+  try{
+    const snapshot=await fetchMonitorMirrorForNormal({
+      session:state.session,products:state.products,
+      categories:[...state.categoriesById.values()],syncBeforeFetch
+    });
+    if(state.monitorMirrorIdentity!==identity)return;
+    state.monitorMirror=snapshot;
+    state.monitorMirrorHidden=false;
+    return true;
+  }catch(error){
+    if(state.monitorMirrorIdentity!==identity)return;
+    if(['MONITOR_PILOT_DISABLED','MONITOR_PILOT_NOT_ALLOWED','PERMISSION_DENIED'].includes(error?.code)||
+      error?.status===403||error?.status===404){
+      // Otras cuentas siguen usando Comprar/Pedir sin ver el piloto.
+      state.monitorMirrorHidden=true;state.monitorMirror=null;
+    }else{
+      state.monitorMirrorError=String(error?.message||'No disponible');
+    }
+  }finally{
+    state.monitorMirrorLoading=false;
+    if(state.monitorMirrorIdentity===identity && isTargetView())paint();
+  }
+  return false;
+}
+
+// Monitor no escribe listas legacy. Reutiliza directamente la vista 80 mm
+// y la misma impresora ESC/POS del sistema normal para una foto sincronizada.
+function openMonitorPrintPreview(kind,remember=true) {
+  if(!['PURCHASE','ORDER'].includes(kind))return;
+  const list=buildMonitorNativeLists(state.monitorMirror,{ownerLabel:actorLabel()})
+    .find(row=>row.kind===kind);
+  if(!list)return;
+  if(remember){state.monitorPrintKind=kind;state.printListId=null;}
+  const modal=document.getElementById('v6pPrintModal');
+  if(!modal)return;
+  modal.innerHTML=renderPrintModal({list,businessName:businessName(),monitor:true});
+  modal.classList.add('is-open');
+}
+
+async function monitorNativePrintFlow(kind,{direct=false}={}) {
+  if(!['PURCHASE','ORDER'].includes(kind))throw new Error('Tipo de lista inválido');
+  if(state.monitorDirectPrinting)return;
+  state.monitorDirectPrinting=true;
+  try{
+    const updated=await refreshMonitorMirror({syncBeforeFetch:true});
+    if(!updated)throw new Error('Monitor no pudo actualizarse. No se imprimió.');
+    assertMonitorPrintable(state.monitorMirror);
+    const list=buildMonitorNativeLists(state.monitorMirror,{ownerLabel:actorLabel()})
+      .find(row=>row.kind===kind);
+    if(!list?.items.length)throw new Error('Esa lista no contiene artículos');
+    if(direct){
+      const result=await printThermalProcurementList(list);
+      toast(result.copies+' copias enviadas a '+result.printer.name+
+        ' · '+result.itemCount+' productos');
+    }else{
+      openMonitorPrintPreview(kind);
+    }
+  }finally{
+    state.monitorDirectPrinting=false;
+  }
 }
 
 function hydrateDraftView(row) {
@@ -242,13 +325,17 @@ function restoreModal() {
   if (state.manualProduct || state.manualResults.length) openManual(false);
   if (state.listModalId) openList(state.listModalId,false);
   if (state.printListId) openPrint(state.printListId,false);
+  if (state.monitorPrintKind) openMonitorPrintPreview(state.monitorPrintKind,false);
 }
 
 async function handleClick(event) {
   const button=event.target.closest('[data-v6p-action]'); if(!button) return;
   try {
     const action=button.dataset.v6pAction;
-    if(action==='switch-tab'){state.activeTab=button.dataset.tab;state.listModalId=null;state.printListId=null;paint();return;}
+    if(action==='switch-tab'){state.activeTab=button.dataset.tab;state.listModalId=null;state.printListId=null;state.monitorPrintKind=null;paint();if(state.activeTab==='lists')await refreshMonitorMirror();return;}
+    if(action==='refresh-monitor-mirror'){await refreshMonitorMirror();return;}
+    if(action==='monitor-open-print'){await monitorNativePrintFlow(button.dataset.monitorKind);return;}
+    if(action==='monitor-direct-print'){await monitorNativePrintFlow(button.dataset.monitorKind,{direct:true});return;}
     if(action==='prepare-visible'||action==='select-visible'){visibleDrafts().forEach(d=>{d.selected=true;d.dirty=true;});scheduleProcurementDraftSave();paint();toast('Sugerencias visibles preparadas.');return;}
     if(action==='clear-selection'){state.drafts.forEach(d=>{if(d.selected){d.selected=false;d.dirty=true;}});scheduleProcurementDraftSave();paint();return;}
     if(action==='toggle-details'){const d=draftFromNode(button);if(d){d.detailsOpen=!d.detailsOpen;paint();}return;}
@@ -270,7 +357,7 @@ async function handleClick(event) {
     if(action==='close-list-add'){closeListAdd();return;}
     if(action==='reopen-list'){await reopenList(button.dataset.listId);return;}
     if(action==='open-print'){openPrint(button.dataset.listId);return;}
-    if(action==='close-print'){close('v6pPrintModal');state.printListId=null;return;}
+    if(action==='close-print'){close('v6pPrintModal');state.printListId=null;state.monitorPrintKind=null;return;}
     if(action==='save-business-name'){saveBusinessName();return;}
     if(action==='browser-print'){window.print();return;}
     if(action==='save-list-edits'){await saveListEdits();return;}

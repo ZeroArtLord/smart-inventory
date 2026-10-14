@@ -54,16 +54,21 @@ export function buildThermalPrintPayload(list = {}) {
         String(item?.status || '').toUpperCase() !== 'CANCELLED'
     )
     .map(item => {
-      const display = procurementDisplayQuantity(item);
+      const override = Object.prototype.hasOwnProperty.call(item,'printQuantity');
+      const display = override
+        ? {quantity:item.printQuantity, unit:item.printUnit||''}
+        : procurementDisplayQuantity(item);
+      const quantityText = override && display.quantity == null
+        ? '________' + (display.unit ? ' '+shortUnit(display.unit) : '')
+        : formatNumber(display.quantity)+(display.unit ? ' '+shortUnit(display.unit) : '');
 
       return {
         status: item.status || null,
         name: item.productName || item.productId || 'Producto',
-        quantityText:
-          `${formatNumber(display.quantity)} ${shortUnit(display.unit)}`,
-        category: procurementCategoryOf(item),
+        quantityText,
+        category: item.printCategory || procurementCategoryOf(item),
         note: item.notes || '',
-        extra: isProcurementExtra(item)
+        extra: item.printExtra === true || isProcurementExtra(item)
       };
     });
 

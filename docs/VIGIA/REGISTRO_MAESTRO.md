@@ -347,3 +347,61 @@ Repositorio: `ZeroArtLord/smart-inventory`. Rama: `feature/v9-0-phase-c-offline-
 - **Primera etapa planificada:** motor de revisión semanal de compras/pedidos independiente de stock, con todos los productos por categorías, marca humana, cantidad positiva u opcional \`null\`, pendientes, listas COMPRAR/PEDIR, extras manuales, versiones para detección de conflictos y funciones puras para pruebas automáticas. Los reportes se conectarán más adelante a los nuevos eventos y al historial existente.
 - **Aclaración de estado:** REG-018 reportes diseñados, **no implementados** como nuevas vistas todavía; para REG-019 solo hay autorización para empezar desarrollo. Registrar después las rutas, resultados de pruebas y SHAs realmente producidos.
 - **Preservación de datos:** no borrar ni modificar colas offline ni 103 conflictos históricos del teléfono; no eliminar features o entidades V2 antiguas.
+
+
+### [REG-022] 2026-10-13 | Espejo Monitor -> Comprar/Pedir normal | IMPLEMENTADO EN RAMA; SIN DESPLEGAR
+
+Origen: usuario autorizó inspeccionar GitHub y pidió que las listas cargadas en el Monitor aparezcan también en VIGÍA normal, sin perder información/progreso.
+
+Necesidad y contexto:
+- Monitor piloto se está usando para generar la compra/pedido semanal; el sistema normal permanece productivo.
+- Monitor persiste por almacén+lunes en `monitor_weekly_review_items` (SQL 020), permite cantidad `null`, extras y cambios locales offline.
+- El legado `procurementListService.js` y `replenishments` exigen cantidades estrictamente mayores que cero y crean entidades distintas: no es seguro duplicar automáticamente como listas legacy sin diseñar reconciliación, conversión de unidades y garantías de idempotencia.
+
+Decisión técnica parcial de mínimo riesgo:
+- Rama aislada `feature/vigia-monitor-normal-mirror-20261013`, basada en `feature/vigia-monitor-review-v1`.
+- Añadidos `v2/src/replenishment/monitorToNormalMirror.js`, `v2/src/ui/monitorNormalMirrorUi.js`, tests de proyección y adaptación de `v2/src/ui/procurementWorkspaceV6Ui.js`.
+- En `Comprar/Pedir > Mis listas` de VIGÍA normal, usuario autorizado puede consultar el **espejo de las cuatro listas semanales** del Monitor al entrar o actualizar: compras Chófer/Depósito y pedidos Proveedor/Depósito, con notas, cantidades vacías y extras, sin reescribir los documentos legacy.
+- Lectura GET protegida por permisos y allowlist existentes del servidor (se oculta para cuentas denegadas). Se parte de PostgreSQL y se superponen solo los cambios locales PENDING/CONFLICT del dispositivo sin sobrescribir la foto remota; el estado no sincronizado/conflictivo se etiqueta.
+- Este espejo NO es una importación a `replenishments`, NO tiene escritura de stock, NO afecta las compras actuales de VIGÍA normal ni modifica tablas, usuarios o .env.
+- Service worker actualizado a shell 65 para nuevas dependencias. No borrar IndexedDB, colas ni pendientes.
+- El espejo actualiza bajo demanda. Cambios locales no sincronizados de otro dispositivo **no se ven** hasta que lleguen al servidor; no afirmar espejo multi-dispositivo perfecto antes de confirmar sincronización.
+- El módulo Monitor se sigue editando ahí; el espejo es de solo lectura para impedir ediciones divergentes.
+
+Verificación (pendiente):
+- Ejecutar `cd v2 && npm test -- --test-name-pattern=Monitor` o `node --test test/monitorToNormalMirror.test.js` en entorno con dependencias, más suite completa.
+- En HP: lectura de semana/almacén autorizados; reproducir compras, pedidos, extras, nota, null y cambio tras refrescar; consultar status de outbox; sin escrituras a legacy ni stock; probar usuario no autorizado.
+- Reconciliar visual y funcionalmente contra listado Monitor REAL, incluidas unidades de presentación. Preparar backup/rollback y verificar pruebas antes de desplegar.
+
+Limitación explícita:
+- La conversión **materializada** a listas nativas legacy NO está autorizada como completada y no debe ejecutarse a ciegas mientras permita `null` y el legado no.
+- Esta rama NO se ha desplegado. VIGÍA de producción permanece sin cambios.
+
+Siguiente paso: CI verde, revisión de rama, prueba segura sin borrar datos, y determinar si basta el espejo accesible desde normal o si se necesita evolución versionada de la lista nativa para edición bidireccional.
+
+
+### [REG-023] 2026-10-13 | Flujo directo Actualizar e imprimir Monitor desde VIGÍA normal | IMPLEMENTADO EN RAMA; PR #24 DRAFT; SIN DESPLEGAR
+
+Origen: El usuario pidió la solución más rápida y simple, en un solo trabajo, para terminar sus listas en Monitor y desde VIGÍA normal pulsar Actualizar e imprimir sin volver a capturar datos.
+
+Decisión: El Monitor PostgreSQL permanece como única fuente de verdad para la lista semanal. El área normal "Comprar/Pedir > Mis listas" muestra su espejo de solo lectura y un botón **"Actualizar e imprimir"**. Ese botón primero reintenta la cola Monitor del mismo dispositivo, consulta el servidor y, SOLO si no hay conflictos/pendientes locales/productos irresueltos, abre el diálogo de impresión del navegador. Requiere escoger la impresora y el tamaño 80 mm en el sistema operativo; no equivale a impresión ESC/POS directa. Las 4 copias son COMPRAR CHÓFER/DEPÓSITO y PEDIR PROVEEDOR/DEPÓSITO.
+
+Código en rama: 
+- \`v2/src/ui/monitorTicketTemplate.js\` es la plantilla HTML compartida por Monitor piloto y espejo normal: mismas cantidades, unidades (sin conversión inventada), observaciones, extras, grupos, huecos de cantidad null, semana y firma.
+- \`v2/src/ui/monitorReviewPilotUi.js\` ahora utiliza la plantilla común, preserva la impresión propia mediante una clase de impresión condicional.
+- \`v2/src/ui/monitorNormalMirrorUi.js\` construye el espejo y valida que sea imprimible; consulta la API con autorización y puede reintentar eventos locales pendientes.
+- \`v2/src/ui/procurementWorkspaceV6Ui.js\` agrega el botón y el flujo síncrono/asíncrono de lectura + impresión; sin escribir replenishments ni stock.
+- \`v2/css/monitor-pilot.css\` aísla el formato 80 mm e impide que CSS legacy de impresión oculte el papel con \`visibility:hidden!important\`.
+- \`v2/sw.js\` incluye la nueva plantilla en shell 66 (no borrar cachés manualmente).
+- Pruebas de proyección, integridad, impresión nula, escape de texto y navegador Chromium, además de la suite completa en GitHub Actions.
+
+Protecciones:
+- NO genera ni actualiza compras/pedidos legacy de V2, NO realiza movimientos de stock, NO migra bases de datos ni modifica .env.
+- Los cambios en otro dispositivo que aún NO llegaron al servidor NO pueden incluirse al imprimir desde esta estación. Exigir que los emisores terminen de sincronizar antes de imprimir; una impresión nunca debe asumir "sincronizado" en un teléfono distinto.
+- Sin actualización o con conflictos, se bloquea impresión en vez de presentar datos viejos como actuales.
+- El botón imprime a través del navegador; impresión ESC/POS TCP/IP directa quedará para otro hito, sin mezclarlo con esta entrega urgente.
+- Si el navegador bloquea la invocación de imprimir tras una consulta asíncrona, usar la funcionalidad equivalente desde el botón de impresión del navegador con la vista actual y registrar un ajuste posterior.
+
+Verificación: CI/pruebas automáticas requeridas; ver PR #24. Aún falta cotejar la vista impresa con los datos de producción y con la impresora física. **No se ha ejecutado despliegue en HP**.
+
+Siguiente paso: completar CI, confirmar HEAD/backup del HP antes de una instalación controlada, desplegar sin pérdida de datos cuando el usuario termine su lista y autorice ventana de mantenimiento, probar impresión física de 80 mm.
