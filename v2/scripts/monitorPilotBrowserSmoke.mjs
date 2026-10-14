@@ -120,6 +120,20 @@ try{
     await storage.put(storage.STORES.CATEGORIES,{
       id:'bebidas',name:'Bebidas',active:true
     });
+    await storage.put(storage.STORES.PRODUCTS,{
+      id:'prod-cafe',name:'Café de prueba',categoryId:'viveres',sku:'CAFE',
+      unitCode:'UND',active:true
+    });
+    await storage.put(storage.STORES.PRODUCTS,{
+      id:'prod-yuca',name:'Yuca de prueba',categoryId:'hortalizas',sku:'YUCA',
+      unitCode:'KG',active:true
+    });
+    await storage.put(storage.STORES.CATEGORIES,{
+      id:'viveres',name:'Viveres',active:true
+    });
+    await storage.put(storage.STORES.CATEGORIES,{
+      id:'hortalizas',name:'Hortalizas',active:true
+    });
     await storage.put(storage.STORES.AREAS,{
       id:'area-cocina',name:'Cocina',active:true,sortOrder:1
     });
@@ -238,7 +252,7 @@ try{
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Cinta métrica');
   await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
   await page.locator('#vigiaMonitorPilot [data-mp-page="lists"]').click();
-  await page.locator('#vigiaMonitorPilot .mp-ticket').filter({hasText:'COPIA CHÓFER'}).first().waitFor();
+  await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().waitFor();
   await page.getByText('Cinta métrica',{exact:true}).first().waitFor();
   await page.screenshot({path:path.join(screenshots,'comprar-pedir-mobile.png')});
   const weeklyLayout=await page.evaluate(()=>({
@@ -246,6 +260,47 @@ try{
   }));
   assert.ok(weeklyLayout.width<=weeklyLayout.viewport+2,
     'weekly review overflow on mobile: '+JSON.stringify(weeklyLayout));
+
+  // Regresión Pendientes: BUY -> autoavance al siguiente pendiente
+  // incluso en una categoría distinta; ORDER/NOT_NEEDED -> final sin Inicio.
+  await page.evaluate(async()=>{
+    const mod=await import('/src/replenishment/monitorReviewOffline.js');
+    const opts={workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',
+      weekStart:new Date().getDay()===0?'2026-10-12':'2026-10-12'};
+    await mod.queueMonitorReviewChange(opts,{
+      kind:'PRODUCT',itemId:'prod-cafe',decision:'PENDING',quantity:null
+    });
+    await mod.queueMonitorReviewChange(opts,{
+      kind:'PRODUCT',itemId:'prod-yuca',decision:'PENDING',quantity:null
+    });
+  });
+  await page.locator('#vigiaMonitorPilot [data-mp-action="sync"]').click();
+  await page.locator('#vigiaMonitorPilot [data-mp-page="pending"]').click();
+  assert.equal(await page.locator('#vigiaMonitorPilot .mp-row').count(),2);
+  await page.locator('#vigiaMonitorPilot .mp-row').first().getByRole('button',{name:'Revisar ahora'}).click();
+  let active=await page.locator('#vigiaMonitorPilot .mp-card h2').first().innerText();
+  assert.match(active,/Café de prueba/);
+  await page.locator('#vigiaMonitorPilot #mpQuantity').fill('5');
+  await page.locator('#vigiaMonitorPilot [data-mp-choice="BUY"]').click();
+  active=await page.locator('#vigiaMonitorPilot .mp-card h2').first().innerText();
+  assert.match(active,/Yuca de prueba/,
+    'BUY should advance to pending product in another category, not Inicio');
+  await page.locator('#vigiaMonitorPilot #mpQuantity').fill('');
+  await page.locator('#vigiaMonitorPilot [data-mp-choice="NOT_NEEDED"]').click();
+  await page.locator('#vigiaMonitorPilot .mp-card h2').first().waitFor();
+  assert.match(await page.locator('#vigiaMonitorPilot .mp-card h2').first().innerText(),/Pendientes/);
+  assert.match(await page.locator('#vigiaMonitorPilot').innerText(),/No tienes productos pendientes/);
+  const storedPending=await page.evaluate(async()=>{
+    const mod=await import('/src/replenishment/monitorReviewOffline.js');
+    const s=await mod.readMonitorReview({workspaceId:'workspace-browser-lab',
+      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return s.items.filter(x=>['product:prod-cafe','product:prod-yuca'].includes(x.itemKey))
+      .map(x=>({id:x.itemKey,decision:x.decision,qty:x.quantity}));
+  });
+  assert.ok(storedPending.some(x=>x.id==='product:prod-cafe'&&x.decision==='BUY'&&x.qty===5));
+  assert.ok(storedPending.some(x=>x.id==='product:prod-yuca'&&x.decision==='NOT_NEEDED'));
+  console.log('MONITOR_PENDING_AUTOADVANCE_PASS',JSON.stringify(storedPending));
+
   // El mismo ticket debe ser imprimible desde la vista VIGÍA NORMAL (sin
   // que el viejo CSS "body * visibility:hidden" genere una página en blanco).
   await page.locator('#vigiaMonitorPilot [data-mp-action="close"]').click();
@@ -268,9 +323,9 @@ try{
   await page.emulateMedia({media:'print'});
   const printView=await page.evaluate(()=>({
     host:getComputedStyle(document.getElementById('v6MonitorPrintPage')).display,
-    ticket:getComputedStyle(document.querySelector('#v6MonitorPrintPage .mp-ticket')).visibility,
+    ticket:getComputedStyle(document.querySelector('#v6MonitorPrintPage .v6p-ticket')).visibility,
     app:getComputedStyle(document.getElementById('app')).display,
-    tickets:document.querySelectorAll('#v6MonitorPrintPage .mp-ticket').length,
+    tickets:document.querySelectorAll('#v6MonitorPrintPage .v6p-ticket').length,
     text:document.getElementById('v6MonitorPrintPage').innerText
   }));
   assert.notEqual(printView.host,'none','Normal print host hidden in print media');
