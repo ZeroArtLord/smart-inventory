@@ -4,6 +4,8 @@ import { getAll, STORES } from '../storage/database.js';
 import { resolveMonitorPilotSession } from '../replenishment/monitorPilotSession.js';
 import { isMonitorPilotEnabled } from './monitorPilotEnabled.js';
 import { createLocalId } from '../core/ids.js';
+import { catalogUnitCode } from '../catalog/catalogUi.js';
+import { monitorUnitOptions, selectedMonitorUnit } from '../replenishment/monitorUnitOptions.js';
 import { renderProcurementTickets } from './procurementWorkspaceV6Print.js';
 import { buildMonitorNativeLists } from '../replenishment/monitorNativeTicketAdapter.js';
 import { fetchMonitorMirrorForNormal, assertMonitorPrintable } from './monitorNormalMirrorUi.js';
@@ -43,6 +45,7 @@ if(root){
   shell.addEventListener('click',event=>handleClick(event).catch(showError));
   shell.addEventListener('submit',event=>handleSubmit(event).catch(showError));
   shell.addEventListener('change',event=>handleChange(event).catch(showError));
+  shell.addEventListener('keydown',event=>handleSelectedKeydown(event).catch(showError));
   window.addEventListener('online',()=>{if(state.visible)pushAndRefresh().catch(showError);});
   window.addEventListener('beforeprint',()=>{
     if(state.visible && state.page==='lists') document.body.classList.add('vigia-monitor-print-active');
@@ -311,15 +314,59 @@ function renderSelected(){
     button('+ Agregar un extra','page',{attrs:'data-mp-page="extras"'}));
   return panel('Seleccionados ('+items.length+')',
     '<p class="mp-muted">Cantidades opcionales: '+items.filter(x=>x.quantity==null).length+
-    ' por completar. Puedes modificar tus decisiones sin duplicar artículos.</p>'+
-    items.map((item,i)=>'<div class="mp-row" data-mp-edit-row="'+i+'">'+
-      '<div><strong>'+esc(item.name)+'</strong><div class="mp-muted">'+esc(item.category)+' · '+esc(decisionLabel(item.decision))+'</div></div>'+
-      '<div class="mp-inline"><label>Cantidad<input class="mp-edit-quantity" style="max-width:115px" type="number" min="0.001" step="any" placeholder="Vacío" value="'+esc(item.quantity??'')+'"></label>'+
-      '<label>Tipo<select class="mp-edit-decision"><option value="BUY" '+(item.decision==='BUY'?'selected':'')+'>Comprar</option>'+
-      '<option value="ORDER" '+(item.decision==='ORDER'?'selected':'')+'>Pedir</option></select></label>'+
-      button('Guardar','save-selection',{attrs:'data-mp-item="'+esc(item.itemKey)+'"'})+
-      '</div></div>').join('')+
+    ' por completar. Cantidad y unidad se guardan juntas; Enter también guarda y avanza a la siguiente fila.</p>'+
+    '<div class="mp-muted" style="margin-bottom:8px">La unidad elegida se imprimirá tal cual (ej. 2 CAJA). Monitor no convierte cantidades ni altera existencias.</div>'+
+    items.map((item,i)=>{
+      const product=item.kind==='PRODUCT'?state.products.find(p=>p.id===item.productId):null;
+      const currentUnit=String(item.unit|| (product ? catalogUnitCode(product):'UND')).trim().toUpperCase();
+      const options=monitorUnitOptions(product,currentUnit).map(code=>
+        '<option value="'+esc(code)+'" '+(code===currentUnit?'selected':'')+'>'+esc(code)+'</option>'
+      ).join('');
+      return '<div class="mp-row mp-selected-row" data-mp-edit-row="'+i+'" data-mp-item="'+esc(item.itemKey)+'">'+
+        '<div class="mp-selected-description"><strong>'+esc(item.name)+'</strong>'+
+        '<div class="mp-muted">'+esc(item.category)+' · '+esc(decisionLabel(item.decision))+'</div></div>'+
+        '<div class="mp-selected-edit">'+
+        '<label>Cantidad<input class="mp-edit-quantity" inputmode="decimal" type="number" min="0.001" step="any" placeholder="Vacío" value="'+esc(item.quantity??'')+'"></label>'+
+        '<label>Unidad<select class="mp-edit-unit-select" aria-label="Unidad de '+esc(item.name)+'">'+options+
+        '<option value="__OTHER__">OTRA…</option></select>'+
+        '<input class="mp-edit-unit-other" type="text" maxlength="40" placeholder="Escribe la unidad" aria-label="Otra unidad" hidden></label>'+
+        '<label>Tipo<select class="mp-edit-decision"><option value="BUY" '+(item.decision==='BUY'?'selected':'')+'>Comprar</option>'+
+        '<option value="ORDER" '+(item.decision==='ORDER'?'selected':'')+'>Pedir</option></select></label>'+
+        button('Guardar','save-selection',{attrs:'data-mp-item="'+esc(item.itemKey)+'"'})+
+        '</div></div>';
+    }).join('')+
     '<p>'+button('+ Agregar extra','page',{attrs:'data-mp-page="extras"'})+'</p>');
+}
+
+async function saveSelectedRow(row,{advance=false}={}){
+  if(!row)return;
+  const key=row.dataset.mpItem;
+  const item=selectedItems().find(x=>x.itemKey===key);
+  if(!item)return;
+  const qty=row.querySelector('.mp-edit-quantity')?.value??'';
+  const choice=row.querySelector('.mp-edit-decision')?.value||item.decision;
+  const unit=selectedMonitorUnit({
+    selected:row.querySelector('.mp-edit-unit-select')?.value,
+    custom:row.querySelector('.mp-edit-unit-other')?.value,
+    current:item.unit
+  });
+  const rowIndex=[...shell.querySelectorAll('[data-mp-edit-row]')].indexOf(row);
+  await localChange({
+    kind:item.kind,itemId:item.kind==='EXTRA'?item.itemKey.slice(6):item.productId,
+    description:item.kind==='EXTRA'?item.name:undefined,decision:choice,
+    quantity:qty,unit,notes:item.notes
+  });
+  if(advance && state.page==='selected'){
+    const next=shell.querySelectorAll('[data-mp-edit-row]')[rowIndex+1];
+    next?.querySelector('.mp-edit-quantity')?.focus();
+  }
+}
+async function handleSelectedKeydown(event){
+  if(event.key!=='Enter'||!event.target.matches('.mp-edit-quantity,.mp-edit-unit-other'))return;
+  const row=event.target.closest('[data-mp-edit-row]');
+  if(!row)return;
+  event.preventDefault();
+  await saveSelectedRow(row,{advance:true});
 }
 function renderExtras(){
   return panel('Compra o pedido extra',
@@ -471,21 +518,21 @@ async function handleClick(event){
     await persistPilotCursor();paint();return;
   }
   if(action==='save-selection'){
-    const item=selectedItems().find(x=>x.itemKey===node.dataset.mpItem);
-    if(!item)return;
-    const row=node.closest('[data-mp-edit-row]');
-    const qty=row?.querySelector('.mp-edit-quantity')?.value??'';
-    const choice=row?.querySelector('.mp-edit-decision')?.value||item.decision;
-    await localChange({
-      kind:item.kind,itemId:item.kind==='EXTRA'?item.itemKey.slice(6):item.productId,
-      description:item.kind==='EXTRA'?item.name:undefined,decision:choice,
-      quantity:qty,unit:item.unit,notes:item.notes
-    });
+    await saveSelectedRow(node.closest('[data-mp-edit-row]'));
     return;
   }
   if(action==='print'){window.print();}
 }
 async function handleChange(event){
+  const unitPicker=event.target.closest('.mp-edit-unit-select');
+  if(unitPicker){
+    const custom=unitPicker.closest('label')?.querySelector('.mp-edit-unit-other');
+    if(custom){
+      custom.hidden=unitPicker.value!=='__OTHER__';
+      if(!custom.hidden)custom.focus();
+    }
+    return;
+  }
   const picker=event.target.closest('[data-mp-category-picker]');
   if(!picker)return;
   const chosen=groups().find(group=>group.id===picker.value);
