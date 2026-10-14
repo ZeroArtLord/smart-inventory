@@ -45,6 +45,8 @@ if(root){
   shell.addEventListener('click',event=>handleClick(event).catch(showError));
   shell.addEventListener('submit',event=>handleSubmit(event).catch(showError));
   shell.addEventListener('change',event=>handleChange(event).catch(showError));
+  shell.addEventListener('input',event=>handleSelectedInput(event));
+  shell.addEventListener('focusout',event=>handleSelectedBlur(event));
   shell.addEventListener('keydown',event=>handleSelectedKeydown(event).catch(showError));
   window.addEventListener('online',()=>{if(state.visible)pushAndRefresh().catch(showError);});
   window.addEventListener('beforeprint',()=>{
@@ -119,6 +121,16 @@ async function pushAndRefresh(){
   if(state.local.status==='SYNCED' && state.message.startsWith('Guardado en este dispositivo'))state.message='';
   // No interrumpir cantidad/unidad todavía bajo edición.
   const focus=document.activeElement;
+  if(state.page==='selected') {
+    // Con decenas de campos, jamás reemplazar sus nodos por una sincronización
+    // en segundo plano: se perdería el texto que aún no acabó de escribir.
+    const chip=shell.querySelector('.mp-chip');
+    if(chip)chip.textContent=state.local.status==='CONFLICT'
+      ? '⚠ Conflictos sin resolver: '+state.local.conflictCount
+      : state.local.pendingCount?'● Pendiente de sincronizar: '+state.local.pendingCount
+      : '✓ Sincronizado';
+    return;
+  }
   if(shell.contains(focus)&&focus?.matches?.('input,textarea,select'))return;
   paint();
 }
@@ -327,7 +339,7 @@ function renderSelected(){
     button('+ Agregar un extra','page',{attrs:'data-mp-page="extras"'}));
   return panel('Seleccionados ('+items.length+')',
     '<p class="mp-muted">Cantidades opcionales: '+items.filter(x=>x.quantity==null).length+
-    ' por completar. Cantidad y unidad se guardan juntas; Enter también guarda y avanza a la siguiente fila.</p>'+
+    ' por completar. Todo se guarda automáticamente al cambiar cantidad, unidad o tipo. Enter avanza a la siguiente fila.</p>'+
     '<div class="mp-muted" style="margin-bottom:8px">La unidad elegida se imprimirá tal cual (ej. 2 CAJA). Monitor no convierte cantidades ni altera existencias.</div>'+
     items.map((item,i)=>{
       const product=item.kind==='PRODUCT'?state.products.find(p=>p.id===item.productId):null;
@@ -345,33 +357,124 @@ function renderSelected(){
         '<input class="mp-edit-unit-other" type="text" maxlength="40" placeholder="Escribe la unidad" aria-label="Otra unidad" hidden></label>'+
         '<label>Tipo<select class="mp-edit-decision"><option value="BUY" '+(item.decision==='BUY'?'selected':'')+'>Comprar</option>'+
         '<option value="ORDER" '+(item.decision==='ORDER'?'selected':'')+'>Pedir</option></select></label>'+
-        button('Guardar','save-selection',{attrs:'data-mp-item="'+esc(item.itemKey)+'"'})+
+        '<small class="mp-save-status" role="status" aria-live="polite">Guardado automático</small>'+
         '</div></div>';
     }).join('')+
     '<p>'+button('+ Agregar extra','page',{attrs:'data-mp-page="extras"'})+'</p>');
 }
 
-async function saveSelectedRow(row,{advance=false}={}){
-  if(!row)return;
-  const key=row.dataset.mpItem;
+// Autosave: las ediciones se escriben primero en IndexedDB y luego se
+// sincronizan con PostgreSQL. Debounce solo en texto/números, nunca en select.
+const selectedDrafts=new Map();
+const selectedCommitted=new Map();
+const SELECTED_DELAY_MS=420;
+
+function selectedRowChange(row){
+  const key=row?.dataset.mpItem;
   const item=selectedItems().find(x=>x.itemKey===key);
-  if(!item)return;
-  const qty=row.querySelector('.mp-edit-quantity')?.value??'';
+  if(!item)return null;
+  const quantity=row.querySelector('.mp-edit-quantity')?.value??'';
   const choice=row.querySelector('.mp-edit-decision')?.value||item.decision;
   const unit=selectedMonitorUnit({
     selected:row.querySelector('.mp-edit-unit-select')?.value,
     custom:row.querySelector('.mp-edit-unit-other')?.value,
     current:item.unit
   });
-  const rowIndex=[...shell.querySelectorAll('[data-mp-edit-row]')].indexOf(row);
-  await localChange({
-    kind:item.kind,itemId:item.kind==='EXTRA'?item.itemKey.slice(6):item.productId,
-    description:item.kind==='EXTRA'?item.name:undefined,decision:choice,
-    quantity:qty,unit,notes:item.notes
-  });
-  if(advance && state.page==='selected'){
-    const next=shell.querySelectorAll('[data-mp-edit-row]')[rowIndex+1];
-    next?.querySelector('.mp-edit-quantity')?.focus();
+  return {
+    kind:item.kind,
+    itemId:item.kind==='EXTRA'?item.itemKey.slice(6):item.productId,
+    description:item.kind==='EXTRA'?item.name:undefined,
+    decision:choice,quantity,unit,notes:item.notes
+  };
+}
+
+function showSelectedStatus(row,value,type=''){
+  const label=row?.querySelector('.mp-save-status');
+  if(label){label.textContent=value;label.dataset.status=type;}
+}
+function selectedRecord(row){
+  const key=row?.dataset.mpItem;
+  if(!key)return null;
+  let rec=selectedDrafts.get(key);
+  if(!rec){
+    rec={key,row,revision:0,doneRevision:0,change:null,timer:null,task:null};
+    selectedDrafts.set(key,rec);
+  }
+  rec.row=row;
+  return rec;
+}
+function scheduleSelectedSave(row,delay=SELECTED_DELAY_MS){
+  const rec=selectedRecord(row);
+  if(!rec)return;
+  if(rec.timer)clearTimeout(rec.timer);
+  try{
+    const change=selectedRowChange(row);
+    if(!change)return;
+    rec.change=change;
+    rec.revision++;
+    showSelectedStatus(row,delay?'● Guardando…':'● Guardando…','saving');
+    rec.timer=setTimeout(()=>{
+      rec.timer=null;
+      flushSelectedRecord(rec).catch(error=>{
+        showSelectedStatus(rec.row,'⚠ '+String(error.message||error),'error');
+      });
+    },delay);
+  }catch(error){
+    // "OTRA…" sin escribir aún su nombre no borra la unidad anterior.
+    showSelectedStatus(row,'⚠ '+String(error.message||error),'error');
+  }
+}
+async function flushSelectedRecord(rec){
+  if(!rec)return;
+  if(rec.timer){clearTimeout(rec.timer);rec.timer=null;}
+  if(rec.task)return rec.task;
+  rec.task=(async()=>{
+    while(rec.doneRevision<rec.revision){
+      const revision=rec.revision, change=rec.change;
+      const fingerprint=JSON.stringify(change);
+      if(fingerprint!==selectedCommitted.get(rec.key)){
+        if(!state.options)throw new Error('Sesión Monitor no disponible');
+        // Mantener el orden de cambios del mismo producto incluso al tocar
+        // cantidad, unidad y tipo en rápida sucesión.
+        ++latestLocalUiEpoch;
+        await queueMonitorReviewChange(state.options,change);
+        state.local=await readMonitorReview(state.options);
+        selectedCommitted.set(rec.key,fingerprint);
+      }
+      rec.doneRevision=revision;
+      showSelectedStatus(rec.row,'✓ Guardado local','saved');
+      // La red es posterior, sin bloquear la captura.
+      pushAndRefresh().catch(error=>{
+        showSelectedStatus(rec.row,'✓ Local · pendiente de sincronizar','saved');
+        console.warn('Monitor sync pendiente',error);
+      });
+    }
+  })();
+  try{return await rec.task;}
+  finally{rec.task=null;}
+}
+async function flushAllSelected(){
+  for(const rec of selectedDrafts.values()){
+    if(rec.timer||rec.doneRevision<rec.revision)await flushSelectedRecord(rec);
+  }
+}
+function clearSelectedRecords(){
+  for(const rec of selectedDrafts.values())if(rec.timer)clearTimeout(rec.timer);
+  selectedDrafts.clear();
+  selectedCommitted.clear();
+}
+function handleSelectedInput(event){
+  if(!event.target.matches('.mp-edit-quantity,.mp-edit-unit-other'))return;
+  const row=event.target.closest('[data-mp-edit-row]');
+  if(row)scheduleSelectedSave(row);
+}
+function handleSelectedBlur(event){
+  if(!event.target.matches('.mp-edit-quantity,.mp-edit-unit-other'))return;
+  const row=event.target.closest('[data-mp-edit-row]');
+  if(row){
+    const rec=selectedRecord(row);
+    if(rec?.timer)flushSelectedRecord(rec).catch(error=>
+      showSelectedStatus(row,'⚠ '+String(error.message||error),'error'));
   }
 }
 async function handleSelectedKeydown(event){
@@ -379,7 +482,12 @@ async function handleSelectedKeydown(event){
   const row=event.target.closest('[data-mp-edit-row]');
   if(!row)return;
   event.preventDefault();
-  await saveSelectedRow(row,{advance:true});
+  // Enter no es necesario para guardar, solo sirve como acelerador de avance.
+  scheduleSelectedSave(row,0);
+  const rec=selectedRecord(row);
+  await flushSelectedRecord(rec);
+  const rows=[...shell.querySelectorAll('[data-mp-edit-row]')];
+  rows[rows.indexOf(row)+1]?.querySelector('.mp-edit-quantity')?.focus();
 }
 function renderExtras(){
   return panel('Compra o pedido extra',
@@ -475,9 +583,21 @@ async function handleClick(event){
   if(!node)return;
   event.preventDefault();
   const action=node.dataset.mpAction;
-  if(action==='close')return closePilot();
-  if(action==='sync'){await pushAndRefresh();return;}
+  if(action==='close'){
+    try{await flushAllSelected();}catch(error){
+      showSelectedStatus(shell.querySelector('.mp-selected-row'),'⚠ No se pudo guardar: '+error.message,'error');return;
+    }
+    clearSelectedRecords();return closePilot();
+  }
+  if(action==='sync'){
+    try{await flushAllSelected();}catch(error){state.error=String(error.message||error);return;}
+    await pushAndRefresh();return;
+  }
   if(action==='page'){
+    try{await flushAllSelected();}catch(error){
+      showSelectedStatus(shell.querySelector('.mp-selected-row'),'⚠ No se pudo guardar: '+error.message,'error');return;
+    }
+    clearSelectedRecords();
     state.page=node.dataset.mpPage;
     state.pendingReviewMode=false;
     state.message='';paint();return;
@@ -530,10 +650,6 @@ async function handleClick(event){
     else moveToNextUndecided();
     await persistPilotCursor();paint();return;
   }
-  if(action==='save-selection'){
-    await saveSelectedRow(node.closest('[data-mp-edit-row]'));
-    return;
-  }
   if(action==='print'){window.print();}
 }
 async function handleChange(event){
@@ -542,10 +658,19 @@ async function handleChange(event){
     const custom=unitPicker.closest('label')?.querySelector('.mp-edit-unit-other');
     if(custom){
       custom.hidden=unitPicker.value!=='__OTHER__';
-      if(!custom.hidden)custom.focus();
+      if(!custom.hidden){
+        showSelectedStatus(unitPicker.closest('[data-mp-edit-row]'),'Escribe tu unidad…','editing');
+        custom.focus();
+        return;
+      }
     }
+    scheduleSelectedSave(unitPicker.closest('[data-mp-edit-row]'),0);
     return;
   }
+  const decisionPicker=event.target.closest('.mp-edit-decision');
+  if(decisionPicker){scheduleSelectedSave(decisionPicker.closest('[data-mp-edit-row]'),0);return;}
+  const qtyPicker=event.target.closest('.mp-edit-quantity');
+  if(qtyPicker){scheduleSelectedSave(qtyPicker.closest('[data-mp-edit-row]'),0);return;}
   const picker=event.target.closest('[data-mp-category-picker]');
   if(!picker)return;
   const chosen=groups().find(group=>group.id===picker.value);
