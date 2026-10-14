@@ -128,6 +128,10 @@ try{
       id:'prod-yuca',name:'Yuca de prueba',categoryId:'hortalizas',sku:'YUCA',
       unitCode:'KG',active:true
     });
+    await storage.put(storage.STORES.PRODUCTS,{
+      id:'prod-pan',name:'Pan de prueba',categoryId:'viveres',sku:'PAN',
+      unitCode:'UND',active:true
+    });
     await storage.put(storage.STORES.CATEGORIES,{
       id:'viveres',name:'Viveres',active:true
     });
@@ -273,21 +277,29 @@ try{
     await mod.queueMonitorReviewChange(opts,{
       kind:'PRODUCT',itemId:'prod-yuca',decision:'PENDING',quantity:null
     });
+    await mod.queueMonitorReviewChange(opts,{
+      kind:'PRODUCT',itemId:'prod-pan',decision:'PENDING',quantity:null
+    });
   });
   await page.locator('#vigiaMonitorPilot [data-mp-action="sync"]').click();
   await page.locator('#vigiaMonitorPilot [data-mp-page="pending"]').click();
-  assert.equal(await page.locator('#vigiaMonitorPilot .mp-row').count(),2);
+  assert.equal(await page.locator('#vigiaMonitorPilot .mp-row').count(),3);
   await page.locator('#vigiaMonitorPilot .mp-row').first().getByRole('button',{name:'Revisar ahora'}).click();
   let active=await page.locator('#vigiaMonitorPilot .mp-card h2[style]').first().innerText();
   assert.match(active,/Café de prueba/);
   await page.locator('#vigiaMonitorPilot #mpQuantity').fill('5');
   await page.locator('#vigiaMonitorPilot [data-mp-choice="BUY"]').click();
   await page.waitForFunction(()=>
-    document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent.includes('Yuca de prueba')
+    document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent.includes('Pan de prueba')
   ,null,{timeout:12000});
   active=await page.locator('#vigiaMonitorPilot .mp-card h2[style]').first().innerText();
-  assert.match(active,/Yuca de prueba/,
-    'BUY should advance to pending product in another category, not Inicio');
+  assert.match(active,/Pan de prueba/,
+    'BUY should advance to next pending product, not Inicio');
+  await page.locator('#vigiaMonitorPilot #mpQuantity').fill('3');
+  await page.locator('#vigiaMonitorPilot [data-mp-choice="ORDER"]').click();
+  await page.waitForFunction(()=>
+    document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent.includes('Yuca de prueba')
+  ,null,{timeout:12000});
   await page.locator('#vigiaMonitorPilot #mpQuantity').fill('');
   await page.locator('#vigiaMonitorPilot [data-mp-choice="NOT_NEEDED"]').click();
   await page.waitForFunction(()=>
@@ -299,10 +311,11 @@ try{
     const mod=await import('/src/replenishment/monitorReviewOffline.js');
     const s=await mod.readMonitorReview({workspaceId:'workspace-browser-lab',
       userId:'worker-browser-lab',weekStart:'2026-10-12'});
-    return s.items.filter(x=>['product:prod-cafe','product:prod-yuca'].includes(x.itemKey))
+    return s.items.filter(x=>['product:prod-cafe','product:prod-pan','product:prod-yuca'].includes(x.itemKey))
       .map(x=>({id:x.itemKey,decision:x.decision,qty:x.quantity}));
   });
   assert.ok(storedPending.some(x=>x.id==='product:prod-cafe'&&x.decision==='BUY'&&x.qty===5));
+  assert.ok(storedPending.some(x=>x.id==='product:prod-pan'&&x.decision==='ORDER'&&x.qty===3));
   assert.ok(storedPending.some(x=>x.id==='product:prod-yuca'&&x.decision==='NOT_NEEDED'));
   console.log('MONITOR_PENDING_AUTOADVANCE_PASS',JSON.stringify(storedPending));
 
