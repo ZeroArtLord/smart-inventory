@@ -39,6 +39,24 @@
 #vigiaMonitorPilot .mp-inline{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
 #vigiaMonitorPilot .mp-row{display:flex;align-items:center;justify-content:space-between;gap:14px;border-bottom:1px solid #e2e9ee;padding:12px 0}
 #vigiaMonitorPilot .mp-row:last-child{border:0}
+/* Seleccionados: misma captura de cantidad / unidad / Comprar-Pedir que V6,
+   pero sin sobreescribir filas ni recargar la página para seleccionar unidad. */
+#vigiaMonitorPilot .mp-selected-row{align-items:center;gap:18px}
+#vigiaMonitorPilot .mp-selected-description{flex:1 1 250px;min-width:150px;overflow-wrap:anywhere}
+#vigiaMonitorPilot .mp-selected-edit{display:grid;grid-template-columns:108px 147px 139px auto;gap:9px;align-items:end;flex:0 1 auto}
+#vigiaMonitorPilot .mp-selected-edit>label{min-width:0}
+#vigiaMonitorPilot .mp-selected-edit select,#vigiaMonitorPilot .mp-selected-edit input{height:46px;margin-top:5px;padding:9px}
+#vigiaMonitorPilot .mp-selected-edit>button{min-height:46px;white-space:nowrap}
+#vigiaMonitorPilot .mp-edit-unit-other:not([hidden]){display:block;margin-top:6px}
+#vigiaMonitorPilot .mp-edit-unit-other[hidden]{display:none!important}
+@media(max-width:920px){
+  #vigiaMonitorPilot .mp-selected-row{align-items:stretch;flex-direction:column}
+  #vigiaMonitorPilot .mp-selected-edit{width:100%;grid-template-columns:minmax(95px,1fr) minmax(105px,1.1fr) minmax(120px,1.1fr) auto}
+}
+@media(max-width:540px){
+  #vigiaMonitorPilot .mp-selected-edit{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #vigiaMonitorPilot .mp-selected-edit>button{grid-column:1/-1;width:100%}
+}
 #vigiaMonitorPilot .mp-progress{height:8px;background:#e0e7ed;border-radius:99px;overflow:hidden;margin-top:12px}
 #vigiaMonitorPilot .mp-progress div{height:100%;background:#16a085}
 #vigiaMonitorPilot .mp-chip{display:inline-block;border-radius:99px;background:#e6eef4;color:#26495d;padding:4px 9px;font-size:12px;font-weight:750}
