@@ -102,21 +102,34 @@ async function persistPilotCursor(){
     page:state.page
   });
 }
+// Impide que una sincronización anterior repinte un valor guardado más tarde.
+// El servidor/IndexedDB siguen siendo fuente de verdad; esto solo protege UI.
+let latestLocalUiEpoch=0;
 function closePilot(){
+  latestLocalUiEpoch++;
   state.visible=false;shell.hidden=true;document.body.style.overflow='';updateLauncher();
 }
 async function pushAndRefresh(){
   if(!state.options)return;
-  state.local=await syncMonitorReview(state.options);
+  const epoch=++latestLocalUiEpoch;
+  await syncMonitorReview(state.options);
+  const latest=await readMonitorReview(state.options);
+  if(epoch!==latestLocalUiEpoch || !state.visible)return;
+  state.local=latest;
   if(state.local.status==='SYNCED' && state.message.startsWith('Guardado en este dispositivo'))state.message='';
-  // Un refresco de fondo nunca debe borrar texto que alguien está escribiendo.
+  // No interrumpir cantidad/unidad todavía bajo edición.
   const focus=document.activeElement;
   if(shell.contains(focus)&&focus?.matches?.('input,textarea,select'))return;
   paint();
 }
 async function localChange(change){
   if(!state.options)throw new Error('Se requiere sesión activa');
-  state.local=await queueMonitorReviewChange(state.options,change);
+  const epoch=++latestLocalUiEpoch;
+  await queueMonitorReviewChange(state.options,change);
+  const latest=await readMonitorReview(state.options);
+  // Una edición posterior ya empezó: jamás presentar la foto anterior.
+  if(epoch!==latestLocalUiEpoch || !state.visible)return;
+  state.local=latest;
   state.message='Guardado en este dispositivo. Se enviará cuando haya conexión.';
   state.error='';
   paint();
