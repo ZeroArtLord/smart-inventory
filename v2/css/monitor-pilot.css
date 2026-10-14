@@ -43,7 +43,10 @@
    pero sin sobreescribir filas ni recargar la página para seleccionar unidad. */
 #vigiaMonitorPilot .mp-selected-row{align-items:center;gap:18px}
 #vigiaMonitorPilot .mp-selected-description{flex:1 1 250px;min-width:150px;overflow-wrap:anywhere}
-#vigiaMonitorPilot .mp-selected-edit{display:grid;grid-template-columns:108px 147px 139px auto;gap:9px;align-items:end;flex:0 1 auto}
+#vigiaMonitorPilot .mp-selected-edit{display:grid;grid-template-columns:85px 112px 100px minmax(155px,1fr) 125px;gap:9px;align-items:end;flex:1 1 720px;min-width:0}
+#vigiaMonitorPilot .mp-edit-note-label{min-width:0}
+#vigiaMonitorPilot .mp-edit-note{width:100%;min-width:0}
+#vigiaMonitorPilot .mp-save-status{white-space:normal}
 #vigiaMonitorPilot .mp-selected-edit>label{min-width:0}
 #vigiaMonitorPilot .mp-selected-edit select,#vigiaMonitorPilot .mp-selected-edit input{height:46px;margin-top:5px;padding:9px}
 #vigiaMonitorPilot .mp-save-status{display:flex;align-items:center;justify-content:flex-end;min-width:118px;min-height:44px;font-size:12px;font-weight:700;color:#55748b;text-align:right}
@@ -54,10 +57,12 @@
 #vigiaMonitorPilot .mp-edit-unit-other[hidden]{display:none!important}
 @media(max-width:920px){
   #vigiaMonitorPilot .mp-selected-row{align-items:stretch;flex-direction:column}
-  #vigiaMonitorPilot .mp-selected-edit{width:100%;grid-template-columns:minmax(95px,1fr) minmax(105px,1.1fr) minmax(120px,1.1fr) auto}
+  #vigiaMonitorPilot .mp-selected-edit{width:100%;grid-template-columns:minmax(90px,1fr) minmax(95px,1fr) minmax(105px,1fr) minmax(155px,1.6fr)}
+  #vigiaMonitorPilot .mp-save-status{grid-column:1/-1;justify-content:flex-start;min-height:22px}
 }
 @media(max-width:540px){
   #vigiaMonitorPilot .mp-selected-edit{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #vigiaMonitorPilot .mp-edit-note-label{grid-column:1/-1}
   #vigiaMonitorPilot .mp-save-status{grid-column:1/-1;justify-content:flex-start;min-height:24px}
 }
 #vigiaMonitorPilot .mp-progress{height:8px;background:#e0e7ed;border-radius:99px;overflow:hidden;margin-top:12px}
