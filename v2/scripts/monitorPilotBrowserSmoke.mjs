@@ -261,9 +261,17 @@ try{
     assert.ok((await editRow.locator('.mp-edit-unit-select option').allTextContents()).includes(unit),
       'unit unavailable in selected: '+unit);
   }
+  assert.equal(await editRow.locator('[data-mp-action="save-selection"]').count(),0,
+    'No debe existir Guardar por producto');
   await editRow.locator('.mp-edit-quantity').fill('2');
   await editRow.locator('.mp-edit-unit-select').selectOption('CAJA');
-  await editRow.locator('[data-mp-action="save-selection"]').click();
+  // No click/Enter: el autosave debe ejecutarse por cambios de campo.
+  await page.waitForFunction(async()=>{
+    const mod=await import('/src/replenishment/monitorReviewOffline.js');
+    const record=await mod.readMonitorReview({workspaceId:'workspace-browser-lab',
+      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return record.items.some(x=>x.kind==='PRODUCT'&&x.unit==='CAJA'&&x.quantity===2);
+  },null,{timeout:12000});
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
     const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
@@ -281,7 +289,7 @@ try{
   },null,{timeout:12000});
   await editRow.locator('.mp-edit-unit-select').selectOption('CAJA');
   await editRow.locator('.mp-edit-quantity').fill('2');
-  await editRow.locator('.mp-edit-quantity').press('Enter');
+  await editRow.locator('.mp-edit-quantity').press('Enter'); // Solo avanza, no hace falta para guardar.
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
     const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
@@ -299,8 +307,41 @@ try{
   assert.equal(await finalRow.locator('.mp-edit-unit-select').inputValue(),'CAJA',
     'a stale sync response restored an older unit into the DOM');
   assert.equal(await finalRow.locator('.mp-edit-quantity').inputValue(),'2');
+  // Cambiar Comprar/Pedir debe guardarse solo, aun mientras editamos otra fila.
+  await finalRow.locator('.mp-edit-decision').selectOption('ORDER');
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
+      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='ORDER'&&x.unit==='CAJA'&&x.quantity===2);
+  },null,{timeout:12000});
+  await finalRow.locator('.mp-edit-decision').selectOption('BUY');
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
+      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
+  },null,{timeout:12000});
+  // Edición rápida y navegación: al pulsar Extras, el último número aún en
+  // debounce debe persistir en IndexedDB antes de cambiar de pantalla.
+  await finalRow.locator('.mp-edit-quantity').fill('4');
+  await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
+  const beforeNavSaved=await page.evaluate(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return record.items.find(x=>x.kind==='PRODUCT'&&x.decision==='BUY');
+  });
+  assert.equal(beforeNavSaved?.quantity,4,'Autosave must flush when leaving selected');
+  await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="selected"]').click();
+  const returnRow=page.locator('#vigiaMonitorPilot .mp-selected-row').first();
+  await returnRow.locator('.mp-edit-quantity').fill('2');
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
+  },null,{timeout:12000});
   await page.screenshot({path:path.join(screenshots,'seleccionados-unidades-mobile.png')});
-  console.log('MONITOR_SELECTED_UNITS_PASS: CAJA + GAVETA + Enter + IndexedDB');
+  console.log('MONITOR_SELECTED_AUTOSAVE_PASS: quantity + unit + type + navigation flush + local durability');
 
   await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Cinta métrica');
