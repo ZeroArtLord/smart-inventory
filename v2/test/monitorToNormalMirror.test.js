@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectMonitorToNormal } from '../src/replenishment/monitorToNormalMirror.js';
 import { renderMonitorMirrorForNormal, printableMonitorMirror, currentMonitorWeek } from '../src/ui/monitorNormalMirrorUi.js';
-import { renderMonitorTicketSet } from '../src/ui/monitorTicketTemplate.js';
+import { buildMonitorNativeLists } from '../src/replenishment/monitorNativeTicketAdapter.js';
+import { renderProcurementTickets } from '../src/ui/procurementWorkspaceV6Print.js';
+import { buildThermalPrintPayload } from '../src/printing/thermalPrinterClient.js';
 import { readFileSync } from 'node:fs';
 
 const PRODUCTS = [
@@ -70,7 +72,7 @@ test('Never hide unknown product IDs or forge a conversion', () => {
 });
 
 test('HTML escaping protects notes in normal list', () => {
-  const html = renderMonitorMirrorForNormal(project());
+  const html = printableMonitorMirror(project(),{businessName:'El Establo'});
   assert.match(html, /&lt;b&gt;&amp; peligro/);
   assert.doesNotMatch(html, /<b>& peligro/);
   assert.match(html, /________/);
@@ -90,26 +92,56 @@ test('Weekly dates follow local Monday, even at year change', () => {
 });
 
 
-test('Imprimir VIGÍA normal uses IDENTICAL HTML template as Monitor pilot', () => {
-  const snapshot = project();
-  const pilotMarkup = renderMonitorTicketSet({
-    weekStart: snapshot.weekStart,
-    items: [
-      {name:'Agua mineral',category:'BEBIDAS',decision:'BUY',quantity:null,unit:'CJ',notes:'Comprar después'},
-      {name:'Malta Polar',category:'BEBIDAS',decision:'ORDER',quantity:2,unit:'CJ',notes:'<b>& peligro'},
-      {name:'Guantes',category:'EXTRAS',decision:'BUY',quantity:4,unit:'UND',notes:'Talla M'}
-    ]
+test('Monitor and VIGÍA original render EXACT same print engine, four native V6 copies', () => {
+  const snapshot=project();
+  const nativeLists=buildMonitorNativeLists(snapshot,{ownerLabel:'Almacenista'});
+  assert.equal(nativeLists.length,2);
+  assert.equal(nativeLists[0].code,'COM-MON-261012');
+  assert.equal(nativeLists[1].code,'PED-MON-261012');
+  const reference=nativeLists.map(list=>renderProcurementTickets({
+    list,businessName:'CLUB SOCIAL DEPORTIVO Y CAMPESTRE EL ESTABLO C.A'
+  })).join('');
+  const normalMarkup=printableMonitorMirror(snapshot,{
+    ownerLabel:'Almacenista',
+    businessName:'CLUB SOCIAL DEPORTIVO Y CAMPESTRE EL ESTABLO C.A'
   });
-  const normalMarkup = printableMonitorMirror(snapshot);
-  assert.equal(normalMarkup, pilotMarkup);
-  assert.equal((normalMarkup.match(/VIGÍA MONITOR/g)||[]).length,4);
-  assert.equal((normalMarkup.match(/LISTA DE COMPRAS/g)||[]).length,2);
-  assert.equal((normalMarkup.match(/LISTA DE PEDIDOS/g)||[]).length,2);
-  assert.equal((normalMarkup.match(/Firma: ______________/g)||[]).length,4);
+  assert.equal(normalMarkup,reference);
+  assert.equal((normalMarkup.match(/VIGÍA · Inventory Intelligence/g)||[]).length,4);
+  assert.equal((normalMarkup.match(/v6p-ticket is-buy/g)||[]).length,2);
+  assert.equal((normalMarkup.match(/v6p-ticket is-order/g)||[]).length,2);
+  assert.equal((normalMarkup.match(/v6p-ticket-row/g)||[]).length,6);
+  assert.equal((normalMarkup.match(/Firma: __________________/g)||[]).length,4);
   assert.match(normalMarkup,/________ CJ/);
-  assert.match(normalMarkup,/Nota: Comprar después/);
+  assert.match(normalMarkup,/\(Comprar después\)/);
   assert.match(normalMarkup,/&lt;b&gt;&amp; peligro/);
   assert.match(normalMarkup,/EXTRAS/);
+  assert.match(normalMarkup,/v6p-ticket-legend/);
+  assert.match(normalMarkup,/v6p-ticket-notes/);
+  const cards=renderMonitorMirrorForNormal(snapshot);
+  assert.match(cards,/v6p-list-card/);
+  assert.match(cards,/monitor-open-print/);
+  assert.doesNotMatch(cards,/mp-ticket/);
+});
+
+test('Native ESC POS payload respects blank quantities and does not treat null as zero',()=>{
+  const snapshot=project();
+  const nativeLists=buildMonitorNativeLists(snapshot);
+  const buy=buildThermalPrintPayload(nativeLists[0]);
+  assert.equal(buy.kind,'PURCHASE');
+  assert.equal(buy.items.length,2);
+  const water=buy.items.find(x=>x.name==='Agua mineral');
+  assert.equal(water.quantityText,'________ CJ');
+  assert.equal(water.category,'BEBIDAS');
+  assert.equal(water.note,'Comprar después');
+  const gloves=buy.items.find(x=>x.name==='Guantes');
+  assert.equal(gloves.extra,true);
+  assert.equal(gloves.quantityText,'4 UND');
+  const normalList={
+    id:'original',kind:'PURCHASE',items:[
+      {productName:'Otro',requestedQuantity:3,sourceSuggestion:{categoryNameAtDecision:'VIVERES'}}
+    ]
+  };
+  assert.equal(buildThermalPrintPayload(normalList).items[0].quantityText,'3 UND');
 });
 
 test('Printing refuses conflicts, queued changes even when NONE of them selected', () => {
@@ -137,11 +169,12 @@ test('Ticket printing in BOTH views is safely isolated from old V6 global print 
   const pilot=readFileSync(new URL('../src/ui/monitorReviewPilotUi.js',import.meta.url),'utf8');
   const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
   assert.match(normal,/button\.dataset\.v6pAction/);
-  assert.match(normal,/print-monitor-mirror/);
+  assert.match(normal,/monitorNativePrintFlow/);
   assert.match(normal,/syncBeforeFetch:true/);
   assert.match(css,/body\.vigia-monitor-normal-print-active #v6MonitorPrintPage \*/);
   assert.match(css,/visibility:visible!important/);
   assert.match(css,/body\.vigia-monitor-print-active>\*:not\(#vigiaMonitorPilot\)/);
-  assert.match(pilot,/renderMonitorTicketSet/);
-  assert.match(sw,/monitorTicketTemplate\.js/);
+  assert.match(pilot,/renderProcurementTickets/);
+  assert.match(pilot,/advancePendingReview/);
+  assert.match(sw,/monitorNativeTicketAdapter\.js/);
 });
