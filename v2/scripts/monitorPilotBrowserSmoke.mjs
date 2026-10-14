@@ -335,13 +335,24 @@ try{
   await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="selected"]').click();
   const returnRow=page.locator('#vigiaMonitorPilot .mp-selected-row').first();
   await returnRow.locator('.mp-edit-quantity').fill('2');
+  // Observación EXACTAMENTE como en VIGÍA: 180 caracteres, autoguardada
+  // junto a cantidad, unidad y método. Ejemplo del usuario: REBANADAS.
+  const noteField=returnRow.locator('.mp-edit-note');
+  assert.equal(await noteField.getAttribute('maxlength'),'180');
+  await noteField.fill('rebanadas');
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
+      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return state.items.some(x=>x.kind==='PRODUCT'&&x.notes==='rebanadas'&&x.quantity===2&&x.unit==='CAJA');
+  },null,{timeout:12000});
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
     const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
     return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
   await page.screenshot({path:path.join(screenshots,'seleccionados-unidades-mobile.png')});
-  console.log('MONITOR_SELECTED_AUTOSAVE_PASS: quantity + unit + type + navigation flush + local durability');
+  console.log('MONITOR_SELECTED_NOTES_PASS: quantity/unit/type/note autosaved; exact V6 ticket observation');
 
   await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Cinta métrica');
@@ -352,6 +363,8 @@ try{
   console.log('MONITOR_SELECTED_NATIVE_PRINT_TEXT',JSON.stringify(nativeTicketText.slice(0,900)));
   assert.match(nativeTicketText,/2\s+CJ/,
     'native ticket must use original CAJA->CJ abbreviation');
+  assert.match(nativeTicketText,/\(rebanadas\)/,
+    'Original VIGIA ticket must print the per-product observation in parentheses');
   await page.getByText('Cinta métrica',{exact:true}).first().waitFor();
   await page.screenshot({path:path.join(screenshots,'comprar-pedir-mobile.png')});
   const weeklyLayout=await page.evaluate(()=>({
