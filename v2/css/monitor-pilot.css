@@ -46,7 +46,10 @@
 #vigiaMonitorPilot .mp-selected-edit{display:grid;grid-template-columns:108px 147px 139px auto;gap:9px;align-items:end;flex:0 1 auto}
 #vigiaMonitorPilot .mp-selected-edit>label{min-width:0}
 #vigiaMonitorPilot .mp-selected-edit select,#vigiaMonitorPilot .mp-selected-edit input{height:46px;margin-top:5px;padding:9px}
-#vigiaMonitorPilot .mp-selected-edit>button{min-height:46px;white-space:nowrap}
+#vigiaMonitorPilot .mp-save-status{display:flex;align-items:center;justify-content:flex-end;min-width:118px;min-height:44px;font-size:12px;font-weight:700;color:#55748b;text-align:right}
+#vigiaMonitorPilot .mp-save-status[data-status="saving"]{color:#9a670b}
+#vigiaMonitorPilot .mp-save-status[data-status="saved"]{color:#17785b}
+#vigiaMonitorPilot .mp-save-status[data-status="error"]{color:#aa2525}
 #vigiaMonitorPilot .mp-edit-unit-other:not([hidden]){display:block;margin-top:6px}
 #vigiaMonitorPilot .mp-edit-unit-other[hidden]{display:none!important}
 @media(max-width:920px){
@@ -55,7 +58,7 @@
 }
 @media(max-width:540px){
   #vigiaMonitorPilot .mp-selected-edit{grid-template-columns:repeat(2,minmax(0,1fr))}
-  #vigiaMonitorPilot .mp-selected-edit>button{grid-column:1/-1;width:100%}
+  #vigiaMonitorPilot .mp-save-status{grid-column:1/-1;justify-content:flex-start;min-height:24px}
 }
 #vigiaMonitorPilot .mp-progress{height:8px;background:#e0e7ed;border-radius:99px;overflow:hidden;margin-top:12px}
 #vigiaMonitorPilot .mp-progress div{height:100%;background:#16a085}
