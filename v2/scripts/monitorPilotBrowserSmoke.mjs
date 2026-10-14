@@ -287,6 +287,18 @@ try{
     const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
     return state.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
+  // La sincronización de una edición anterior no puede restaurar GAVETA tras
+  // confirmar CAJA: se espera el ACK y se comprueba también el DOM, no solo IDB.
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    return state.pendingCount===0 && state.items.some(x=>
+      x.kind==='PRODUCT' && x.unit==='CAJA' && x.quantity===2);
+  },null,{timeout:15000});
+  const finalRow=page.locator('#vigiaMonitorPilot .mp-selected-row').first();
+  assert.equal(await finalRow.locator('.mp-edit-unit-select').inputValue(),'CAJA',
+    'a stale sync response restored an older unit into the DOM');
+  assert.equal(await finalRow.locator('.mp-edit-quantity').inputValue(),'2');
   await page.screenshot({path:path.join(screenshots,'seleccionados-unidades-mobile.png')});
   console.log('MONITOR_SELECTED_UNITS_PASS: CAJA + GAVETA + Enter + IndexedDB');
 
