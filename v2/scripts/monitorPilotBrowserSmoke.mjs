@@ -295,8 +295,8 @@ try{
   await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
   await page.locator('#vigiaMonitorPilot [data-mp-page="lists"]').click();
   await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().waitFor();
-  assert.match(await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().innerText(),/2 CAJA/,
-    'native ticket must preserve chosen unit and quantity');
+  assert.match(await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().innerText(),/2 CJ/,
+    'native ticket must use original CAJA->CJ abbreviation');
   await page.getByText('Cinta métrica',{exact:true}).first().waitFor();
   await page.screenshot({path:path.join(screenshots,'comprar-pedir-mobile.png')});
   const weeklyLayout=await page.evaluate(()=>({
