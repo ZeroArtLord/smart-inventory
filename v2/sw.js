@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-67-v6-native-monitor-1';
+const CACHE_NAME = 'smart-inventory-v2-shell-68-selected-units-1';
 // procurement-weekly-edit-hotfix-2026-10-07
 // procurement-cancelled-line-visibility-hotfix-2026-10-07
 
@@ -53,6 +53,7 @@ const APP_SHELL = [
   './src/ui/procurementWorkspaceV6Ui.js',
   './src/ui/monitorNormalMirrorUi.js',
   './src/replenishment/monitorNativeTicketAdapter.js',
+  './src/replenishment/monitorUnitOptions.js',
   './src/ui/monitorTicketTemplate.js',
   './src/replenishment/monitorToNormalMirror.js',
   './src/ui/procurementWorkspaceV6Render.js',
