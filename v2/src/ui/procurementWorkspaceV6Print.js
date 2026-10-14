@@ -32,7 +32,7 @@ export function renderPrintModal({ list, businessName, monitor = false }) {
           </div>
           <button
             class="v6p-primary"
-            data-v6p-action="${monitor ? 'monitor-direct-print' : 'direct-print'}"
+            ${monitor ? 'data-v6p-action="monitor-direct-print"' : 'data-v6p-action="direct-print"'}
             data-list-id="${esc(list.id)}"
             ${monitor ? `data-monitor-kind="${list.kind}"` : ''}
             type="button"
