@@ -339,7 +339,7 @@ function renderSelected(){
     button('+ Agregar un extra','page',{attrs:'data-mp-page="extras"'}));
   return panel('Seleccionados ('+items.length+')',
     '<p class="mp-muted">Cantidades opcionales: '+items.filter(x=>x.quantity==null).length+
-    ' por completar. Todo se guarda automáticamente al cambiar cantidad, unidad o tipo. Enter avanza a la siguiente fila.</p>'+
+    ' por completar. Cantidad, unidad, tipo y observación se guardan automáticamente. Enter avanza a la siguiente fila.</p>'+
     '<div class="mp-muted" style="margin-bottom:8px">La unidad elegida se imprimirá tal cual (ej. 2 CAJA). Monitor no convierte cantidades ni altera existencias.</div>'+
     items.map((item,i)=>{
       const product=item.kind==='PRODUCT'?state.products.find(p=>p.id===item.productId):null;
@@ -349,7 +349,8 @@ function renderSelected(){
       ).join('');
       return '<div class="mp-row mp-selected-row" data-mp-edit-row="'+i+'" data-mp-item="'+esc(item.itemKey)+'">'+
         '<div class="mp-selected-description"><strong>'+esc(item.name)+'</strong>'+
-        '<div class="mp-muted">'+esc(item.category)+' · '+esc(decisionLabel(item.decision))+'</div></div>'+
+        '<div class="mp-muted">'+esc(item.category)+' · '+esc(decisionLabel(item.decision))+'</div>'+ 
+        (item.notes?'<small class="mp-selected-note">('+esc(item.notes)+')</small>':'')+'</div>'+
         '<div class="mp-selected-edit">'+
         '<label>Cantidad<input class="mp-edit-quantity" inputmode="decimal" type="number" min="0.001" step="any" placeholder="Vacío" value="'+esc(item.quantity??'')+'"></label>'+
         '<label>Unidad<select class="mp-edit-unit-select" aria-label="Unidad de '+esc(item.name)+'">'+options+
@@ -357,6 +358,7 @@ function renderSelected(){
         '<input class="mp-edit-unit-other" type="text" maxlength="40" placeholder="Escribe la unidad" aria-label="Otra unidad" hidden></label>'+
         '<label>Tipo<select class="mp-edit-decision"><option value="BUY" '+(item.decision==='BUY'?'selected':'')+'>Comprar</option>'+
         '<option value="ORDER" '+(item.decision==='ORDER'?'selected':'')+'>Pedir</option></select></label>'+
+        '<label class="mp-edit-note-label">Observación<input class="mp-edit-note" type="text" maxlength="180" autocomplete="off" placeholder="Ej. rebanadas" value="'+esc(item.notes||'')+'" aria-label="Observación de '+esc(item.name)+'"></label>'+
         '<small class="mp-save-status" role="status" aria-live="polite">Guardado automático</small>'+
         '</div></div>';
     }).join('')+
@@ -375,6 +377,8 @@ function selectedRowChange(row){
   if(!item)return null;
   const quantity=row.querySelector('.mp-edit-quantity')?.value??'';
   const choice=row.querySelector('.mp-edit-decision')?.value||item.decision;
+  // Igual que VIGÍA normal: observación por renglón, hasta 180 caracteres.
+  const notes=String(row.querySelector('.mp-edit-note')?.value??item.notes??'').trim().slice(0,180);
   const unit=selectedMonitorUnit({
     selected:row.querySelector('.mp-edit-unit-select')?.value,
     custom:row.querySelector('.mp-edit-unit-other')?.value,
@@ -384,7 +388,7 @@ function selectedRowChange(row){
     kind:item.kind,
     itemId:item.kind==='EXTRA'?item.itemKey.slice(6):item.productId,
     description:item.kind==='EXTRA'?item.name:undefined,
-    decision:choice,quantity,unit,notes:item.notes
+    decision:choice,quantity,unit,notes
   };
 }
 
@@ -472,12 +476,12 @@ function clearSelectedRecords(){
   selectedCommitted.clear();
 }
 function handleSelectedInput(event){
-  if(!event.target.matches('.mp-edit-quantity,.mp-edit-unit-other'))return;
+  if(!event.target.matches('.mp-edit-quantity,.mp-edit-unit-other,.mp-edit-note'))return;
   const row=event.target.closest('[data-mp-edit-row]');
   if(row)scheduleSelectedSave(row);
 }
 function handleSelectedBlur(event){
-  if(!event.target.matches('.mp-edit-quantity,.mp-edit-unit-other'))return;
+  if(!event.target.matches('.mp-edit-quantity,.mp-edit-unit-other,.mp-edit-note'))return;
   const row=event.target.closest('[data-mp-edit-row]');
   if(row){
     const rec=selectedRecord(row);
@@ -486,7 +490,7 @@ function handleSelectedBlur(event){
   }
 }
 async function handleSelectedKeydown(event){
-  if(event.key!=='Enter'||!event.target.matches('.mp-edit-quantity,.mp-edit-unit-other'))return;
+  if(event.key!=='Enter'||!event.target.matches('.mp-edit-quantity,.mp-edit-unit-other,.mp-edit-note'))return;
   const row=event.target.closest('[data-mp-edit-row]');
   if(!row)return;
   event.preventDefault();
