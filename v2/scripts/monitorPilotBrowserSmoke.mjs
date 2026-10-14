@@ -282,12 +282,17 @@ try{
   assert.match(active,/Café de prueba/);
   await page.locator('#vigiaMonitorPilot #mpQuantity').fill('5');
   await page.locator('#vigiaMonitorPilot [data-mp-choice="BUY"]').click();
+  await page.waitForFunction(()=>
+    document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent.includes('Yuca de prueba')
+  ,null,{timeout:12000});
   active=await page.locator('#vigiaMonitorPilot .mp-card h2[style]').first().innerText();
   assert.match(active,/Yuca de prueba/,
     'BUY should advance to pending product in another category, not Inicio');
   await page.locator('#vigiaMonitorPilot #mpQuantity').fill('');
   await page.locator('#vigiaMonitorPilot [data-mp-choice="NOT_NEEDED"]').click();
-  await page.locator('#vigiaMonitorPilot .mp-card h2').first().waitFor();
+  await page.waitForFunction(()=>
+    document.querySelector('#vigiaMonitorPilot .mp-card h2')?.textContent.startsWith('Pendientes')
+  ,null,{timeout:12000});
   assert.match(await page.locator('#vigiaMonitorPilot .mp-card h2').first().innerText(),/Pendientes/);
   assert.match(await page.locator('#vigiaMonitorPilot').innerText(),/No tienes productos pendientes/);
   const storedPending=await page.evaluate(async()=>{
