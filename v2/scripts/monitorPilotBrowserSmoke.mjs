@@ -29,6 +29,15 @@ const url='http://127.0.0.1:'+port+'/test/browser/monitorPilot.html?vigiaMonitor
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
 const context=await browser.newContext({viewport:{width:1280,height:850}});
 const page=await context.newPage();
+// Recalcular en cada carga, también al hacer reload() durante el smoke.
+await page.addInitScript(()=>{
+  const d=new Date();
+  d.setDate(d.getDate()-((d.getDay()+6)%7));
+  window.__vigiaTestWeekStart=[
+    d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),
+    String(d.getDate()).padStart(2,'0')
+  ].join('-');
+});
 page.on('pageerror',error=>errors.push(error.message));
 page.on('console',message=>{
   if(message.type()==='error'&&!message.text().includes('net::ERR_FAILED'))errors.push(message.text());
@@ -106,17 +115,7 @@ await page.route('**/api/v1/monitor/reviews/**',async route=>{
 try{
   await mkdir(screenshots,{recursive:true});
   await page.goto(url,{waitUntil:'networkidle'});
-  // Siempre probar el ciclo semanal ACTUAL del navegador, no una fecha fija
-  // que caduca cada lunes y aparenta perdida de guardado.
-  await page.evaluate(()=>{
-    const d=new Date();
-    const offset=(d.getDay()+6)%7;
-    d.setDate(d.getDate()-offset);
-    window.__vigiaTestWeekStart=[
-      d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),
-      String(d.getDate()).padStart(2,'0')
-    ].join('-');
-  });
+
   await page.evaluate(async()=>{
     const storage=await import('/src/storage/database.js');
     const settings=await import('/src/sync/syncSettings.js');
