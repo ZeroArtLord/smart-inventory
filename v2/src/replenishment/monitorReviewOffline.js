@@ -12,11 +12,13 @@ export const REVIEW_LOCAL_STATUS = Object.freeze({
   CONFLICT: 'CONFLICT'
 });
 
-export function reviewLocalKey({ workspaceId, userId, weekStart }) {
+export function reviewLocalKey({ workspaceId, userId, weekStart, round = 1 }) {
   const a = required(workspaceId,'Almacén');
   const b = required(userId,'Usuario');
   const c = validMonday(weekStart);
-  return [PREFIX,encodeURIComponent(a),encodeURIComponent(b),c].join(':');
+  round=validRound(round);
+  return [PREFIX,encodeURIComponent(a),encodeURIComponent(b),c].join(':')+
+    (round>1?':round'+round:'');
 }
 
 // Lectura sin modificar nada: incorpora operaciones sin sincronizar.
@@ -74,6 +76,7 @@ async function runSync(key,options,request,isOnline) {
         other.change.itemKey===item.change.itemKey));
     if(!next)break;
     const body={
+      round:validRound(options.round),
       ...next.change.payload,
       mutationId:next.mutationId,
       expectedVersion:next.expectedVersion
@@ -121,6 +124,10 @@ async function runSync(key,options,request,isOnline) {
   }
   try {
     const answer=await request(url);
+    if(Number(answer.currentRound||1)!==validRound(options.round)){
+      return { ...(await readMonitorReview(options)),network:'CYCLE_CHANGED',
+        errorCode:'MONITOR_CYCLE_CHANGED',serverRound:Number(answer.currentRound||1) };
+    }
     await update(key,options,current=>{
       const nextRemote={};
       for(const row of answer.items||[]){
@@ -166,7 +173,7 @@ function describe(value) {
   }
   const hasConflicts=queue.some(x=>x.status==='CONFLICT');
   return {
-    weekStart:value.weekStart,workspaceId:value.workspaceId,
+    weekStart:value.weekStart,round:validRound(value.round),workspaceId:value.workspaceId,
     items:Object.values(remote).sort((a,b)=>a.itemKey.localeCompare(b.itemKey)),
     queue,
     pendingCount:queue.filter(x=>x.status==='PENDING').length,
@@ -179,7 +186,7 @@ function describe(value) {
 function blank(key,options) {
   return {
     key,version:1,workspaceId:String(options.workspaceId),userId:String(options.userId),
-    weekStart:validMonday(options.weekStart),remote:{},queue:[],lastFetchedAt:null
+    weekStart:validMonday(options.weekStart),round:validRound(options.round),remote:{},queue:[],lastFetchedAt:null
   };
 }
 
@@ -200,7 +207,7 @@ function normalizeChange(change){
   const itemId=required(change.itemId,'ID artículo');
   if(!/^[a-zA-Z0-9_.:-]{1,150}$/.test(itemId))throw new Error('ID de artículo inválido');
   const decision=String(change.decision||'');
-  const choices=['UNREVIEWED','BUY','ORDER','NOT_NEEDED','PENDING'];
+  const choices=['UNREVIEWED','BUY','ORDER','NOT_NEEDED','PENDING','ASK'];
   if(!choices.includes(decision)||(kind==='EXTRA'&&!['BUY','ORDER'].includes(decision))){
     throw new Error('Decisión inválida');
   }
@@ -233,4 +240,55 @@ function required(x,label){
   const value=String(x??'').trim();
   if(!value)throw new Error(label+' obligatorio');
   return value;
+}
+
+const ROUND_HINT_SUFFIX=':current-round';
+function validRound(value=1){
+  const num=Number(value??1);
+  if(!Number.isSafeInteger(num)||num<1)throw new Error('Ciclo Monitor inválido');
+  return num;
+}
+function roundHintKey(options){
+  return reviewLocalKey({...options,round:1})+ROUND_HINT_SUFFIX;
+}
+// GET público del ciclo dentro de la API Monitor protegida. Si VPN no responde,
+// mantenemos la última posición, sin borrar pendientes de ningún ciclo.
+export async function resolveMonitorActiveRound(options,{request=apiRequest}={}){
+  const key=roundHintKey(options);
+  const stored=(await get(STORES.SETTINGS,key))?.value;
+  let round=validRound(stored?.round??1);
+  try{
+    const data=await request('/api/v1/monitor/reviews/'+encodeURIComponent(validMonday(options.weekStart)));
+    const remoteRound=validRound(data.currentRound);
+    round=remoteRound;
+    await runTransaction(STORES.SETTINGS,'readwrite',async store=>{
+      await requestToPromise(store.put({key,value:{round},updatedAt:new Date().toISOString()}));
+    });
+    return {round,network:'ONLINE'};
+  }catch{
+    return {round,network:'RETRY_LATER'};
+  }
+}
+export async function closeMonitorReviewRound(options,{request=apiRequest}={}){
+  const round=validRound(options.round);
+  // NUNCA cerrar un ciclo del que existe una cola local incompleta.
+  const local=await readMonitorReview(options);
+  if(local.pendingCount||local.conflictCount)
+    throw new Error('No puedes cerrar: hay cambios locales pendientes o en conflicto.');
+  const url='/api/v1/monitor/reviews/'+encodeURIComponent(validMonday(options.weekStart));
+  const data=await request(url+'/close',{method:'POST',body:{expectedRound:round}});
+  const next=validRound(data.currentRound);
+  if(data.closedRound!==round||next!==round+1)
+    throw new Error('Respuesta de cierre inconsistente: no abrir un nuevo ciclo');
+  const key=roundHintKey(options);
+  await runTransaction(STORES.SETTINGS,'readwrite',async store=>{
+    await requestToPromise(store.put({key,value:{round:next},updatedAt:new Date().toISOString()}));
+  });
+  return data;
+}
+export async function listMonitorReviewArchives(options,{request=apiRequest}={}){
+  return request('/api/v1/monitor/reviews/'+encodeURIComponent(validMonday(options.weekStart))+'/history');
+}
+export async function getMonitorReviewArchive(options,round,{request=apiRequest}={}){
+  return request('/api/v1/monitor/reviews/'+encodeURIComponent(validMonday(options.weekStart))+'/history/'+validRound(round));
 }
