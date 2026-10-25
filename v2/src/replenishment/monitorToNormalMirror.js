@@ -33,7 +33,7 @@ export function projectMonitorToNormal({ serverItems = [], localState = null, pr
     const isExtra = item.kind === 'EXTRA';
     const product = isExtra ? null : byProduct.get(String(item.productId));
     const category = isExtra ? 'EXTRAS' : (
-      byCategory.get(String(product?.categoryId || ''))?.name || 'SIN CATEGORÍA'
+      item.archivedCategory || byCategory.get(String(product?.categoryId || ''))?.name || 'SIN CATEGORÍA'
     );
     if (!isExtra && !product) counts.unresolvedProducts++;
     const quantity = item.quantity === null || item.quantity === '' || item.quantity === undefined
@@ -46,7 +46,7 @@ export function projectMonitorToNormal({ serverItems = [], localState = null, pr
       itemKey: item.itemKey,
       kind: item.kind,
       productId: item.productId || null,
-      description: isExtra ? String(item.description || '') : String(product?.name || '[PRODUCTO NO EN CATÁLOGO] ' + item.productId),
+      description: isExtra ? String(item.description || '') : String(item.archivedName || product?.name || '[PRODUCTO NO EN CATÁLOGO] ' + item.productId),
       category: String(category),
       quantity,
       unit: String(item.unit || product?.unitCode || ''),
