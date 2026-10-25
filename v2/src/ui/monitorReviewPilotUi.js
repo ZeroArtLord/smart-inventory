@@ -270,6 +270,30 @@ function renderHome(){
     '<p class="mp-muted">Puedes revisar todo el catálogo. Las recomendaciones de stock no ocultan ningún producto.</p>'+
     '<h3>Categorías</h3><div class="mp-grid">'+sections+'</div>');
 }
+function renderSearchMatches(){
+  const found=searchMonitorProducts(state.products,state.searchQuery);
+  if(!state.searchQuery.trim())return '<p class="mp-muted">Escribe un nombre, código, SKU o código de barras.</p>';
+  if(!found.length)return '<p class="mp-muted">No se encontraron productos.</p>';
+  return found.map(p=>{
+    const category=state.categories.find(c=>String(c.id)===String(p.categoryId))?.name||'Sin categoría';
+    const mark=decisionLabel(findRow(p.id)?.decision||'UNREVIEWED');
+    return '<div class="mp-row"><div><strong>'+esc(p.name||p.id)+'</strong>'+
+      '<div class="mp-muted">'+esc(category)+' · '+esc(p.saintCode||p.sku||p.id)+' · '+esc(mark)+'</div></div>'+
+      button('Ir al producto','search-jump',{attrs:'data-mp-id="'+esc(p.id)+'"'})+'</div>';
+  }).join('');
+}
+function renderProductSearch(){
+  return '<div class="mp-card" style="margin-bottom:14px">'+
+    '<label for="mpProductSearch"><strong>🔎 Buscar producto</strong></label>'+
+    '<input id="mpProductSearch" type="search" autocomplete="off" placeholder="Nombre, código, SKU o barra…" value="'+esc(state.searchQuery)+'" style="width:100%;padding:10px;margin-top:8px">'+
+    '<div id="mpSearchMatches" style="max-height:280px;overflow:auto">'+renderSearchMatches()+'</div></div>';
+}
+function handleProductSearch(event){
+  if(event.target?.id!=='mpProductSearch')return;
+  state.searchQuery=String(event.target.value||'').slice(0,130);
+  const pane=shell.querySelector('#mpSearchMatches');
+  if(pane)pane.innerHTML=renderSearchMatches();
+}
 function renderReview(){
   const cats=groups();
   if(!cats.length)return panel('Revisar','<p>No hay productos activos cargados en este dispositivo.</p>');
