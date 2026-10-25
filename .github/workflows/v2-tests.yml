@@ -250,6 +250,9 @@ jobs:
       - name: Verify HP predeployment read-only preflight syntax
         run: node --check ../../docs/VIGIA/VIGIA_HP_MONITOR_PREDEPLOY_READONLY.cjs
 
+      - name: Verify cycle predeployment read-only preflight syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_MONITOR_CYCLES_PRECHECK_READONLY.cjs
+
       - name: Check live Monitor pilot authorization defaults
         run: node scripts/monitorPilotGateCheck.js
 
