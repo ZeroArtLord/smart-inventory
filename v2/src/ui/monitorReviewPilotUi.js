@@ -574,15 +574,15 @@ function archivedSnapshot(detail){
   return projectMonitorToNormal({
     serverItems:detail.items||[],localState:null,
     products:state.products,categories:state.categories,
-    weekStart:state.week,round:detail.round
+    weekStart:detail.weekStart,round:detail.round
   });
 }
 function renderHistory(){
   const archives=state.archives||[];
   const cards=archives.map(a=>'<div class="mp-row"><div><strong>Ciclo '+esc(a.round)+'</strong>'+
-    '<div class="mp-muted">Cerrado: '+esc(a.closedAt||'')+
+    '<div class="mp-muted">Semana '+esc(a.weekStart||state.week)+' · Cerrado: '+esc(a.closedAt||'')+
     ' · Comprar '+esc(a.counts?.buy||0)+' · Pedir '+esc(a.counts?.order||0)+'</div></div>'+
-    button('Ver listas guardadas','history-view',{attrs:'data-mp-round="'+esc(a.round)+'"'})+'</div>').join('');
+    button('Ver listas guardadas','history-view',{attrs:'data-mp-week="'+esc(a.weekStart||state.week)+'" data-mp-round="'+esc(a.round)+'"'})+'</div>').join('');
   let detail='';
   if(state.archiveDetail){
     const snapshot=archivedSnapshot(state.archiveDetail);
@@ -594,7 +594,7 @@ function renderHistory(){
   }
   return panel('Historial de ciclos cerrados',
     '<p class="mp-muted">Cada cierre conserva las decisiones y tickets sin mezclar ciclos nuevos.</p>'+
-    (cards||'<p>No se han cerrado ciclos de esta semana o no hay conexión para consultar el historial.</p>')+detail);
+    (cards||'<p>Todavía no hay ciclos cerrados o el historial estará disponible al conectar la VPN.</p>')+detail);
 }
 function renderLists(){
   const rows=selectedItems();
@@ -702,7 +702,7 @@ async function handleClick(event){
   }
   if(action==='history-view'){
     const round=Number(node.dataset.mpRound);
-    state.archiveDetail=await getMonitorReviewArchive(state.options,round);
+    state.archiveDetail=await getMonitorReviewArchive(state.options,round,{weekStart:node.dataset.mpWeek});
     state.error='';paint();return;
   }
   if(action==='close-round'){
