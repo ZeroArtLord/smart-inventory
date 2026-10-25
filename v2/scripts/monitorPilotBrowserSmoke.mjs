@@ -330,8 +330,8 @@ try{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
     const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
       userId:'worker-browser-lab',weekStart:'2026-10-12'});
-    return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.quantity===4);
-  },null,{timeout:12000});
+    return record.pendingCount===0 && record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.quantity===4);
+  },null,{timeout:15000});
   const beforeNavSaved=await page.evaluate(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
     const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
