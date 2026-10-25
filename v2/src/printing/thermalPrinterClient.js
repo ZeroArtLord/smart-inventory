@@ -75,7 +75,7 @@ export function buildThermalPrintPayload(list = {}) {
   return {
     id: list.id || '',
     code: list.code || list.id || 'LISTA',
-    kind: list.kind === 'ORDER' ? 'ORDER' : 'PURCHASE',
+    kind: list.kind === 'INQUIRY' ? 'INQUIRY' : list.kind === 'ORDER' ? 'ORDER' : 'PURCHASE',
     dateLabel: list.dateLabel || formatDate(list.createdAt),
     ownerLabel: list.ownerLabel || 'Usuario VIGÍA',
     items
