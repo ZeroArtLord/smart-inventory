@@ -3,10 +3,11 @@ import { Router } from 'express';
 import { pool, withTransaction } from '../db.js';
 import { hasPermission, PERMISSIONS } from '../security/permissions.js';
 import { writeAuditEvent } from '../audit/auditService.js';
+import { requireActiveMonitorRound } from './monitorReviewCycles.js';
 
 export const monitorReviewRouter = Router();
 
-const choices = new Set(['UNREVIEWED','BUY','ORDER','NOT_NEEDED','PENDING']);
+const choices = new Set(['UNREVIEWED','BUY','ORDER','NOT_NEEDED','PENDING','ASK']);
 const methods = new Set(['BUY','ORDER']);
 const safeId = /^[a-zA-Z0-9_.:-]{1,150}$/;
 
@@ -14,6 +15,10 @@ monitorReviewRouter.get('/reviews/:weekStart', async (req, res, next) => {
   try {
     requireReviewAccess(req.auth, false);
     const weekStart = validWeek(req.params.weekStart);
+    const roundRecord = await pool.query(
+      "SELECT current_round FROM monitor_review_cycles WHERE workspace_id=$1 AND week_start=$2::date",
+      [req.auth.workspaceId,weekStart]);
+    const currentRound=roundRecord.rows[0]?.current_round||1;
     const result = await pool.query(
       `SELECT item_key,kind,product_id,description,decision,quantity,unit,notes,
               deleted,version,updated_by,updated_at
@@ -23,7 +28,7 @@ monitorReviewRouter.get('/reviews/:weekStart', async (req, res, next) => {
       [req.auth.workspaceId, weekStart]
     );
     res.set('Cache-Control', 'no-store').json({
-      ok:true, workspaceId:req.auth.workspaceId, weekStart,
+      ok:true, workspaceId:req.auth.workspaceId, weekStart,currentRound,
       items:result.rows.map(mapRow)
     });
   } catch (error) { next(error); }
@@ -43,10 +48,16 @@ monitorReviewRouter.put('/reviews/:weekStart/items', async (req, res, next) => {
       throw bad('ID del evento inválido', 'REVIEW_MUTATION_INVALID');
     }
     const fingerprint = createHash('sha256').update(JSON.stringify({
-      weekStart, item, expectedVersion
+      weekStart, item, expectedVersion,
+      ...(Number(req.body?.round||1)>1?{round:Number(req.body.round)}:{})
     })).digest('hex');
 
     const result = await withTransaction(async client => {
+      // Una fila de control por semana bloquea cierres simultáneos.
+      const requestedRound=req.body?.round==null?1:Number(req.body.round);
+      if(!Number.isSafeInteger(requestedRound)||requestedRound<1)
+        throw bad('Ciclo inválido','MONITOR_ROUND_INVALID');
+      await requireActiveMonitorRound(client,req.auth.workspaceId,weekStart,requestedRound);
       // Serializa las ediciones del MISMO elemento sin bloquear categorías distintas.
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
         req.auth.workspaceId + ':' + weekStart + ':' + item.itemKey
