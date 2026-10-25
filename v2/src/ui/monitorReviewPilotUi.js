@@ -546,7 +546,7 @@ function renderExtras(){
     '<p class="mp-muted">Anota cualquier cosa que no exista en VIGÍA: cinta métrica, guantes, bolsas, herramientas… Sin crear productos de inventario.</p>'+
     '<form id="mpExtraForm"><div class="mp-form">'+
     '<label>Nombre o descripción *<input name="description" maxlength="180" required placeholder="Ej. Cinta métrica"></label>'+
-    '<label>Tipo<select name="decision"><option value="BUY">Comprar</option><option value="ORDER">Pedir</option></select></label>'+
+    '<label>Tipo<select name="decision"><option value="BUY">Comprar</option><option value="ORDER">Pedir</option><option value="ASK">Preguntar</option></select></label>'+
     '<label>Cantidad (opcional)<input name="quantity" type="number" step="any" min="0.001" placeholder="Por definir"></label>'+
     '<label>Unidad (opcional)<input name="unit" maxlength="40" placeholder="UND"></label></div>'+
     '<label>Nota (opcional)<textarea name="notes" maxlength="500" rows="2"></textarea></label>'+
