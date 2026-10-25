@@ -8,7 +8,7 @@ import { requireActiveMonitorRound } from './monitorReviewCycles.js';
 export const monitorReviewRouter = Router();
 
 const choices = new Set(['UNREVIEWED','BUY','ORDER','NOT_NEEDED','PENDING','ASK']);
-const methods = new Set(['BUY','ORDER']);
+const methods = new Set(['BUY','ORDER','ASK']);
 const safeId = /^[a-zA-Z0-9_.:-]{1,150}$/;
 
 monitorReviewRouter.get('/reviews/:weekStart', async (req, res, next) => {
