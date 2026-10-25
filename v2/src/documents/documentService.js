@@ -636,6 +636,7 @@ async function closeInventoryDocument(documentId, userId) {
               lotId: item.lotId,
               locationId: document.locationId,
               userId,
+              createdAt: now,
               effectiveAt: supplyEffectiveAt,
               metadata: {
                 destinationId: document.destinationId || null,
@@ -662,6 +663,7 @@ async function closeInventoryDocument(documentId, userId) {
               lotId: null,
               locationId: document.locationId,
               userId,
+              createdAt: now,
               effectiveAt: supplyEffectiveAt,
               metadata: {
                 destinationId: document.destinationId || null,

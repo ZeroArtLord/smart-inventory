@@ -1,16 +1,26 @@
 import { stockDeltaForMovement } from '../core/movementTypes.js';
 
+const STOCK_EPSILON = 1e-9;
+
+function normalizeStockTotal(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return number;
+  return Math.abs(number) <= STOCK_EPSILON ? 0 : number;
+}
+
 export function calculateStock(movements, productId, { locationId = null } = {}) {
-  return movements.reduce((total, movement) => {
-    if (movement.productId !== productId) return total;
-    if (movement.voided === true) return total;
+  const total = movements.reduce((current, movement) => {
+    if (movement.productId !== productId) return current;
+    if (movement.voided === true) return current;
 
     if (locationId && movement.locationId !== locationId) {
-      return total;
+      return current;
     }
 
-    return total + stockDeltaForMovement(movement);
+    return current + stockDeltaForMovement(movement);
   }, 0);
+
+  return normalizeStockTotal(total);
 }
 
 export function calculateStocksByProduct(movements) {
@@ -21,7 +31,9 @@ export function calculateStocksByProduct(movements) {
     const current = stocks.get(movement.productId) || 0;
     stocks.set(
       movement.productId,
-      current + stockDeltaForMovement(movement)
+      normalizeStockTotal(
+        current + stockDeltaForMovement(movement)
+      )
     );
   });
 
