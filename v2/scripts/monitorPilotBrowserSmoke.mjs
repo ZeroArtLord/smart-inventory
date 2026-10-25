@@ -106,6 +106,17 @@ await page.route('**/api/v1/monitor/reviews/**',async route=>{
 try{
   await mkdir(screenshots,{recursive:true});
   await page.goto(url,{waitUntil:'networkidle'});
+  // Siempre probar el ciclo semanal ACTUAL del navegador, no una fecha fija
+  // que caduca cada lunes y aparenta perdida de guardado.
+  await page.evaluate(()=>{
+    const d=new Date();
+    const offset=(d.getDay()+6)%7;
+    d.setDate(d.getDate()-offset);
+    window.__vigiaTestWeekStart=[
+      d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),
+      String(d.getDate()).padStart(2,'0')
+    ].join('-');
+  });
   await page.evaluate(async()=>{
     const storage=await import('/src/storage/database.js');
     const settings=await import('/src/sync/syncSettings.js');
@@ -269,12 +280,12 @@ try{
   await page.waitForFunction(async()=>{
     const mod=await import('/src/replenishment/monitorReviewOffline.js');
     const record=await mod.readMonitorReview({workspaceId:'workspace-browser-lab',
-      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return record.items.some(x=>x.kind==='PRODUCT'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
-    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return state.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
 
@@ -284,7 +295,7 @@ try{
   await editRow.locator('.mp-edit-unit-other').press('Enter');
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
-    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return state.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='GAVETA'&&x.quantity===3);
   },null,{timeout:12000});
   await editRow.locator('.mp-edit-unit-select').selectOption('CAJA');
@@ -292,14 +303,14 @@ try{
   await editRow.locator('.mp-edit-quantity').press('Enter'); // Solo avanza, no hace falta para guardar.
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
-    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return state.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
   // La sincronización de una edición anterior no puede restaurar GAVETA tras
   // confirmar CAJA: se espera el ACK y se comprueba también el DOM, no solo IDB.
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
-    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return state.pendingCount===0 && state.items.some(x=>
       x.kind==='PRODUCT' && x.unit==='CAJA' && x.quantity===2);
   },null,{timeout:15000});
@@ -312,14 +323,14 @@ try{
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
     const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
-      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='ORDER'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
   await finalRow.locator('.mp-edit-decision').selectOption('BUY');
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
     const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
-      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
   // Edición rápida y navegación: al pulsar Extras, el último número aún en
@@ -329,27 +340,14 @@ try{
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
     const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
-      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return record.pendingCount===0 && record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.quantity===4);
   },null,{timeout:15000});
   const beforeNavSaved=await page.evaluate(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
-    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return record.items.find(x=>x.kind==='PRODUCT'&&x.decision==='BUY');
   });
-  if(beforeNavSaved?.quantity!==4){
-    const debug=await page.evaluate(async()=>{
-      const m=await import('/src/replenishment/monitorReviewOffline.js');
-      const weeks=['2026-10-12','2026-10-19'];
-      return await Promise.all(weeks.map(async weekStart=>{
-        const r=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
-          userId:'worker-browser-lab',weekStart});
-        return {weekStart,items:r.items.map(x=>({itemKey:x.itemKey,decision:x.decision,quantity:x.quantity,version:x.version})),
-          pending:r.pendingCount,conflicts:r.conflictCount};
-      }));
-    });
-    console.log('MONITOR_AUTOSAVE_NAV_DIAGNOSTIC',JSON.stringify(debug));
-  }
   assert.equal(beforeNavSaved?.quantity,4,'Autosave must flush when leaving selected');
   await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="selected"]').click();
   const returnRow=page.locator('#vigiaMonitorPilot .mp-selected-row').first();
@@ -362,12 +360,12 @@ try{
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
     const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
-      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return state.items.some(x=>x.kind==='PRODUCT'&&x.notes==='rebanadas'&&x.quantity===2&&x.unit==='CAJA');
   },null,{timeout:12000});
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
-    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
   await page.screenshot({path:path.join(screenshots,'seleccionados-unidades-mobile.png')});
@@ -397,7 +395,7 @@ try{
   await page.evaluate(async()=>{
     const mod=await import('/src/replenishment/monitorReviewOffline.js');
     const opts={workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',
-      weekStart:'2026-10-12'};
+      weekStart:window.__vigiaTestWeekStart};
     await mod.queueMonitorReviewChange(opts,{
       kind:'PRODUCT',itemId:'prod-cafe',decision:'PENDING',quantity:null
     });
@@ -437,7 +435,7 @@ try{
   const storedPending=await page.evaluate(async()=>{
     const mod=await import('/src/replenishment/monitorReviewOffline.js');
     const s=await mod.readMonitorReview({workspaceId:'workspace-browser-lab',
-      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return s.items.filter(x=>['product:prod-cafe','product:prod-pan','product:prod-yuca'].includes(x.itemKey))
       .map(x=>({id:x.itemKey,decision:x.decision,qty:x.quantity}));
   });
@@ -453,7 +451,7 @@ try{
     const {projectMonitorToNormal}=await import('/src/replenishment/monitorToNormalMirror.js');
     const {printableMonitorMirror}=await import('/src/ui/monitorNormalMirrorUi.js');
     const snapshot=projectMonitorToNormal({
-      weekStart:'2026-10-12',
+      weekStart:window.__vigiaTestWeekStart,
       products:[{id:'prod-agua',name:'Agua mineral',categoryId:'bebidas',unitCode:'UND'}],
       categories:[{id:'bebidas',name:'BEBIDAS'}],
       serverItems:[{itemKey:'product:prod-agua',kind:'PRODUCT',productId:'prod-agua',
