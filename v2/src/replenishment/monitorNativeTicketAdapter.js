@@ -6,7 +6,8 @@ export function buildMonitorNativeLists(snapshot, { ownerLabel = 'Usuario VIGÍA
   }
   const week = String(snapshot.weekStart || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(week)) throw new Error('Semana Monitor inválida');
-  const definitions=[['PURCHASE','COM'],['ORDER','PED'],['INQUIRY','PRE']];
+  const definitions=[['PURCHASE','COM'],['ORDER','PED']];
+  if((snapshot.lists?.INQUIRY||[]).length)definitions.push(['INQUIRY','PRE']);
   return definitions.map(([kind,prefix])=>{
     const rows = (snapshot.lists?.[kind] || []).map(item=>({
       id:item.itemKey,
