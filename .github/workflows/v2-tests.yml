@@ -142,7 +142,8 @@ jobs:
             "docs/VIGIA/VIGIA_HP_MONITOR_NATIVE_80MM_PENDING_DEPLOY_SAFE.ps1",
             "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_UNITS_DEPLOY_SAFE.ps1",
             "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_AUTOSAVE_DEPLOY_SAFE.ps1",
-            "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_NOTES_DEPLOY_SAFE.ps1"
+            "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_NOTES_DEPLOY_SAFE.ps1",
+            "docs/VIGIA/VIGIA_HP_MONITOR_CYCLES_DEPLOY_SAFE.ps1"
           )
           foreach ($path in $paths) {
           [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
@@ -252,6 +253,9 @@ jobs:
 
       - name: Verify cycle predeployment read-only preflight syntax
         run: node --check ../../docs/VIGIA/VIGIA_HP_MONITOR_CYCLES_PRECHECK_READONLY.cjs
+
+      - name: Verify cycle postdeployment read-only check syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_MONITOR_CYCLES_POSTCHECK_READONLY.cjs
 
       - name: Check live Monitor pilot authorization defaults
         run: node scripts/monitorPilotGateCheck.js

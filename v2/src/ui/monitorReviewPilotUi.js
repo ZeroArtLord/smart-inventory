@@ -12,6 +12,7 @@ import { fetchMonitorMirrorForNormal, assertMonitorPrintable } from './monitorNo
 import { printThermalProcurementList } from '../printing/thermalPrinterClient.js';
 import { searchMonitorProducts } from '../replenishment/monitorProductSearch.js';
 import { projectMonitorToNormal } from '../replenishment/monitorToNormalMirror.js';
+import { recentMonitorWeeks, isSelectableMonitorWeek } from '../replenishment/monitorReviewWeeks.js';
 import {
   readPilotPosition, savePilotPosition, restorePilotPosition
 } from './monitorPilotPosition.js';
@@ -28,7 +29,8 @@ const state={
   visible:false,loading:false,page:'home',week:weekMonday(),
   currentCategory:null,cursor:0,session:null,options:null,
   products:[],categories:[],local:null,message:'',error:'',
-  pendingReviewMode:false,printing:false,searchQuery:'',archives:[],archiveDetail:null,closing:false
+  pendingReviewMode:false,printing:false,searchQuery:'',archives:[],archiveDetail:null,
+  closing:false,switching:false
 };
 if(root){
   launcher=document.createElement('button');
@@ -101,6 +103,27 @@ async function openPilot(){
   }catch(error){
     state.loading=false;showError(error);
   }
+}
+async function switchMonitorWeek(week){
+  if(!isSelectableMonitorWeek(week))throw new Error('Semana de revisión inválida');
+  if(week===state.week)return;
+  if(state.closing||state.switching)throw new Error('Espera a que termine la operación actual');
+  state.switching=true;
+  try{
+    await flushAllSelected();
+    // Descarta respuestas de sincronización anteriores antes de cambiar contexto.
+    ++latestLocalUiEpoch;
+    const base={workspaceId:state.session.workspaceId,userId:state.session.userId,weekStart:week};
+    const cycle=await resolveMonitorActiveRound(base);
+    const options={...base,round:cycle.round};
+    const local=await readMonitorReview(options);
+    state.week=week;state.options=options;state.local=local;
+    state.currentCategory=null;state.cursor=0;state.pendingReviewMode=false;
+    state.page='home';state.archives=[];state.archiveDetail=null;state.searchQuery='';
+    state.error='';state.message='Semana '+week+' abierta para revisar o cerrar su ciclo.';
+    paint();
+    await pushAndRefresh();
+  }finally{state.switching=false;paint();}
 }
 async function persistPilotCursor(){
   if(!state.options)return;
@@ -239,7 +262,11 @@ function paint(){
   }
   shell.innerHTML='<div class="mp-shell"><header class="mp-head"><div><small>PILOTO AISLADO · SIN MOVIMIENTOS DE STOCK</small>'+
     '<h1>VIGÍA Monitor</h1><p>Semana '+esc(state.week)+' · Ciclo '+esc(state.options?.round||1)+' · '+
-    esc(state.products.length)+' productos del catálogo</p></div>'+
+    esc(state.products.length)+' productos del catálogo</p>'+
+    '<label class="mp-week-label" for="mpWeekSelect">Semana de revisión ' +
+    '<select id="mpWeekSelect" '+(state.loading||state.closing||state.switching?'disabled':'')+'>'+recentMonitorWeeks().map(week=>
+      '<option value="'+week+'" '+(week===state.week?'selected':'')+'>'+week+
+      (week===recentMonitorWeeks()[0]?' · actual':'')+'</option>').join('')+'</select></label></div>'+
     button('Cerrar ✕','close',{cls:'mp-close'})+'</header>'+
     '<nav class="mp-nav mp-no-print" aria-label="Secciones del piloto">'+nav+'</nav>'+
     '<div class="mp-inline mp-no-print">'+info()+
@@ -675,8 +702,7 @@ function decisionLabel(d){return ({
   BUY:'Comprar',ORDER:'Pedir',ASK:'Preguntar',PENDING:'Pendiente',NOT_NEEDED:'No hace falta',UNREVIEWED:'Sin revisar'
 })[d]||d;}
 function weekMonday(){
-  const d=new Date();const weekday=(d.getDay()+6)%7;d.setDate(d.getDate()-weekday);
-  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
+  return recentMonitorWeeks()[0];
 }
 function moveToNextUndecided(){
   const group=groups().find(x=>x.id===state.currentCategory);
@@ -730,7 +756,7 @@ async function handleClick(event){
     state.error='';paint();return;
   }
   if(action==='close-round'){
-    if(state.closing)return;
+    if(state.closing||state.switching)return;
     const p=progress();
     if(p.remaining||p.pending||p.asking||p.reviewed!==p.total)
       throw new Error('No se puede cerrar: faltan productos por resolver o por preguntar.');
@@ -740,14 +766,15 @@ async function handleClick(event){
       ' y guardar la lista en Historial? Se iniciará una revisión VACÍA para volver a comenzar.');
     if(!accepted)return;
     state.closing=true;
+    const closingOptions={...state.options};
     try{
       await flushAllSelected();
-      const result=await syncMonitorReview(state.options);
+      const result=await syncMonitorReview(closingOptions);
       if(result.network!=='ONLINE'||result.pendingCount||result.conflictCount)
         throw new Error('No se puede cerrar sin confirmación del servidor. Los datos locales siguen guardados.');
-      const closed=await closeMonitorReviewRound(state.options);
+      const closed=await closeMonitorReviewRound(closingOptions);
       clearSelectedRecords();
-      state.options={...state.options,round:closed.currentRound};
+      state.options={...closingOptions,round:closed.currentRound};
       state.local=await readMonitorReview(state.options);
       state.currentCategory=null;state.cursor=0;
       state.pendingReviewMode=false;state.archiveDetail=null;state.searchQuery='';
@@ -836,6 +863,12 @@ async function handleClick(event){
   if(action==='print'){window.print();}
 }
 async function handleChange(event){
+  if(event.target?.id==='mpWeekSelect'){
+    if(state.closing||state.switching){event.target.value=state.week;return;}
+    try{await switchMonitorWeek(event.target.value);}
+    catch(error){event.target.value=state.week;throw error;}
+    return;
+  }
   const unitPicker=event.target.closest('.mp-edit-unit-select');
   if(unitPicker){
     const custom=unitPicker.closest('label')?.querySelector('.mp-edit-unit-other');

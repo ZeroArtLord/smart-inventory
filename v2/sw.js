@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-71-monitor-selected-notes-1';
+const CACHE_NAME = 'smart-inventory-v2-shell-72-monitor-cycles-1';
 // procurement-weekly-edit-hotfix-2026-10-07
 // procurement-cancelled-line-visibility-hotfix-2026-10-07
 
@@ -133,6 +133,8 @@ const APP_SHELL = [
   './src/replenishment/monitorPilotSession.js',
   './src/replenishment/monitorWeeklyReview.js',
   './src/replenishment/monitorReviewOffline.js',
+  './src/replenishment/monitorProductSearch.js',
+  './src/replenishment/monitorReviewWeeks.js',
   './src/documents/monitorSupplyModel.js',
   './src/documents/monitorSupplyOutbox.js',
   './src/documents/monitorSupplyDraftStore.js',

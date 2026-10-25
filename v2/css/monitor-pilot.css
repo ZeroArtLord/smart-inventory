@@ -10,6 +10,8 @@
 #vigiaMonitorPilot .mp-head{background:#102a3f;border-radius:22px;color:#fff;padding:24px;display:flex;align-items:start;justify-content:space-between;gap:20px}
 #vigiaMonitorPilot .mp-head h1{font-size:27px;line-height:1.1;margin:4px 0 8px}
 #vigiaMonitorPilot .mp-head p{color:#c5d7e2;margin:0;font-size:13px}
+#vigiaMonitorPilot .mp-week-label{display:flex;align-items:center;gap:9px;margin-top:12px;color:#e4eff4;font-size:13px;font-weight:700}
+#vigiaMonitorPilot .mp-week-label select{padding:7px 9px;border:1px solid #a9bfce;border-radius:8px;background:#fff;color:#183b53}
 #vigiaMonitorPilot .mp-close{border:1px solid #95abb9;background:transparent;color:white;padding:11px 14px;border-radius:12px;flex-shrink:0}
 #vigiaMonitorPilot .mp-nav{display:flex;gap:8px;overflow-x:auto;padding:14px 0;scrollbar-width:thin}
 #vigiaMonitorPilot .mp-nav button{border:1px solid #cfdbe3;background:white;padding:12px 15px;border-radius:12px;white-space:nowrap;color:#254158;font-weight:700}

@@ -92,9 +92,12 @@ await page.route('**/api/v1/monitor/supplies**',async route=>{
 });
 
 const reviewItems=new Map();
+let delayedReviewWeek='';
 await page.route('**/api/v1/monitor/reviews/**',async route=>{
   const req=route.request();
   if(req.method()==='GET'){
+    if(delayedReviewWeek && new URL(req.url()).pathname.endsWith('/'+delayedReviewWeek))
+      await new Promise(resolve=>setTimeout(resolve,350));
     return route.fulfill({status:200,contentType:'application/json',
       body:JSON.stringify({ok:true,items:[...reviewItems.values()]})});
   }
@@ -259,6 +262,32 @@ try{
   // Weekly catalog review, extra free-form item, and print preview.
   await page.locator('#app h2').evaluate(el=>{el.textContent='Comprar / Pedir';});
   await page.locator('#vigiaMonitorPilotLauncher').click();
+  const previousWeek=await page.evaluate(()=>{
+    const date=new Date(window.__vigiaTestWeekStart+'T12:00:00');
+    date.setDate(date.getDate()-7);
+    return [date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),
+      String(date.getDate()).padStart(2,'0')].join('-');
+  });
+  await page.locator('#vigiaMonitorPilot #mpWeekSelect').selectOption(previousWeek);
+  await page.locator('#vigiaMonitorPilot .mp-head').getByText('Semana '+previousWeek).waitFor();
+  await page.locator('#vigiaMonitorPilot #mpWeekSelect').selectOption(await page.evaluate(()=>window.__vigiaTestWeekStart));
+  await page.locator('#vigiaMonitorPilot .mp-head').getByText('Semana '+await page.evaluate(()=>window.__vigiaTestWeekStart)).waitFor();
+  const olderWeek=await page.evaluate(previous=>{
+    const date=new Date(previous+'T12:00:00');date.setDate(date.getDate()-7);
+    return [date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),
+      String(date.getDate()).padStart(2,'0')].join('-');
+  },previousWeek);
+  delayedReviewWeek=olderWeek;
+  await page.evaluate(({previous,older})=>{
+    const selector=document.querySelector('#vigiaMonitorPilot #mpWeekSelect');
+    selector.value=previous;selector.dispatchEvent(new Event('change',{bubbles:true}));
+    selector.value=older;selector.dispatchEvent(new Event('change',{bubbles:true}));
+  },{previous:previousWeek,older:olderWeek});
+  await page.waitForTimeout(700);
+  assert.match(await page.locator('#vigiaMonitorPilot .mp-head').innerText(),
+    new RegExp('Semana '+previousWeek),'un segundo cambio no debe reemplazar el primero en curso');
+  delayedReviewWeek='';
+  await page.locator('#vigiaMonitorPilot #mpWeekSelect').selectOption(await page.evaluate(()=>window.__vigiaTestWeekStart));
   await page.locator('#vigiaMonitorPilot .mp-tile').first().click();
   await page.locator('#vigiaMonitorPilot #mpQuantity').fill('');
   await page.locator('#vigiaMonitorPilot [data-mp-choice="BUY"]').click();
@@ -422,6 +451,7 @@ try{
   });
   await page.locator('#vigiaMonitorPilot [data-mp-action="sync"]').click();
   await page.locator('#vigiaMonitorPilot [data-mp-page="pending"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#vigiaMonitorPilot .mp-row').length===3);
   assert.equal(await page.locator('#vigiaMonitorPilot .mp-row').count(),3);
   await page.locator('#vigiaMonitorPilot .mp-row').first().getByRole('button',{name:'Revisar ahora'}).click();
   let active=await page.locator('#vigiaMonitorPilot .mp-card h2[style]').first().innerText();

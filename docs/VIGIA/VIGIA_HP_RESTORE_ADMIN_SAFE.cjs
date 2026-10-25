@@ -14,7 +14,8 @@ const SERVER=process.env.VIGIA_SERVER_DIR||'C:\\SmartInventory\\App\\v2\\server'
 const BIN=process.env.VIGIA_PG_BIN_DIR||'C:\\Program Files\\PostgreSQL\\18\\bin';
 const ARCHIVE=process.env.VIGIA_RESTORE_DUMP||
   'F:\\SmartInventoryBackups\\VIGIA_MANUAL_PREDEPLOY\\vigia_manual_predeploy_2026-10-12T13-40-02-012Z.dump';
-const EXPECTED_SHA='3b83bd345a0128810d44e50c154162b2fc5e9fff79c95ec697dbdb33a4f0a0e4';
+const EXPECTED_SHA=process.env.VIGIA_RESTORE_EXPECTED_SHA||
+  '3b83bd345a0128810d44e50c154162b2fc5e9fff79c95ec697dbdb33a4f0a0e4';
 const SCRATCH='vigia_restore_probe_'+crypto.randomBytes(10).toString('hex');
 const IDENT=/^vigia_restore_probe_[a-f0-9]{20}$/;
 const OLD_DATABASE='smart_inventory';
@@ -52,6 +53,7 @@ function cleanError(value){
 }
 async function main(){
   insist(process.platform==='win32','Este comprobador se ejecuta en el HP Windows');
+  insist(/^[a-f0-9]{64}$/i.test(EXPECTED_SHA),'SHA256 esperado invalido');
   insist(fs.existsSync(ARCHIVE),'No se encuentra el dump manual indicado');
   insist(fs.existsSync(path.join(BIN,'pg_restore.exe')),'No se encontro pg_restore.exe');
   insist(fs.existsSync(path.join(SERVER,'package.json')),'Carpeta del servidor no encontrada');
