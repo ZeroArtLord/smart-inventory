@@ -12,6 +12,10 @@ $ProgressPreference='SilentlyContinue'
 $root='C:\SmartInventory\App'
 $server=Join-Path $root 'v2\server'
 $branch='feature/vigia-monitor-ciclos-preguntar-busqueda-20261025'
+$approvedBases=@(
+  '2d17b0285e2cdbb482e1a1b9763f86389e60f428', # HP verificado: observaciones ya instaladas
+  '05a88c9ea2d9a7804a953763a5b2f50b53675a98'  # PR 24: mismo codigo funcional
+)
 $backupRoot='F:\SmartInventoryBackups\VIGIA_MANUAL_PREDEPLOY'
 $base=''
 $codeUpdated=$false
@@ -64,6 +68,7 @@ try{
   ApiReady 20
   $base=Git @('rev-parse','HEAD')
   Demand ($base -ceq $ExpectedBaseSha) ('SHA del HP inesperado: '+$base)
+  Demand ($approvedBases -contains $base) 'SHA no incluido en las bases verificadas de Monitor'
   Demand ([string]::IsNullOrWhiteSpace((Git @('status','--porcelain','--untracked-files=no')))) 'Git tiene cambios rastreados'
   # migrate.js ejecuta todos los SQL numerados presentes en disco, incluidos no rastreados.
   Demand ([string]::IsNullOrWhiteSpace((Git @('status','--porcelain','--untracked-files=all','--','v2/server/migrations')))) 'Migraciones locales o no rastreadas: detener'
@@ -71,8 +76,6 @@ try{
   Demand ((Git @('rev-parse','FETCH_HEAD')) -ceq $TargetSha) 'La rama remota no coincide con TargetSha'
   & git.exe -C $root merge-base --is-ancestor $base $TargetSha
   Demand ($LASTEXITCODE -eq 0) 'El candidato no desciende del HP'
-  & git.exe -C $root merge-base --is-ancestor '05a88c9ea2d9a7804a953763a5b2f50b53675a98' $base
-  Demand ($LASTEXITCODE -eq 0) 'El HP no contiene la base Monitor PR #24; revisar antes de desplegar'
   $migrations=@(Git @('diff','--name-only',$base,$TargetSha,'--','v2/server/migrations') -split "`n" | Where-Object {$_})
   Demand ($migrations.Count -eq 1 -and $migrations[0] -eq 'v2/server/migrations/022_monitor_review_cycles_ask.sql') 'Migraciones inesperadas'
   Demand ([string]::IsNullOrWhiteSpace((Git @('diff','--name-only',$base,$TargetSha,'--','v2/server/package.json')))) 'Dependencias de servidor cambiaron'
