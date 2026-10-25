@@ -287,8 +287,8 @@ export async function closeMonitorReviewRound(options,{request=apiRequest}={}){
   return data;
 }
 export async function listMonitorReviewArchives(options,{request=apiRequest}={}){
-  return request('/api/v1/monitor/reviews/'+encodeURIComponent(validMonday(options.weekStart))+'/history');
+  return request('/api/v1/monitor/review-history');
 }
-export async function getMonitorReviewArchive(options,round,{request=apiRequest}={}){
-  return request('/api/v1/monitor/reviews/'+encodeURIComponent(validMonday(options.weekStart))+'/history/'+validRound(round));
+export async function getMonitorReviewArchive(options,round,{request=apiRequest,weekStart=options.weekStart}={}){
+  return request('/api/v1/monitor/reviews/'+encodeURIComponent(validMonday(weekStart))+'/history/'+validRound(round));
 }
