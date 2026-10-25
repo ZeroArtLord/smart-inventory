@@ -6,7 +6,7 @@ export function buildMonitorNativeLists(snapshot, { ownerLabel = 'Usuario VIGÍA
   }
   const week = String(snapshot.weekStart || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(week)) throw new Error('Semana Monitor inválida');
-  const definitions=[['PURCHASE','COM'],['ORDER','PED']];
+  const definitions=[['PURCHASE','COM'],['ORDER','PED'],['INQUIRY','PRE']];
   return definitions.map(([kind,prefix])=>{
     const rows = (snapshot.lists?.[kind] || []).map(item=>({
       id:item.itemKey,
@@ -26,13 +26,13 @@ export function buildMonitorNativeLists(snapshot, { ownerLabel = 'Usuario VIGÍA
       }
     }));
     return {
-      id:'monitor-'+week+'-'+kind.toLowerCase(),
-      code:prefix+'-MON-'+week.replaceAll('-','').slice(2),
+      id:'monitor-'+week+'-r'+String(snapshot.round||1)+'-'+kind.toLowerCase(),
+      code:prefix+'-MON-'+week.replaceAll('-','').slice(2)+'-R'+String(snapshot.round||1),
       kind,
       dateLabel:'Semana '+week,
       ownerLabel:String(ownerLabel || 'Usuario VIGÍA'),
       status:'DRAFT',
-      statusLabel:'MONITOR · SEMANA ABIERTA',
+      statusLabel:snapshot.closed?'MONITOR · CERRADA':'MONITOR · CICLO ACTIVO',
       activeItems:rows,
       items:rows,
       source:'monitor-weekly-review',
