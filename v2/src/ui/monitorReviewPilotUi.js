@@ -552,6 +552,50 @@ function renderExtras(){
     '<label>Nota (opcional)<textarea name="notes" maxlength="500" rows="2"></textarea></label>'+
     '<button class="mp-button mp-primary" style="margin-top:15px" type="submit">+ Guardar extra</button></form>');
 }
+function renderAsking(){
+  const asked=selectedItems().filter(x=>x.decision==='ASK');
+  const printer=asked.length
+    ?button('🖨 Imprimir Preguntar · 1 copia','monitor-print',
+      {cls:'mp-button mp-primary',attrs:'data-mp-kind="INQUIRY"'})
+    :'';
+  const rows=asked.map(item=>{
+    const id=item.kind==='PRODUCT'?item.productId:null;
+    return '<div class="mp-row"><div><strong>'+esc(item.name)+'</strong>'+
+      '<div class="mp-muted">'+esc(item.category)+' · '+esc(item.notes||'Sin observación')+'</div></div>'+
+      (id?button('Resolver / Cambiar decisión','search-jump',{attrs:'data-mp-id="'+esc(id)+'"'}):'')+'</div>';
+  }).join('');
+  return panel('Lista para Preguntar ('+asked.length+')',
+    '<p class="mp-muted">Productos por consultar en producción. Esta lista no modifica stock ni entra todavía a Comprar/Pedir. Imprime una sola copia con el mismo formato 80 mm.</p>'+
+    '<div class="mp-inline">'+printer+'</div>'+
+    (rows||'<p>No hay productos por preguntar. Puedes cerrar cuando también estén resueltos todos los pendientes.</p>')+
+    '<p class="mp-muted">Después de consultar, abre el producto y cambia su decisión a Comprar, Pedir o No hace falta.</p>');
+}
+function archivedSnapshot(detail){
+  return projectMonitorToNormal({
+    serverItems:detail.items||[],localState:null,
+    products:state.products,categories:state.categories,
+    weekStart:state.week,round:detail.round
+  });
+}
+function renderHistory(){
+  const archives=state.archives||[];
+  const cards=archives.map(a=>'<div class="mp-row"><div><strong>Ciclo '+esc(a.round)+'</strong>'+
+    '<div class="mp-muted">Cerrado: '+esc(a.closedAt||'')+
+    ' · Comprar '+esc(a.counts?.buy||0)+' · Pedir '+esc(a.counts?.order||0)+'</div></div>'+
+    button('Ver listas guardadas','history-view',{attrs:'data-mp-round="'+esc(a.round)+'"'})+'</div>').join('');
+  let detail='';
+  if(state.archiveDetail){
+    const snapshot=archivedSnapshot(state.archiveDetail);
+    const lists=buildMonitorNativeLists({...snapshot,closed:true},{ownerLabel:pilotOwnerLabel()});
+    detail='<h3>Listas archivadas · Ciclo '+esc(state.archiveDetail.round)+'</h3>'+
+      '<p class="mp-muted">Archivo de solo lectura. No puedes cambiar decisiones de un ciclo cerrado.</p>'+
+      '<div class="v6p-ticket-preview mp-ticket-grid">'+lists.map(list=>
+        list.items.length?renderProcurementTickets({list,businessName:pilotBusinessName()}):'').join('')+'</div>';
+  }
+  return panel('Historial de ciclos cerrados',
+    '<p class="mp-muted">Cada cierre conserva las decisiones y tickets sin mezclar ciclos nuevos.</p>'+
+    (cards||'<p>No se han cerrado ciclos de esta semana o no hay conexión para consultar el historial.</p>')+detail);
+}
 function renderLists(){
   const rows=selectedItems();
   const snapshot={
