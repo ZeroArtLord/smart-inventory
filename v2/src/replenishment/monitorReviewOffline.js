@@ -131,7 +131,18 @@ async function runSync(key,options,request,isOnline) {
     await update(key,options,current=>{
       const nextRemote={};
       for(const row of answer.items||[]){
-        if(row?.itemKey)nextRemote[row.itemKey]=row;
+        if(!row?.itemKey)continue;
+        // Una respuesta GET atrasada nunca debe deshacer el ACK de un PUT
+        // mas reciente, incluso si coincide con una navegacion rapida.
+        const confirmed=current.remote[row.itemKey];
+        nextRemote[row.itemKey]=confirmed &&
+          Number(confirmed.version||0)>Number(row.version||0) ? confirmed : row;
+      }
+      // Tampoco eliminar un ACK que llego mientras se esperaba este GET.
+      for(const [key,confirmed] of Object.entries(current.remote)){
+        if(!nextRemote[key] && Number(confirmed.version||0)>0){
+          nextRemote[key]=confirmed;
+        }
       }
       // Se conserva cada edición local PENDING/CONFLICT aunque el servidor difiera.
       current.remote=nextRemote;
