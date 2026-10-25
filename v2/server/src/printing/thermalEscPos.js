@@ -140,12 +140,13 @@ export function buildCalibrationJob(configInput = {}) {
 export function buildProcurementJob(configInput, listInput) {
   const config = normalizeThermalConfig(configInput);
   const list = normalizePrintList(listInput);
-  const copies = list.kind === 'ORDER'
-    ? ['COPIA PEDIDO / PROVEEDOR', 'COPIA DEPOSITO']
-    : ['COPIA CHOFER', 'COPIA DEPOSITO'];
-  const title = list.kind === 'ORDER'
-    ? 'LISTA DE PEDIDOS'
-    : 'LISTA DE COMPRAS';
+  const copies = list.kind === 'INQUIRY'
+    ? ['COPIA UNICA · CONSULTA']
+    : list.kind === 'ORDER'
+      ? ['COPIA PEDIDO / PROVEEDOR', 'COPIA DEPOSITO']
+      : ['COPIA CHOFER', 'COPIA DEPOSITO'];
+  const title = list.kind === 'INQUIRY' ? 'LISTA PARA PREGUNTAR'
+    : list.kind === 'ORDER' ? 'LISTA DE PEDIDOS' : 'LISTA DE COMPRAS';
   const writer = new EscPosWriter(config);
 
   for (const copyLabel of copies) {
@@ -217,7 +218,7 @@ export function buildSupplyJob(configInput, supplyInput) {
 
 export function normalizePrintList(input = {}) {
   const kind = String(input.kind || '').trim().toUpperCase();
-  if (!['PURCHASE', 'ORDER'].includes(kind)) {
+  if (!['PURCHASE', 'ORDER', 'INQUIRY'].includes(kind)) {
     throw validationError('Tipo de lista inválido');
   }
 
