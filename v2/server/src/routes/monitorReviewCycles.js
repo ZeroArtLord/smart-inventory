@@ -41,6 +41,22 @@ export async function requireActiveMonitorRound(client,workspace,week,expectedRo
   return currentRound;
 }
 
+monitorReviewCycleRouter.get('/review-history',async(req,res,next)=>{
+  try{
+    authorized(req.auth,false);
+    const r=await pool.query(
+      `SELECT week_start::text AS week_start,round_number,
+              closed_at,total_products,counts
+       FROM monitor_review_archives WHERE workspace_id=$1
+       ORDER BY closed_at DESC LIMIT 100`,[req.auth.workspaceId]);
+    res.set('Cache-Control','no-store').json({
+      ok:true,archives:r.rows.map(x=>({
+        weekStart:x.week_start,round:x.round_number,closedAt:x.closed_at,
+        totalProducts:x.total_products,counts:x.counts
+      }))
+    });
+  }catch(e){next(e);}
+});
 monitorReviewCycleRouter.get('/reviews/:weekStart/history',async(req,res,next)=>{
   try{
     authorized(req.auth,false);
@@ -79,7 +95,8 @@ monitorReviewCycleRouter.get('/reviews/:weekStart/history/:round',async(req,res,
         description:x.description,decision:x.decision,
         quantity:x.quantity==null?null:Number(x.quantity),
         unit:x.unit,notes:x.notes,deleted:x.deleted,
-        version:x.version,updatedAt:x.updated_at
+        version:x.version,updatedAt:x.updated_at,
+        archivedName:x.archive_name,archivedCategory:x.archive_category
       }))
     });
   }catch(e){next(e);}
@@ -119,9 +136,13 @@ monitorReviewCycleRouter.post('/reviews/:weekStart/close',async(req,res,next)=>{
       }
       const total=products.rows[0].total;
       const all=await client.query(
-        `SELECT * FROM monitor_weekly_review_items
-         WHERE workspace_id=$1 AND week_start=$2::date ORDER BY item_key
-         FOR UPDATE`,[req.auth.workspaceId,week]);
+        `SELECT m.*, COALESCE(p.name,m.description) AS archive_name,
+                COALESCE(c.name,'SIN CATEGORÍA') AS archive_category
+         FROM monitor_weekly_review_items m
+         LEFT JOIN products p ON p.workspace_id=m.workspace_id AND p.id=m.product_id
+         LEFT JOIN categories c ON c.workspace_id=p.workspace_id AND c.id=p.category_id
+         WHERE m.workspace_id=$1 AND m.week_start=$2::date
+         ORDER BY m.item_key FOR UPDATE OF m`,[req.auth.workspaceId,week]);
       if(!all.rowCount)throw error('No hay revisión para cerrar','MONITOR_CYCLE_EMPTY',409);
       const counts={buy:0,order:0,ask:0,notNeeded:0};
       for(const row of all.rows){
