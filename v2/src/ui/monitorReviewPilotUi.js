@@ -599,7 +599,7 @@ function renderHistory(){
 function renderLists(){
   const rows=selectedItems();
   const snapshot={
-    source:'monitor-weekly-review',weekStart:state.week,
+    source:'monitor-weekly-review',weekStart:state.week,round:state.options?.round||1,
     lists:{
       PURCHASE:rows.filter(x=>x.decision==='BUY').map(x=>({
         itemKey:x.itemKey,kind:x.kind,productId:x.productId,
@@ -607,6 +607,11 @@ function renderLists(){
         unit:x.unit,notes:x.notes
       })),
       ORDER:rows.filter(x=>x.decision==='ORDER').map(x=>({
+        itemKey:x.itemKey,kind:x.kind,productId:x.productId,
+        description:x.name,category:x.category,quantity:x.quantity,
+        unit:x.unit,notes:x.notes
+      })),
+      INQUIRY:rows.filter(x=>x.decision==='ASK').map(x=>({
         itemKey:x.itemKey,kind:x.kind,productId:x.productId,
         description:x.name,category:x.category,quantity:x.quantity,
         unit:x.unit,notes:x.notes
@@ -622,7 +627,8 @@ function renderLists(){
     : '<p class="mp-muted">Mismo formato VIGÍA normal (80 mm). Imprimir no cierra ni altera la semana.</p>';
   const buttons=state.printing?'<p>Enviando a impresora…</p>':
     button('🖨 Imprimir compras','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="PURCHASE"'})+
-    button('🖨 Imprimir pedidos','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="ORDER"'});
+    button('🖨 Imprimir pedidos','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="ORDER"'})+
+    button('🖨 Preguntar · 1 copia','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="INQUIRY"'});
   return panel('Mis listas semanales',
     '<div class="mp-no-print">'+warning+'<div class="mp-inline">'+buttons+'</div></div>'+
     '<div class="v6p-ticket-preview mp-ticket-grid">'+preview+'</div>');
@@ -638,7 +644,7 @@ function pilotOwnerLabel(){
 }
 async function pilotDirectPrint(kind){
   if(state.printing)return;
-  if(!['PURCHASE','ORDER'].includes(kind))throw new Error('Tipo de lista inválido');
+  if(!['PURCHASE','ORDER','INQUIRY'].includes(kind))throw new Error('Tipo de lista inválido');
   if(!state.options||!state.session)throw new Error('No hay sesión de Monitor');
   state.printing=true;state.error='';paint();
   try {
@@ -647,6 +653,8 @@ async function pilotDirectPrint(kind){
       session:state.session,products:state.products,categories:state.categories,
       weekStart:state.week,syncBeforeFetch:true
     });
+    if(Number(snapshot.round||1)!==Number(state.options.round))
+      throw new Error('El servidor tiene otro ciclo activo. Recarga antes de imprimir.');
     assertMonitorPrintable(snapshot);
     const list=buildMonitorNativeLists(snapshot,{ownerLabel:pilotOwnerLabel()})
       .find(x=>x.kind===kind);
