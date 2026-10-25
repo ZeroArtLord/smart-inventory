@@ -10,6 +10,8 @@ import { renderProcurementTickets } from './procurementWorkspaceV6Print.js';
 import { buildMonitorNativeLists } from '../replenishment/monitorNativeTicketAdapter.js';
 import { fetchMonitorMirrorForNormal, assertMonitorPrintable } from './monitorNormalMirrorUi.js';
 import { printThermalProcurementList } from '../printing/thermalPrinterClient.js';
+import { searchMonitorProducts } from '../replenishment/monitorProductSearch.js';
+import { projectMonitorToNormal } from '../replenishment/monitorToNormalMirror.js';
 import {
   readPilotPosition, savePilotPosition, restorePilotPosition
 } from './monitorPilotPosition.js';
@@ -194,7 +196,7 @@ function progress(){
     pending:all.PENDING.length,
     buying:all.BUY.length,ordering:all.ORDER.length,asking:all.ASK.length,
     remaining:all.UNREVIEWED.length,
-    incomplete:selectedItems().filter(x=>x.quantity==null).length
+    incomplete:selectedItems().filter(x=>['BUY','ORDER'].includes(x.decision)&&x.quantity==null).length
   };
 }
 function esc(x){
@@ -248,7 +250,7 @@ function paint(){
 }
 function renderHome(){
   const p=progress();
-  const cards=[['Revisados',p.reviewed],['Pendientes',p.pending],['Comprar',p.buying],['Pedir',p.ordering]];
+  const cards=[['Revisados',p.reviewed],['Pendientes',p.pending],['Preguntar',p.asking],['Comprar',p.buying],['Pedir',p.ordering]];
   const stats='<div class="mp-kpis">'+cards.map(([k,v])=>
     '<div class="mp-kpi"><span class="mp-muted">'+k+'</span><b>'+v+'</b></div>').join('')+'</div>';
   const sections=groups().map(group=>{
@@ -259,7 +261,12 @@ function renderHome(){
       '<span>'+done+' / '+group.products.length+' revisados · '+pending+' pendientes</span>'+
       '<div class="mp-progress"><div style="width:'+(group.products.length?Math.round(done*100/group.products.length):0)+'%"></div></div></button>';
   }).join('');
-  return panel('Tu semana de trabajo',stats+
+  const complete=p.remaining===0&&p.pending===0&&p.asking===0&&p.reviewed===p.total;
+  const closeInfo=complete
+    ?'<p class="mp-warning">Revisión completada. Guarda esta lista y empieza otra sin perder el historial.</p>'+
+      button('✓ Cerrar esta revisión e iniciar una nueva','close-round',{cls:'mp-button mp-primary'})
+    :'<p class="mp-muted">Para cerrar: resuelve los productos sin revisar, Pendientes y Preguntar.</p>';
+  return panel('Tu ciclo de trabajo · '+(state.options?.round||1),stats+closeInfo+
     '<p class="mp-muted">Puedes revisar todo el catálogo. Las recomendaciones de stock no ocultan ningún producto.</p>'+
     '<h3>Categorías</h3><div class="mp-grid">'+sections+'</div>');
 }
@@ -281,6 +288,7 @@ function renderReview(){
       button('← Volver a Pendientes','back-pending')+'</div>'
     : '';
   return panel('Revisión por categoría',pendingIndicator+
+    renderProductSearch()+
     '<div class="mp-form">'+categorySelector+'<div><span class="mp-muted">Avance en categoría</span>'+
     '<h3>'+esc(state.cursor+1)+' de '+group.products.length+'</h3></div></div>'+
     '<div class="mp-card"><span class="mp-chip">'+esc(group.name)+'</span>'+
@@ -293,7 +301,8 @@ function renderReview(){
     '<p class="mp-muted">Decisión guardada: '+esc(decisionLabel(row?.decision||'UNREVIEWED'))+'</p>'+
     '<div class="mp-actions">'+[
       ['Comprar','BUY','mp-buy'],['Pedir','ORDER','mp-order'],
-      ['No hace falta','NOT_NEEDED','mp-none'],['Pendiente / Saltar','PENDING','mp-pending']
+      ['No hace falta','NOT_NEEDED','mp-none'],['Pendiente / Saltar','PENDING','mp-pending'],
+      ['Preguntar','ASK','mp-ask']
     ].map(([label,choice,cls])=>button(label,'choose',{cls:'mp-action '+cls,attrs:'data-mp-choice="'+choice+'"'})).join('')+'</div>'+
     '<div class="mp-inline">'+button('← Anterior','previous')+button('Siguiente →','next')+'</div></div>'
   );
@@ -342,7 +351,7 @@ function renderPending(){
       '</div></div>'+button('Revisar ahora','jump',{attrs:'data-mp-id="'+esc(p.id)+'"'})+'</div>').join(''));
 }
 function renderSelected(){
-  const items=selectedItems();
+  const items=selectedItems().filter(x=>['BUY','ORDER'].includes(x.decision));
   if(!items.length)return panel('Seleccionados','<p>Todavía no has marcado productos para Comprar o Pedir.</p>'+
     button('+ Agregar un extra','page',{attrs:'data-mp-page="extras"'}));
   return panel('Seleccionados ('+items.length+')',
@@ -582,7 +591,7 @@ async function pilotDirectPrint(kind){
   }
 }
 function decisionLabel(d){return ({
-  BUY:'Comprar',ORDER:'Pedir',PENDING:'Pendiente',NOT_NEEDED:'No hace falta',UNREVIEWED:'Sin revisar'
+  BUY:'Comprar',ORDER:'Pedir',ASK:'Preguntar',PENDING:'Pendiente',NOT_NEEDED:'No hace falta',UNREVIEWED:'Sin revisar'
 })[d]||d;}
 function weekMonday(){
   const d=new Date();const weekday=(d.getDay()+6)%7;d.setDate(d.getDate()-weekday);
