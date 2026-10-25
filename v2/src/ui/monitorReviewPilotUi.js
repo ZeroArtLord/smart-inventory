@@ -562,7 +562,12 @@ function renderAsking(){
     const id=item.kind==='PRODUCT'?item.productId:null;
     return '<div class="mp-row"><div><strong>'+esc(item.name)+'</strong>'+
       '<div class="mp-muted">'+esc(item.category)+' · '+esc(item.notes||'Sin observación')+'</div></div>'+
-      (id?button('Resolver / Cambiar decisión','search-jump',{attrs:'data-mp-id="'+esc(id)+'"'}):'')+'</div>';
+      (id?button('Resolver / Cambiar decisión','search-jump',{attrs:'data-mp-id="'+esc(id)+'"'}):
+        '<div class="mp-inline">'+
+        button('Comprar','resolve-ask-extra',{attrs:'data-mp-item="'+esc(item.itemKey)+'" data-mp-choice="BUY"'})+
+        button('Pedir','resolve-ask-extra',{attrs:'data-mp-item="'+esc(item.itemKey)+'" data-mp-choice="ORDER"'})+
+        button('No hace falta · quitar extra','resolve-ask-extra',{attrs:'data-mp-item="'+esc(item.itemKey)+'" data-mp-choice="REMOVE"'})+
+        '</div>')+'</div>';
   }).join('');
   return panel('Lista para Preguntar ('+asked.length+')',
     '<p class="mp-muted">Productos por consultar en producción. Esta lista no modifica stock ni entra todavía a Comprar/Pedir. Imprime una sola copia con el mismo formato 80 mm.</p>'+
@@ -687,6 +692,25 @@ async function handleClick(event){
   if(!node)return;
   event.preventDefault();
   const action=node.dataset.mpAction;
+  if(action==='resolve-ask-extra'){
+    // Resolver o quitar consultas de extras sin cambiar el inventario.
+    const item=selectedItems().find(x=>x.kind==='EXTRA'&&
+      x.itemKey===node.dataset.mpItem&&x.decision==='ASK');
+    if(!item)return;
+    const choice=node.dataset.mpChoice;
+    if(!['BUY','ORDER','REMOVE'].includes(choice))throw new Error('Decisión de consulta inválida');
+    await localChange({
+      kind:'EXTRA',itemId:item.itemKey.slice(6),description:item.name,
+      decision:choice==='REMOVE'?'ASK':choice,
+      quantity:item.quantity,unit:item.unit,notes:item.notes||'',
+      deleted:choice==='REMOVE'
+    });
+    state.page='ask';
+    state.message=choice==='REMOVE'?'Extra retirado de la lista Preguntar.':
+      'Extra enviado a '+(choice==='BUY'?'Comprar.':'Pedir.');
+    paint();
+    return;
+  }
   if(action==='search-jump'){
     const id=node.dataset.mpId;
     const group=groups().find(x=>x.products.some(p=>String(p.id)===String(id)));
