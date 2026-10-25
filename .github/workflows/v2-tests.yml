@@ -341,6 +341,9 @@ jobs:
       - name: Verify VIGIA Monitor supply persistence and consumption
         run: node scripts/monitorSupplySmoke.js
 
+      - name: Verify review cycle closure, immutable archive and no stock changes
+        run: node scripts/monitorReviewCyclesSmoke.js
+
       - name: Restart API
         run: |
           kill "$(cat /tmp/smart-inventory-v2.pid)"
