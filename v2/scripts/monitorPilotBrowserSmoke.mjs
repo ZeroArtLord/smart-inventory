@@ -374,7 +374,7 @@ try{
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Cinta métrica');
   await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
   // Extras también pueden empezar como Preguntar y luego pasar a Pedido.
-  await page.locator('#vigiaMonitorPilot [data-mp-page="extras"]').click();
+  await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Etiqueta consulta');
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="decision"]').selectOption('ASK');
   await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
