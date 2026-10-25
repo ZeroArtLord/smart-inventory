@@ -16,6 +16,7 @@ import { authRouter } from './routes/auth.js';
 import { thermalPrinterRouter } from './routes/thermalPrinter.js';
 import { areasRouter } from './routes/areas.js';
 import { monitorReviewRouter } from './routes/monitorReview.js';
+import { monitorReviewCycleRouter } from './routes/monitorReviewCycles.js';
 import { monitorSupplyRouter } from './routes/monitorSupply.js';
 import { monitorPilotGate } from './middleware/monitorPilotGate.js';
 
@@ -166,6 +167,7 @@ app.use(
   }),
   authContext,
   monitorPilotGate,
+  monitorReviewCycleRouter,
   monitorReviewRouter,
   monitorSupplyRouter
 );
