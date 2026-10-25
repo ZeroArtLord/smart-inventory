@@ -687,6 +687,52 @@ async function handleClick(event){
   if(!node)return;
   event.preventDefault();
   const action=node.dataset.mpAction;
+  if(action==='search-jump'){
+    const id=node.dataset.mpId;
+    const group=groups().find(x=>x.products.some(p=>String(p.id)===String(id)));
+    if(!group)return;
+    state.currentCategory=group.id;
+    state.cursor=group.products.findIndex(p=>String(p.id)===String(id));
+    state.pendingReviewMode=false;
+    state.searchQuery='';
+    state.page='review';state.message='';
+    await persistPilotCursor();paint();
+    shell.querySelector('#mpQuantity')?.focus();
+    return;
+  }
+  if(action==='history-view'){
+    const round=Number(node.dataset.mpRound);
+    state.archiveDetail=await getMonitorReviewArchive(state.options,round);
+    state.error='';paint();return;
+  }
+  if(action==='close-round'){
+    if(state.closing)return;
+    const p=progress();
+    if(p.remaining||p.pending||p.asking||p.reviewed!==p.total)
+      throw new Error('No se puede cerrar: faltan productos por resolver o por preguntar.');
+    if(state.local?.pendingCount||state.local?.conflictCount)
+      throw new Error('Hay cambios locales que debes sincronizar antes de cerrar.');
+    const accepted=window.confirm('¿Cerrar el ciclo '+state.options.round+
+      ' y guardar la lista en Historial? Se iniciará una revisión VACÍA para volver a comenzar.');
+    if(!accepted)return;
+    state.closing=true;
+    try{
+      await flushAllSelected();
+      const result=await syncMonitorReview(state.options);
+      if(result.network!=='ONLINE'||result.pendingCount||result.conflictCount)
+        throw new Error('No se puede cerrar sin confirmación del servidor. Los datos locales siguen guardados.');
+      const closed=await closeMonitorReviewRound(state.options);
+      clearSelectedRecords();
+      state.options={...state.options,round:closed.currentRound};
+      state.local=await readMonitorReview(state.options);
+      state.currentCategory=null;state.cursor=0;
+      state.pendingReviewMode=false;state.archiveDetail=null;state.searchQuery='';
+      state.page='home';state.archives=[];
+      state.message='Ciclo '+closed.closedRound+' archivado. Ya puedes revisar nuevamente los '+p.total+' productos.';
+      state.error='';paint();
+    }finally{state.closing=false;}
+    return;
+  }
   if(action==='close'){
     try{await flushAllSelected();}catch(error){
       showSelectedStatus(shell.querySelector('.mp-selected-row'),'⚠ No se pudo guardar: '+error.message,'error');return;
@@ -704,7 +750,16 @@ async function handleClick(event){
     clearSelectedRecords();
     state.page=node.dataset.mpPage;
     state.pendingReviewMode=false;
-    state.message='';paint();return;
+    state.message='';
+    if(state.page==='history'){
+      try{
+        const data=await listMonitorReviewArchives(state.options);
+        state.archives=data.archives||[];
+      }catch{
+        state.message='El historial del servidor estará disponible cuando la VPN tenga conexión; no se borró ninguna lista.';
+      }
+    }
+    paint();return;
   }
   if(action==='category'){
     state.pendingReviewMode=false;
