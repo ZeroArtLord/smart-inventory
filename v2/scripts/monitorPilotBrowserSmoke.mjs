@@ -373,6 +373,21 @@ try{
   await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Cinta métrica');
   await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
+  // Extras también pueden empezar como Preguntar y luego pasar a Pedido.
+  await page.locator('#vigiaMonitorPilot [data-mp-page="extras"]').click();
+  await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Etiqueta consulta');
+  await page.locator('#vigiaMonitorPilot #mpExtraForm [name="decision"]').selectOption('ASK');
+  await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
+  await page.locator('#vigiaMonitorPilot [data-mp-page="ask"]').click();
+  const askedExtra=page.locator('#vigiaMonitorPilot .mp-row').filter({hasText:'Etiqueta consulta'});
+  await askedExtra.waitFor();
+  await askedExtra.locator('[data-mp-action="resolve-ask-extra"][data-mp-choice="ORDER"]').click();
+  await page.waitForFunction(async()=>{
+    const mod=await import('/src/replenishment/monitorReviewOffline.js');
+    const r=await mod.readMonitorReview({workspaceId:'workspace-browser-lab',
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
+    return r.items.some(x=>x.kind==='EXTRA'&&x.description==='Etiqueta consulta'&&x.decision==='ORDER');
+  });
   await page.locator('#vigiaMonitorPilot [data-mp-page="lists"]').click();
   await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().waitFor();
   const nativeTicketText=await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().innerText();
