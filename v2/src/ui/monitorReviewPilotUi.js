@@ -14,7 +14,9 @@ import {
   readPilotPosition, savePilotPosition, restorePilotPosition
 } from './monitorPilotPosition.js';
 import {
-  readMonitorReview, queueMonitorReviewChange, syncMonitorReview
+  readMonitorReview, queueMonitorReviewChange, syncMonitorReview,
+  resolveMonitorActiveRound, closeMonitorReviewRound,
+  listMonitorReviewArchives, getMonitorReviewArchive
 } from '../replenishment/monitorReviewOffline.js';
 
 const root=document.getElementById('app');
@@ -24,7 +26,7 @@ const state={
   visible:false,loading:false,page:'home',week:weekMonday(),
   currentCategory:null,cursor:0,session:null,options:null,
   products:[],categories:[],local:null,message:'',error:'',
-  pendingReviewMode:false,printing:false
+  pendingReviewMode:false,printing:false,searchQuery:'',archives:[],archiveDetail:null,closing:false
 };
 if(root){
   launcher=document.createElement('button');
@@ -45,7 +47,7 @@ if(root){
   shell.addEventListener('click',event=>handleClick(event).catch(showError));
   shell.addEventListener('submit',event=>handleSubmit(event).catch(showError));
   shell.addEventListener('change',event=>handleChange(event).catch(showError));
-  shell.addEventListener('input',event=>handleSelectedInput(event));
+  shell.addEventListener('input',event=>{handleSelectedInput(event);handleProductSearch(event);});
   shell.addEventListener('focusout',event=>handleSelectedBlur(event));
   shell.addEventListener('keydown',event=>handleSelectedKeydown(event).catch(showError));
   window.addEventListener('online',()=>{if(state.visible)pushAndRefresh().catch(showError);});
@@ -75,12 +77,15 @@ async function openPilot(){
     ]);
     if(!session?.workspaceId || !session?.userId)throw new Error('Sesión válida requerida');
     state.session=session;
-    state.options={workspaceId:session.workspaceId,userId:session.userId,weekStart:state.week};
+    const baseOptions={workspaceId:session.workspaceId,userId:session.userId,weekStart:state.week};
+    const cycle=await resolveMonitorActiveRound(baseOptions);
+    state.options={...baseOptions,round:cycle.round};
     state.products=products.filter(p=>p&&p.active!==false&&p.id).sort((a,b)=>
       String(a.name).localeCompare(String(b.name),'es'));
     state.categories=categories.filter(c=>c&&c.active!==false&&c.id)
       .sort((a,b)=>String(a.name).localeCompare(String(b.name),'es'));
     state.local=await readMonitorReview(state.options);
+    state.archives=[];
     state.pendingReviewMode=false;
     const savedPosition=await readPilotPosition(state.options);
     const position=restorePilotPosition(savedPosition,groups());
@@ -160,7 +165,7 @@ function groups(){
     String(a.name).localeCompare(String(b.name),'es'));
 }
 function productChoices(){
-  const result={BUY:[],ORDER:[],PENDING:[],UNREVIEWED:[],NOT_NEEDED:[]};
+  const result={BUY:[],ORDER:[],PENDING:[],UNREVIEWED:[],NOT_NEEDED:[],ASK:[]};
   for(const p of state.products){
     const item=findRow(p.id);
     const key=item?.decision||'UNREVIEWED';
@@ -171,7 +176,7 @@ function productChoices(){
 function selectedItems(){
   const rows=[];
   for(const item of state.local?.items||[]){
-    if(item.deleted||!['BUY','ORDER'].includes(item.decision))continue;
+    if(item.deleted||!['BUY','ORDER','ASK'].includes(item.decision))continue;
     const extra=item.kind==='EXTRA';
     const p=extra?null:state.products.find(x=>x.id===item.productId);
     if(!extra&&!p)continue;
@@ -187,7 +192,7 @@ function progress(){
     total:state.products.length,
     reviewed:all.BUY.length+all.ORDER.length+all.NOT_NEEDED.length,
     pending:all.PENDING.length,
-    buying:all.BUY.length,ordering:all.ORDER.length,
+    buying:all.BUY.length,ordering:all.ORDER.length,asking:all.ASK.length,
     remaining:all.UNREVIEWED.length,
     incomplete:selectedItems().filter(x=>x.quantity==null).length
   };
@@ -213,7 +218,8 @@ function paint(){
   if(!state.visible)return;
   const tabs=[
     ['home','Inicio'],['review','Revisar'],['pending','Pendientes'],
-    ['selected','Seleccionados'],['extras','Extras'],['lists','Mis listas']
+    ['selected','Seleccionados'],['ask','Preguntar'],['extras','Extras'],
+    ['lists','Mis listas'],['history','Historial']
   ];
   const nav=tabs.map(([id,label])=>'<button type="button" data-mp-action="page" data-mp-page="'+id+
     '" '+(state.page===id?'aria-current="page"':'')+'>'+label+'</button>').join('');
@@ -224,11 +230,13 @@ function paint(){
     if(state.page==='review')content=renderReview();
     if(state.page==='pending')content=renderPending();
     if(state.page==='selected')content=renderSelected();
+    if(state.page==='ask')content=renderAsking();
+    if(state.page==='history')content=renderHistory();
     if(state.page==='extras')content=renderExtras();
     if(state.page==='lists')content=renderLists();
   }
   shell.innerHTML='<div class="mp-shell"><header class="mp-head"><div><small>PILOTO AISLADO · SIN MOVIMIENTOS DE STOCK</small>'+
-    '<h1>VIGÍA Monitor</h1><p>Revisión semanal '+esc(state.week)+' · '+
+    '<h1>VIGÍA Monitor</h1><p>Semana '+esc(state.week)+' · Ciclo '+esc(state.options?.round||1)+' · '+
     esc(state.products.length)+' productos del catálogo</p></div>'+
     button('Cerrar ✕','close',{cls:'mp-close'})+'</header>'+
     '<nav class="mp-nav mp-no-print" aria-label="Secciones del piloto">'+nav+'</nav>'+
