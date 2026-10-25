@@ -337,6 +337,19 @@ try{
     const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
     return record.items.find(x=>x.kind==='PRODUCT'&&x.decision==='BUY');
   });
+  if(beforeNavSaved?.quantity!==4){
+    const debug=await page.evaluate(async()=>{
+      const m=await import('/src/replenishment/monitorReviewOffline.js');
+      const weeks=['2026-10-12','2026-10-19'];
+      return await Promise.all(weeks.map(async weekStart=>{
+        const r=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
+          userId:'worker-browser-lab',weekStart});
+        return {weekStart,items:r.items.map(x=>({itemKey:x.itemKey,decision:x.decision,quantity:x.quantity,version:x.version})),
+          pending:r.pendingCount,conflicts:r.conflictCount};
+      }));
+    });
+    console.log('MONITOR_AUTOSAVE_NAV_DIAGNOSTIC',JSON.stringify(debug));
+  }
   assert.equal(beforeNavSaved?.quantity,4,'Autosave must flush when leaving selected');
   await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="selected"]').click();
   const returnRow=page.locator('#vigiaMonitorPilot .mp-selected-row').first();
