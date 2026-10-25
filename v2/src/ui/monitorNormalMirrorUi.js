@@ -29,11 +29,12 @@ export async function fetchMonitorMirrorForNormal({ session, products, categorie
     throw new Error('La respuesta Monitor no corresponde a esta sesión');
   }
   // Si IndexedDB falla, los datos remotos siguen intactos y visibles.
+  const round=Number(response.currentRound||1);
   let localState = null;
-  try { localState = await readMonitorReview({ workspaceId, userId, weekStart }); }
+  try { localState = await readMonitorReview({ workspaceId, userId, weekStart, round }); }
   catch (error) { console.warn('Vista local Monitor no disponible', error); }
   return projectMonitorToNormal({
-    serverItems: response.items || [], localState, products, categories, weekStart
+    serverItems: response.items || [], localState, products, categories, weekStart, round
   });
 }
 
@@ -54,7 +55,7 @@ export function assertMonitorPrintable(snapshot) {
   }
   const buy = snapshot.lists.PURCHASE || [];
   const order = snapshot.lists.ORDER || [];
-  if (!buy.length && !order.length) {
+  if (!buy.length && !order.length && !(snapshot.lists.INQUIRY||[]).length) {
     throw new Error('No hay productos seleccionados para imprimir');
   }
   return true;
@@ -92,7 +93,7 @@ export function renderMonitorMirrorForNormal(snapshot, { loading = false, error 
   const cards=nativeLists.map(x=>listCard(x,{monitor:true})).join('');
   return header +
     '<p style="margin:12px 0">Semana ' + escapeHtml(snapshot.weekStart) +
-    ' · Comprar: <b>' + list.PURCHASE.length + '</b> · Pedir: <b>' + list.ORDER.length + '</b>' +
+    ' · Ciclo <b>' + (snapshot.round||1) + '</b> · Comprar: <b>' + list.PURCHASE.length + '</b> · Pedir: <b>' + list.ORDER.length + '</b> · Preguntar: <b>' + (list.INQUIRY||[]).length + '</b>' +
     ' · Revisados: <b>' + snapshot.counts.reviewed + ' / ' + snapshot.counts.totalProducts + '</b>' +
     ' · Pendientes: <b>' + snapshot.counts.pending + '</b></p>' +
     warning + missing +
