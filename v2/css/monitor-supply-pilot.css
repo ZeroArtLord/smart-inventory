@@ -1,0 +1,52 @@
+/* VIGÍA Monitor — pilotos de surtidos/reportes, independientes de las vistas V2 */
+.vs-launcher{position:fixed;right:14px;bottom:18px;z-index:310;border:0;border-radius:16px;background:#174d66;color:white;padding:14px 19px;box-shadow:0 8px 22px #19304455;font:700 14px system-ui;cursor:pointer}
+#vsReportLauncher{background:#245b75}
+.vs-launcher[hidden],#vigiaMonitorSupplyPilot[hidden]{display:none!important}
+#vigiaMonitorSupplyPilot{position:fixed;inset:0;z-index:520;background:#f4f7fb;color:#23394b;overflow-y:auto;font:15px/1.5 system-ui,sans-serif;overscroll-behavior:contain}
+#vigiaMonitorSupplyPilot *{box-sizing:border-box}
+#vigiaMonitorSupplyPilot .vs-wrapper{max-width:1060px;margin:auto;padding:22px}
+#vigiaMonitorSupplyPilot .vs-header{display:flex;align-items:start;justify-content:space-between;gap:14px;padding:23px;border-radius:18px;background:#143147;color:#fff}
+#vigiaMonitorSupplyPilot .vs-header h1{margin:2px 0;font-size:27px}
+#vigiaMonitorSupplyPilot .vs-header p{margin:0;color:#c4d6e1}
+#vigiaMonitorSupplyPilot button{font:inherit;cursor:pointer}
+#vigiaMonitorSupplyPilot .vs-toolbar,#vigiaMonitorSupplyPilot .vs-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:14px 0}
+#vigiaMonitorSupplyPilot .vs-card{background:#fff;border:1px solid #d9e4ed;border-radius:16px;margin:12px 0;padding:20px}
+#vigiaMonitorSupplyPilot .vs-card h2{margin:0 0 13px;font-size:21px}
+#vigiaMonitorSupplyPilot .vs-card h3{margin:20px 0 8px}
+#vigiaMonitorSupplyPilot .vs-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+#vigiaMonitorSupplyPilot label{display:block;font-size:14px;font-weight:700;margin-bottom:12px}
+#vigiaMonitorSupplyPilot input,#vigiaMonitorSupplyPilot textarea,#vigiaMonitorSupplyPilot select{font:16px system-ui;width:100%;margin-top:6px;padding:13px 12px;border:1px solid #b9ceda;border-radius:11px;background:#fff;color:#213a4d}
+#vigiaMonitorSupplyPilot input:focus-visible,#vigiaMonitorSupplyPilot button:focus-visible,#vigiaMonitorSupplyPilot select:focus-visible{outline:3px solid #2b96ce;outline-offset:2px}
+#vigiaMonitorSupplyPilot .vs-btn,#vigiaMonitorSupplyPilot .vs-primary{display:inline-block;padding:12px 16px;border:1px solid #b1c9d6;background:#fff;color:#214d65;border-radius:11px;font-weight:700;min-height:44px}
+#vigiaMonitorSupplyPilot .vs-primary{background:#146a5c;border-color:#146a5c;color:white}
+#vigiaMonitorSupplyPilot .vs-muted{font-size:13px;color:#62788c}
+#vigiaMonitorSupplyPilot .vs-line{padding:12px 0;border-bottom:1px solid #e4ebf1;display:flex;align-items:center;gap:12px;justify-content:space-between}
+#vigiaMonitorSupplyPilot .vs-line strong{display:block}
+#vigiaMonitorSupplyPilot .vs-line small{color:#647b8d;display:block}
+#vigiaMonitorSupplyPilot .vs-line:last-child{border:0}
+#vigiaMonitorSupplyPilot .vs-message,#vigiaMonitorSupplyPilot .vs-error{padding:13px;border-radius:11px;margin-top:12px}
+#vigiaMonitorSupplyPilot .vs-message{background:#e7f4ed;color:#145b47}
+#vigiaMonitorSupplyPilot .vs-error{background:#ffeded;color:#933232}
+#vigiaMonitorSupplyPilot .vs-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0}
+#vigiaMonitorSupplyPilot .vs-stats>div{background:#ecf2f7;padding:14px;border-radius:13px}
+#vigiaMonitorSupplyPilot .vs-stats b{display:block;font-size:23px}
+#vigiaMonitorSupplyPilot .vs-stats small{display:block;color:#617588}
+#vigiaMonitorSupplyPilot .vs-table-wrap{overflow-x:auto}
+#vigiaMonitorSupplyPilot table{width:100%;border-collapse:collapse}
+#vigiaMonitorSupplyPilot th,#vigiaMonitorSupplyPilot td{text-align:left;padding:10px 11px;border-bottom:1px solid #dae4ed;font-size:14px}
+#vigiaMonitorSupplyPilot th{background:#eef4f8}
+@media(max-width:670px){
+ .vs-launcher{right:9px;bottom:72px;padding:12px}
+ #vigiaMonitorSupplyPilot .vs-wrapper{padding:9px 9px 72px}
+ #vigiaMonitorSupplyPilot .vs-header{padding:16px;border-radius:13px}
+ #vigiaMonitorSupplyPilot .vs-header h1{font-size:21px}
+ #vigiaMonitorSupplyPilot .vs-header p{font-size:12px}
+ #vigiaMonitorSupplyPilot .vs-card{padding:14px;border-radius:13px}
+ #vigiaMonitorSupplyPilot .vs-fields{grid-template-columns:1fr;gap:2px}
+ #vigiaMonitorSupplyPilot .vs-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+ #vigiaMonitorSupplyPilot .vs-stats>div{padding:10px 7px}
+ #vigiaMonitorSupplyPilot .vs-stats b{font-size:22px}
+ #vigiaMonitorSupplyPilot .vs-stats small{font-size:11px}
+ #vigiaMonitorSupplyPilot .vs-header .vs-btn{padding:10px}
+ #vigiaMonitorSupplyPilot .vs-line{align-items:start}
+}

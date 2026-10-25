@@ -14,6 +14,124 @@ on:
       - ".github/workflows/v2-tests.yml"
 
 jobs:
+  # Validate the standalone GOD activation self-test on Windows.
+  windows-snapshot-parse:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Windows PowerShell 5.1 snapshot script parses
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          $path = "docs/VIGIA/VIGIA_HP_APP_SNAPSHOT_SAFE.ps1"
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+          Write-Host "VIGIA_WINDOWS_SNAPSHOT_SCRIPT_PARSE_PASS"
+
+      - name: Parse HP stage script with Windows PowerShell
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          $path = "docs/VIGIA/VIGIA_HP_MONITOR_STAGE_SAFE.ps1"
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+          Write-Host "VIGIA_HP_STAGE_PARSE_PASS"
+
+      - name: Execute SQL helper from Windows PowerShell with a mock driver
+        shell: powershell
+        run: |
+          $fixture = Join-Path $env:RUNNER_TEMP "vigia_sql_mock"
+          $modules = Join-Path $fixture "node_modules"
+          New-Item -ItemType Directory -Force -Path (Join-Path $modules "pg") | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $modules "dotenv") | Out-Null
+          '{"name":"vigia-mock","version":"1.0.0"}' | Set-Content -Encoding ASCII (Join-Path $fixture 'package.json')
+          'fixture' | Set-Content -Encoding ASCII (Join-Path $fixture '.env')
+          @'
+          module.exports={config(){process.env.DATABASE_URL='postgres://mock@127.0.0.1:5432/smart_inventory';return {parsed:{}}}};
+          '@ | Set-Content -Encoding ASCII (Join-Path $modules 'dotenv\index.js')
+          @'
+          module.exports={Client:class{
+            async connect(){}
+            async query(sql){
+              if(sql==='BEGIN TRANSACTION READ ONLY'||sql==='COMMIT')return {rows:[]};
+              if(sql.includes('AS monitor_mig'))return {rows:[{db:'smart_inventory',mig:21,monitor_mig:2,review_items:0,review_mutations:0,supply_deliveries:0}]};
+              if(sql.includes('AS migrations'))return {rows:[{db:'smart_inventory',migrations:21}]};
+              if(sql.includes("wm.role_code='GOD'")){
+                const god={user_id:'11111111-1111-4111-8111-111111111111',firebase_uid:'test_firebase_uid',display_name:'TEST GOD',workspace_id:'22222222-2222-4222-8222-222222222222',permissions:['*']};
+                return {rows:process.env.VIGIA_TEST_MULTIPLE_GODS?[god,god]:[god]};
+              }
+              return {rows:[{db:'smart_inventory',products:494,documents:132,lines:4196,movements:1019,sync:10075,audit:11370}]};
+            }
+            async end(){}
+          }};
+          '@ | Set-Content -Encoding ASCII (Join-Path $modules 'pg\index.js')
+          $env:VIGIA_SERVER_DIR = $fixture
+          $helper = 'docs/VIGIA/VIGIA_HP_MONITOR_DB_VERIFY_SAFE.cjs'
+          & node --check $helper
+          if($LASTEXITCODE -ne 0){ throw 'DB helper syntax invalid' }
+          $counts = & node $helper counts
+          if($LASTEXITCODE -ne 0 -or -not ($counts -match '^COUNTS=.*"products":494')){ throw 'Counts mode failed on Windows' }
+          $schema = & node $helper schema
+          if($LASTEXITCODE -ne 0 -or -not ($schema -match '^MONITOR_MIGRATIONS_21_PASS$')){ throw 'Schema mode failed on Windows' }
+          $godHelper = 'docs/VIGIA/VIGIA_HP_GOD_ID_READONLY.cjs'
+          & node --check $godHelper
+          if($LASTEXITCODE -ne 0){ throw 'GOD identity helper syntax invalid' }
+          $god = & node $godHelper
+          if($LASTEXITCODE -ne 0 -or -not ($god -match '^VIGIA_GOD_IDENTIFIED .*"firebaseLinked":true')){ throw 'GOD lookup failed on Windows' }
+          $env:VIGIA_TEST_MULTIPLE_GODS = '1'
+          $oldErrorPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          try {
+            $two = & node $godHelper 2>$null
+            $negativeExitCode = $LASTEXITCODE
+          } finally { $ErrorActionPreference = $oldErrorPreference }
+          if($negativeExitCode -eq 0){ throw 'GOD lookup incorrectly accepted multiple identities' }
+          $global:LASTEXITCODE = 0
+          Remove-Item Env:\VIGIA_TEST_MULTIPLE_GODS -ErrorAction SilentlyContinue
+          Write-Host 'VIGIA_GOD_ID_UNIQUENESS_FAIL_CLOSED_PASS'
+          Write-Host 'VIGIA_GOD_ID_LOOKUP_WINDOWS_PASS'
+          Write-Host 'VIGIA_SQL_FILE_EXECUTION_WINDOWS_PASS'
+          Remove-Item Env:\VIGIA_SERVER_DIR -ErrorAction SilentlyContinue
+
+      - name: Parse HP production deployment script with Windows PowerShell
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          $path = "docs/VIGIA/VIGIA_HP_MONITOR_DEPLOY_SAFE.ps1"
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+          Write-Host "VIGIA_HP_DEPLOY_PARSE_PASS"
+
+      - name: Parse and self-test GOD selective activation with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          $path = "docs/VIGIA/VIGIA_HP_MONITOR_ENABLE_GOD_SAFE.ps1"
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'Environment flag self-test failed' }
+          Write-Host "VIGIA_MONITOR_GOD_ACTIVATION_PARSE_AND_SELFTEST_PASS"
+
   client-tests:
     runs-on: ubuntu-latest
     defaults:
@@ -40,6 +158,41 @@ jobs:
           find src test -name "*.js" -print0 | xargs -0 -n1 node --check
           node --check sw.js
 
+  browser-pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: v2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install client test dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install pinned Playwright for isolated browser smoke
+        run: npm install --no-save --no-package-lock playwright@1.56.1 --no-audit --no-fund
+
+      - name: Install Chromium headless
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify VIGIA Monitor desktop/mobile UI with real browser
+        run: node scripts/monitorPilotBrowserSmoke.mjs
+
+      - name: Save browser smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitor-pilot-browser-screenshots
+          path: v2/test-results/monitor-pilot/
+          if-no-files-found: ignore
+
   server-syntax:
     runs-on: ubuntu-latest
     defaults:
@@ -60,6 +213,24 @@ jobs:
 
       - name: Check server JavaScript syntax
         run: find src scripts -name "*.js" -print0 | xargs -0 -n1 node --check
+
+      - name: Verify safe manual-backup helper syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_BACKUP_MANUAL_SAFE.cjs
+
+      - name: Verify temporary restore checker syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_RESTORE_VALIDATE_SAFE.cjs
+
+      - name: Verify PostgreSQL role probe syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_PG_ROLE_READONLY.cjs
+
+      - name: Verify separate-admin restore helper syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_RESTORE_ADMIN_SAFE.cjs
+
+      - name: Verify HP predeployment read-only preflight syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_MONITOR_PREDEPLOY_READONLY.cjs
+
+      - name: Check live Monitor pilot authorization defaults
+        run: node scripts/monitorPilotGateCheck.js
 
 
   server-integration:
@@ -90,6 +261,7 @@ jobs:
       NODE_ENV: test
       AUTH_MODE: dev
       DEV_ALLOW_HEADER_AUTH: "true"
+      MONITOR_PILOT_ENABLED: "true"
       SMOKE_STATE_FILE: /tmp/smart-inventory-smoke.json
       BACKUP_DIR: /tmp/smart-inventory-backups
       BACKUP_RETENTION_DAYS: "14"
@@ -142,6 +314,12 @@ jobs:
       - name: Run real sync and stock smoke
         run: npm run smoke:integration
 
+      - name: Verify VIGIA Monitor multi-user review persistence
+        run: node scripts/monitorReviewSmoke.js
+
+      - name: Verify VIGIA Monitor supply persistence and consumption
+        run: node scripts/monitorSupplySmoke.js
+
       - name: Restart API
         run: |
           kill "$(cat /tmp/smart-inventory-v2.pid)"
@@ -190,6 +368,7 @@ jobs:
 
       - name: Run production preflight against migrated database
         env:
+          MONITOR_PILOT_ENABLED: "false"
           NODE_ENV: production
           AUTH_MODE: firebase
           DEV_ALLOW_HEADER_AUTH: "false"

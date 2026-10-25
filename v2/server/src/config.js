@@ -14,6 +14,13 @@ const devAllowHeaderAuth =
   String(process.env.DEV_ALLOW_HEADER_AUTH || 'false') === 'true';
 const firebaseProjectId =
   String(process.env.FIREBASE_PROJECT_ID || '').trim() || null;
+const monitorPilotEnabled =
+  String(process.env.MONITOR_PILOT_ENABLED || 'false').toLowerCase() === 'true';
+const monitorPilotUserIds = String(process.env.MONITOR_PILOT_USER_IDS || '')
+  .split(',').map(x => x.trim()).filter(Boolean);
+if (monitorPilotEnabled && nodeEnv === 'production' && monitorPilotUserIds.length === 0) {
+  throw new Error('MONITOR_PILOT_USER_IDS es obligatorio al habilitar el piloto en producción');
+}
 
 if (!['dev', 'firebase'].includes(authMode)) {
   throw new Error(`AUTH_MODE inválido: ${authMode}`);
@@ -44,5 +51,7 @@ export const config = Object.freeze({
   nodeEnv,
   authMode,
   firebaseProjectId,
-  devAllowHeaderAuth
+  devAllowHeaderAuth,
+  monitorPilotEnabled,
+  monitorPilotUserIds
 });
