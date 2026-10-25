@@ -28,7 +28,7 @@ export function buildMonitorNativeLists(snapshot, { ownerLabel = 'Usuario VIGÍA
     }));
     return {
       id:'monitor-'+week+'-r'+String(snapshot.round||1)+'-'+kind.toLowerCase(),
-      code:prefix+'-MON-'+week.replaceAll('-','').slice(2)+'-R'+String(snapshot.round||1),
+      code:prefix+'-MON-'+week.replaceAll('-','').slice(2)+(Number(snapshot.round||1)>1?'-R'+String(snapshot.round):''),
       kind,
       dateLabel:'Semana '+week,
       ownerLabel:String(ownerLabel || 'Usuario VIGÍA'),
