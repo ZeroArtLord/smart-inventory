@@ -208,7 +208,7 @@ function normalizeChange(change){
   if(!/^[a-zA-Z0-9_.:-]{1,150}$/.test(itemId))throw new Error('ID de artículo inválido');
   const decision=String(change.decision||'');
   const choices=['UNREVIEWED','BUY','ORDER','NOT_NEEDED','PENDING','ASK'];
-  if(!choices.includes(decision)||(kind==='EXTRA'&&!['BUY','ORDER'].includes(decision))){
+  if(!choices.includes(decision)||(kind==='EXTRA'&&!['BUY','ORDER','ASK'].includes(decision))){
     throw new Error('Decisión inválida');
   }
   const raw=change.quantity;
