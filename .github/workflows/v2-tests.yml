@@ -154,6 +154,19 @@ jobs:
           }
           Write-Host "VIGIA_MONITOR_NATIVE_80MM_PENDING_DEPLOY_PARSE_PASS"
 
+      - name: Verify staged Node precheck has no UTF-8 BOM
+        shell: powershell
+        run: |
+          $source = & git show "HEAD:docs/VIGIA/VIGIA_HP_MONITOR_CYCLES_PRECHECK_READONLY.cjs"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read candidate precheck' }
+          $candidate = Join-Path $env:RUNNER_TEMP 'vigia_cycles_precheck.cjs'
+          [IO.File]::WriteAllText($candidate,($source -join [Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+          $bytes = [IO.File]::ReadAllBytes($candidate)
+          if ($bytes[0] -ne 35 -or $bytes[1] -ne 33) { throw 'Staged Node shebang has a BOM' }
+          & node --check $candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Staged Node precheck failed syntax' }
+          Write-Host 'VIGIA_CYCLES_STAGED_NODE_NOBOM_PASS'
+
   client-tests:
     runs-on: ubuntu-latest
     defaults:

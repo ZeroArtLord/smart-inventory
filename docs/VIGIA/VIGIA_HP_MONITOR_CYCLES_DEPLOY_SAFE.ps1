@@ -49,13 +49,21 @@ function CandidateScript([string]$name){
   $rel='docs/VIGIA/'+$name
   $content=Git @('show',($TargetSha+':'+$rel))
   $dest=Join-Path $env:TEMP ('VIGIA_'+[guid]::NewGuid().ToString('N')+'_'+$name)
-  [IO.File]::WriteAllText($dest,$content+[Environment]::NewLine,[Text.Encoding]::UTF8)
+  # Windows PowerShell 5.1 UTF8 agrega BOM; Node no acepta BOM antes de #!.
+  $encoding=if($name.EndsWith('.ps1',[StringComparison]::OrdinalIgnoreCase)){
+    [Text.Encoding]::UTF8
+  }else{[System.Text.UTF8Encoding]::new($false)}
+  [IO.File]::WriteAllText($dest,$content+[Environment]::NewLine,$encoding)
   $tempScripts.Add($dest)
   return $dest
 }
 function NodeChecked([string]$script,[string]$passMarker){
-  $out=& node.exe $script 2>&1
-  $rc=$LASTEXITCODE
+  $previousErrorPreference=$ErrorActionPreference
+  $ErrorActionPreference='Continue'
+  try{
+    $out=& node.exe $script 2>&1
+    $rc=$LASTEXITCODE
+  }finally{$ErrorActionPreference=$previousErrorPreference}
   foreach($line in $out){Write-Host $line}
   Demand ($rc -eq 0 -and (($out -join "`n") -match [regex]::Escape($passMarker))) ($passMarker+' no confirmado')
   return (($out -join "`n"))
