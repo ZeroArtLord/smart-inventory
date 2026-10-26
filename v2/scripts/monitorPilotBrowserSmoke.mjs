@@ -272,6 +272,9 @@ try{
   await page.locator('#vigiaMonitorPilot .mp-head').getByText('Semana '+previousWeek).waitFor();
   await page.locator('#vigiaMonitorPilot #mpWeekSelect').selectOption(await page.evaluate(()=>window.__vigiaTestWeekStart));
   await page.locator('#vigiaMonitorPilot .mp-head').getByText('Semana '+await page.evaluate(()=>window.__vigiaTestWeekStart)).waitFor();
+  // El encabezado cambia antes de terminar el refresh; iniciar la carrera solo
+  // cuando el selector esté otra vez disponible para una nueva interacción.
+  await page.waitForFunction(()=>!document.querySelector('#vigiaMonitorPilot #mpWeekSelect')?.disabled);
   const olderWeek=await page.evaluate(previous=>{
     const date=new Date(previous+'T12:00:00');date.setDate(date.getDate()-7);
     return [date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),
