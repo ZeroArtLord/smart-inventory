@@ -1,7 +1,7 @@
 // Proyección SOLO LECTURA de la semana Monitor en Comprar/Pedir tradicional.
 // Nunca genera reposiciones V2 ni movimientos de stock. Fuente: Monitor PostgreSQL;
 // sobre esa foto se superponen exclusivamente las ediciones locales todavía en cola.
-export function projectMonitorToNormal({ serverItems = [], localState = null, products = [], categories = [], weekStart = '' } = {}) {
+export function projectMonitorToNormal({ serverItems = [], localState = null, products = [], categories = [], weekStart = '', round = 1 } = {}) {
   const byProduct = new Map(products.map(p => [String(p.id), p]));
   const byCategory = new Map(categories.map(c => [String(c.id), c]));
   const merged = new Map();
@@ -18,21 +18,22 @@ export function projectMonitorToNormal({ serverItems = [], localState = null, pr
     }
   }
 
-  const lists = { PURCHASE: [], ORDER: [] };
+  const lists = { PURCHASE: [], ORDER: [], INQUIRY: [] };
   const counts = { pendingLocal: 0, conflicts: 0, unresolvedProducts: 0,
-    reviewed: 0, pending: 0, notNeeded: 0, totalProducts: products.length };
+    reviewed: 0, pending: 0, asking: 0, notNeeded: 0, totalProducts: products.length };
   for (const item of merged.values()) {
     if (item.deleted === true) continue;
     if (item.kind === 'PRODUCT') {
       if (['BUY', 'ORDER', 'NOT_NEEDED'].includes(item.decision)) counts.reviewed++;
       if (item.decision === 'PENDING') counts.pending++;
+      if (item.decision === 'ASK') counts.asking++;
       if (item.decision === 'NOT_NEEDED') counts.notNeeded++;
     }
-    if (item.decision !== 'BUY' && item.decision !== 'ORDER') continue;
+    if (!['BUY', 'ORDER', 'ASK'].includes(item.decision)) continue;
     const isExtra = item.kind === 'EXTRA';
     const product = isExtra ? null : byProduct.get(String(item.productId));
     const category = isExtra ? 'EXTRAS' : (
-      byCategory.get(String(product?.categoryId || ''))?.name || 'SIN CATEGORÍA'
+      item.archivedCategory || byCategory.get(String(product?.categoryId || ''))?.name || 'SIN CATEGORÍA'
     );
     if (!isExtra && !product) counts.unresolvedProducts++;
     const quantity = item.quantity === null || item.quantity === '' || item.quantity === undefined
@@ -45,7 +46,7 @@ export function projectMonitorToNormal({ serverItems = [], localState = null, pr
       itemKey: item.itemKey,
       kind: item.kind,
       productId: item.productId || null,
-      description: isExtra ? String(item.description || '') : String(product?.name || '[PRODUCTO NO EN CATÁLOGO] ' + item.productId),
+      description: isExtra ? String(item.description || '') : String(item.archivedName || product?.name || '[PRODUCTO NO EN CATÁLOGO] ' + item.productId),
       category: String(category),
       quantity,
       unit: String(item.unit || product?.unitCode || ''),
@@ -59,7 +60,7 @@ export function projectMonitorToNormal({ serverItems = [], localState = null, pr
       if (row.localStatus === 'CONFLICT') counts.conflicts++;
       else counts.pendingLocal++;
     }
-    lists[item.decision === 'BUY' ? 'PURCHASE' : 'ORDER'].push(row);
+    lists[item.decision === 'BUY' ? 'PURCHASE' : item.decision === 'ORDER' ? 'ORDER' : 'INQUIRY'].push(row);
   }
   // La cola también puede contener NO HACE FALTA o PENDIENTE sin figurar
   // en tickets. Cualquier cambio no enviado impide declarar la copia "sincronizada".
@@ -75,7 +76,7 @@ export function projectMonitorToNormal({ serverItems = [], localState = null, pr
       a.itemKey.localeCompare(b.itemKey));
   }
   return {
-    weekStart, lists, counts,
+    weekStart,round,lists, counts,
     source: 'monitor-weekly-review',
     readOnly: true
   };

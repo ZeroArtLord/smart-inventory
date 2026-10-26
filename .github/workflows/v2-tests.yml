@@ -142,7 +142,8 @@ jobs:
             "docs/VIGIA/VIGIA_HP_MONITOR_NATIVE_80MM_PENDING_DEPLOY_SAFE.ps1",
             "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_UNITS_DEPLOY_SAFE.ps1",
             "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_AUTOSAVE_DEPLOY_SAFE.ps1",
-            "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_NOTES_DEPLOY_SAFE.ps1"
+            "docs/VIGIA/VIGIA_HP_MONITOR_SELECTED_NOTES_DEPLOY_SAFE.ps1",
+            "docs/VIGIA/VIGIA_HP_MONITOR_CYCLES_DEPLOY_SAFE.ps1"
           )
           foreach ($path in $paths) {
           [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
@@ -152,6 +153,33 @@ jobs:
           }
           }
           Write-Host "VIGIA_MONITOR_NATIVE_80MM_PENDING_DEPLOY_PARSE_PASS"
+
+      - name: Parse Monitor touch units client update script
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("docs/VIGIA/VIGIA_HP_MONITOR_TOUCH_UNITS_SAFE.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+          Write-Host "VIGIA_MONITOR_TOUCH_SCRIPT_PARSE_PASS"
+          & "./docs/VIGIA/tests/monitorTouchPrecheck.Tests.ps1"
+          if ($LASTEXITCODE -ne 0) { throw "Monitor touch precheck regression failed" }
+
+      - name: Verify staged Node precheck has no UTF-8 BOM
+        shell: powershell
+        run: |
+          $source = & git show "HEAD:docs/VIGIA/VIGIA_HP_MONITOR_CYCLES_PRECHECK_READONLY.cjs"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read candidate precheck' }
+          $candidate = Join-Path $env:RUNNER_TEMP 'vigia_cycles_precheck.cjs'
+          [IO.File]::WriteAllText($candidate,($source -join [Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+          $bytes = [IO.File]::ReadAllBytes($candidate)
+          if ($bytes[0] -ne 35 -or $bytes[1] -ne 33) { throw 'Staged Node shebang has a BOM' }
+          & node --check $candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Staged Node precheck failed syntax' }
+          Write-Host 'VIGIA_CYCLES_STAGED_NODE_NOBOM_PASS'
 
   client-tests:
     runs-on: ubuntu-latest
@@ -250,6 +278,12 @@ jobs:
       - name: Verify HP predeployment read-only preflight syntax
         run: node --check ../../docs/VIGIA/VIGIA_HP_MONITOR_PREDEPLOY_READONLY.cjs
 
+      - name: Verify cycle predeployment read-only preflight syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_MONITOR_CYCLES_PRECHECK_READONLY.cjs
+
+      - name: Verify cycle postdeployment read-only check syntax
+        run: node --check ../../docs/VIGIA/VIGIA_HP_MONITOR_CYCLES_POSTCHECK_READONLY.cjs
+
       - name: Check live Monitor pilot authorization defaults
         run: node scripts/monitorPilotGateCheck.js
 
@@ -340,6 +374,9 @@ jobs:
 
       - name: Verify VIGIA Monitor supply persistence and consumption
         run: node scripts/monitorSupplySmoke.js
+
+      - name: Verify review cycle closure, immutable archive and no stock changes
+        run: node scripts/monitorReviewCyclesSmoke.js
 
       - name: Restart API
         run: |

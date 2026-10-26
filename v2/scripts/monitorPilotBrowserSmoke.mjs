@@ -5,12 +5,14 @@ import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
+import { buildProcurementJob, DEFAULT_THERMAL_CONFIG } from '../server/src/printing/thermalEscPos.js';
 
 const root=process.cwd();
 const screenshots=path.join(root,'test-results','monitor-pilot');
 const errors=[];
 const stored=new Map();
 let postAttempts=0,networkDown=false;
+const printedJobs=[];
 const server=createServer(async(req,res)=>{
   try {
     const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
@@ -29,6 +31,15 @@ const url='http://127.0.0.1:'+port+'/test/browser/monitorPilot.html?vigiaMonitor
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
 const context=await browser.newContext({viewport:{width:1280,height:850}});
 const page=await context.newPage();
+// Recalcular en cada carga, también al hacer reload() durante el smoke.
+await page.addInitScript(()=>{
+  const d=new Date();
+  d.setDate(d.getDate()-((d.getDay()+6)%7));
+  window.__vigiaTestWeekStart=[
+    d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),
+    String(d.getDate()).padStart(2,'0')
+  ].join('-');
+});
 page.on('pageerror',error=>errors.push(error.message));
 page.on('console',message=>{
   if(message.type()==='error'&&!message.text().includes('net::ERR_FAILED'))errors.push(message.text());
@@ -83,11 +94,15 @@ await page.route('**/api/v1/monitor/supplies**',async route=>{
 });
 
 const reviewItems=new Map();
+let delayedReviewWeek='';
 await page.route('**/api/v1/monitor/reviews/**',async route=>{
   const req=route.request();
   if(req.method()==='GET'){
+    if(delayedReviewWeek && new URL(req.url()).pathname.endsWith('/'+delayedReviewWeek))
+      await new Promise(resolve=>setTimeout(resolve,350));
     return route.fulfill({status:200,contentType:'application/json',
-      body:JSON.stringify({ok:true,items:[...reviewItems.values()]})});
+      body:JSON.stringify({ok:true,workspaceId:'workspace-browser-lab',
+        weekStart:new URL(req.url()).pathname.split('/').pop(),currentRound:1,items:[...reviewItems.values()]})});
   }
   const b=req.postDataJSON();
   const itemKey=(b.kind==='PRODUCT'?'product:':'extra:')+b.itemId;
@@ -103,9 +118,18 @@ await page.route('**/api/v1/monitor/reviews/**',async route=>{
   return route.fulfill({status:200,contentType:'application/json',
     body:JSON.stringify({ok:true,item:row,appliedVersion:row.version,replayed:false})});
 });
+await page.route('**/api/v1/thermal-printer/ticket',async route=>{
+  const payload=route.request().postDataJSON().list;
+  const job=buildProcurementJob(DEFAULT_THERMAL_CONFIG,payload);
+  printedJobs.push({payload,job});
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+    ok:true,copies:job.copies,itemCount:job.itemCount,printer:{name:'RC-8002 LAB'}
+  })});
+});
 try{
   await mkdir(screenshots,{recursive:true});
   await page.goto(url,{waitUntil:'networkidle'});
+
   await page.evaluate(async()=>{
     const storage=await import('/src/storage/database.js');
     const settings=await import('/src/sync/syncSettings.js');
@@ -249,9 +273,77 @@ try{
   // Weekly catalog review, extra free-form item, and print preview.
   await page.locator('#app h2').evaluate(el=>{el.textContent='Comprar / Pedir';});
   await page.locator('#vigiaMonitorPilotLauncher').click();
+  const previousWeek=await page.evaluate(()=>{
+    const date=new Date(window.__vigiaTestWeekStart+'T12:00:00');
+    date.setDate(date.getDate()-7);
+    return [date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),
+      String(date.getDate()).padStart(2,'0')].join('-');
+  });
+  await page.locator('#vigiaMonitorPilot #mpWeekSelect').selectOption(previousWeek);
+  await page.locator('#vigiaMonitorPilot .mp-head').getByText('Semana '+previousWeek).waitFor();
+  await page.locator('#vigiaMonitorPilot #mpWeekSelect').selectOption(await page.evaluate(()=>window.__vigiaTestWeekStart));
+  await page.locator('#vigiaMonitorPilot .mp-head').getByText('Semana '+await page.evaluate(()=>window.__vigiaTestWeekStart)).waitFor();
+  // El encabezado cambia antes de terminar el refresh; iniciar la carrera solo
+  // cuando el selector esté otra vez disponible para una nueva interacción.
+  await page.waitForFunction(()=>!document.querySelector('#vigiaMonitorPilot #mpWeekSelect')?.disabled);
+  const olderWeek=await page.evaluate(previous=>{
+    const date=new Date(previous+'T12:00:00');date.setDate(date.getDate()-7);
+    return [date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),
+      String(date.getDate()).padStart(2,'0')].join('-');
+  },previousWeek);
+  delayedReviewWeek=olderWeek;
+  await page.evaluate(({previous,older})=>{
+    const selector=document.querySelector('#vigiaMonitorPilot #mpWeekSelect');
+    selector.value=previous;selector.dispatchEvent(new Event('change',{bubbles:true}));
+    selector.value=older;selector.dispatchEvent(new Event('change',{bubbles:true}));
+  },{previous:previousWeek,older:olderWeek});
+  await page.waitForTimeout(700);
+  assert.match(await page.locator('#vigiaMonitorPilot .mp-head').innerText(),
+    new RegExp('Semana '+previousWeek),'un segundo cambio no debe reemplazar el primero en curso');
+  delayedReviewWeek='';
+  await page.locator('#vigiaMonitorPilot #mpWeekSelect').selectOption(await page.evaluate(()=>window.__vigiaTestWeekStart));
   await page.locator('#vigiaMonitorPilot .mp-tile').first().click();
-  await page.locator('#vigiaMonitorPilot #mpQuantity').fill('');
+  // La revisión ofrece cinco unidades de un toque y conserva cantidad/nota.
+  await page.locator('#vigiaMonitorPilot #mpQuantity').waitFor();
+  const quickUnits=page.locator('#vigiaMonitorPilot input[name="mpReviewUnit"]');
+  assert.equal(await quickUnits.count(),5,'review needs five compact tap options');
+  await page.locator('#mpQuantity').fill('2');
+  await page.locator('#mpNotes').fill('Consultar producción');
+  for(const unit of ['KG','CAJA','BULTO','UND']){
+    await quickUnits.locator('xpath=..').filter({has:page.locator('input[value="'+unit+'"]')}).click();
+    assert.equal(await page.locator('#mpQuantity').inputValue(),'2');
+    assert.equal(await page.locator('#mpNotes').inputValue(),'Consultar producción');
+    assert.equal(await page.locator('input[name="mpReviewUnit"]:checked').inputValue(),unit);
+  }
+  await page.locator('label').filter({has:page.locator('input[name="mpReviewUnit"][value="__OTHER__"]')}).click();
+  await page.locator('#mpUnitOther').fill('GAVETA');
+  await page.locator('#vigiaMonitorPilot [data-mp-choice="ASK"]').click();
+  await page.locator('#vigiaMonitorPilot [data-mp-page="ask"]').click();
+  await page.locator('#vigiaMonitorPilot .mp-row').filter({hasText:'Agua mineral'}).waitFor();
+  await page.locator('#vigiaMonitorPilot [data-mp-kind="INQUIRY"]').click();
+  await page.getByText(/1 copia.*RC-8002 LAB/).waitFor();
+  assert.equal(printedJobs.length,1);
+  const {payload,job}=printedJobs[0];
+  assert.equal(payload.kind,'INQUIRY');
+  assert.equal(payload.items.length,1);
+  assert.equal(payload.items[0].quantityText,'2 GAVETA');
+  assert.equal(payload.items[0].note,'Consultar producción');
+  assert.equal(job.copies,1);
+  assert.equal(job.buffer.toString('hex').split('1d5600').length-1,1,'only one physical cut');
+  const printText=job.buffer.toString('latin1');
+  for(const text of ['EL ESTABLO','LISTA PARA PREGUNTAR','PRODUCTO','CANT.','OK','Firma:'])assert.ok(printText.includes(text),text);
+  assert.ok(!printText.includes('COPIA CHOFER'));
+  assert.ok(!printText.includes('COPIA DEPOSITO'));
+  await page.locator('#vigiaMonitorPilot .mp-row').filter({hasText:'Agua mineral'})
+    .getByRole('button',{name:'Resolver / Cambiar decisión'}).click();
+  assert.equal(await page.locator('input[name="mpReviewUnit"]:checked').inputValue(),'__OTHER__');
+  assert.equal(await page.locator('#mpUnitOther').inputValue(),'GAVETA','saved special unit must survive reopening');
+  await page.screenshot({path:path.join(screenshots,'revision-unidades-mobile.png')});
+  await page.locator('label').filter({has:page.locator('input[name="mpReviewUnit"][value="CAJA"]')}).click();
+  assert.equal(await page.locator('#mpUnitOther').isHidden(),true);
+  await page.locator('#mpQuantity').fill('');
   await page.locator('#vigiaMonitorPilot [data-mp-choice="BUY"]').click();
+  console.log('MONITOR_QUICK_UNITS_AND_INQUIRY_PRINT_PASS: tap units, preserved custom unit, real print payload and ESC/POS single copy/cut');
 
   // Seleccionados: cantidad + unidad del catálogo, manual, Enter y persistencia.
   await page.locator('#vigiaMonitorPilot [data-mp-page="selected"]').click();
@@ -269,12 +361,12 @@ try{
   await page.waitForFunction(async()=>{
     const mod=await import('/src/replenishment/monitorReviewOffline.js');
     const record=await mod.readMonitorReview({workspaceId:'workspace-browser-lab',
-      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return record.items.some(x=>x.kind==='PRODUCT'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
-    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return state.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
 
@@ -284,7 +376,7 @@ try{
   await editRow.locator('.mp-edit-unit-other').press('Enter');
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
-    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return state.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='GAVETA'&&x.quantity===3);
   },null,{timeout:12000});
   await editRow.locator('.mp-edit-unit-select').selectOption('CAJA');
@@ -292,14 +384,14 @@ try{
   await editRow.locator('.mp-edit-quantity').press('Enter'); // Solo avanza, no hace falta para guardar.
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
-    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return state.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
   // La sincronización de una edición anterior no puede restaurar GAVETA tras
   // confirmar CAJA: se espera el ACK y se comprueba también el DOM, no solo IDB.
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
-    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return state.pendingCount===0 && state.items.some(x=>
       x.kind==='PRODUCT' && x.unit==='CAJA' && x.quantity===2);
   },null,{timeout:15000});
@@ -312,23 +404,29 @@ try{
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
     const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
-      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='ORDER'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
   await finalRow.locator('.mp-edit-decision').selectOption('BUY');
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
     const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
-      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
   // Edición rápida y navegación: al pulsar Extras, el último número aún en
   // debounce debe persistir en IndexedDB antes de cambiar de pantalla.
   await finalRow.locator('.mp-edit-quantity').fill('4');
   await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
+  await page.waitForFunction(async()=>{
+    const m=await import('/src/replenishment/monitorReviewOffline.js');
+    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
+    return record.pendingCount===0 && record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.quantity===4);
+  },null,{timeout:15000});
   const beforeNavSaved=await page.evaluate(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
-    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return record.items.find(x=>x.kind==='PRODUCT'&&x.decision==='BUY');
   });
   assert.equal(beforeNavSaved?.quantity,4,'Autosave must flush when leaving selected');
@@ -343,12 +441,12 @@ try{
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
     const state=await m.readMonitorReview({workspaceId:'workspace-browser-lab',
-      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return state.items.some(x=>x.kind==='PRODUCT'&&x.notes==='rebanadas'&&x.quantity===2&&x.unit==='CAJA');
   },null,{timeout:12000});
   await page.waitForFunction(async()=>{
     const m=await import('/src/replenishment/monitorReviewOffline.js');
-    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:'2026-10-12'});
+    const record=await m.readMonitorReview({workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return record.items.some(x=>x.kind==='PRODUCT'&&x.decision==='BUY'&&x.unit==='CAJA'&&x.quantity===2);
   },null,{timeout:12000});
   await page.screenshot({path:path.join(screenshots,'seleccionados-unidades-mobile.png')});
@@ -357,6 +455,21 @@ try{
   await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Cinta métrica');
   await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
+  // Extras también pueden empezar como Preguntar y luego pasar a Pedido.
+  await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
+  await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Etiqueta consulta');
+  await page.locator('#vigiaMonitorPilot #mpExtraForm [name="decision"]').selectOption('ASK');
+  await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
+  await page.locator('#vigiaMonitorPilot [data-mp-page="ask"]').click();
+  const askedExtra=page.locator('#vigiaMonitorPilot .mp-row').filter({hasText:'Etiqueta consulta'});
+  await askedExtra.waitFor();
+  await askedExtra.locator('[data-mp-action="resolve-ask-extra"][data-mp-choice="ORDER"]').click();
+  await page.waitForFunction(async()=>{
+    const mod=await import('/src/replenishment/monitorReviewOffline.js');
+    const r=await mod.readMonitorReview({workspaceId:'workspace-browser-lab',
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
+    return r.items.some(x=>x.kind==='EXTRA'&&x.description==='Etiqueta consulta'&&x.decision==='ORDER');
+  });
   await page.locator('#vigiaMonitorPilot [data-mp-page="lists"]').click();
   await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().waitFor();
   const nativeTicketText=await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().innerText();
@@ -378,7 +491,7 @@ try{
   await page.evaluate(async()=>{
     const mod=await import('/src/replenishment/monitorReviewOffline.js');
     const opts={workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',
-      weekStart:'2026-10-12'};
+      weekStart:window.__vigiaTestWeekStart};
     await mod.queueMonitorReviewChange(opts,{
       kind:'PRODUCT',itemId:'prod-cafe',decision:'PENDING',quantity:null
     });
@@ -391,6 +504,7 @@ try{
   });
   await page.locator('#vigiaMonitorPilot [data-mp-action="sync"]').click();
   await page.locator('#vigiaMonitorPilot [data-mp-page="pending"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#vigiaMonitorPilot .mp-row').length===3);
   assert.equal(await page.locator('#vigiaMonitorPilot .mp-row').count(),3);
   await page.locator('#vigiaMonitorPilot .mp-row').first().getByRole('button',{name:'Revisar ahora'}).click();
   let active=await page.locator('#vigiaMonitorPilot .mp-card h2[style]').first().innerText();
@@ -418,7 +532,7 @@ try{
   const storedPending=await page.evaluate(async()=>{
     const mod=await import('/src/replenishment/monitorReviewOffline.js');
     const s=await mod.readMonitorReview({workspaceId:'workspace-browser-lab',
-      userId:'worker-browser-lab',weekStart:'2026-10-12'});
+      userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart});
     return s.items.filter(x=>['product:prod-cafe','product:prod-pan','product:prod-yuca'].includes(x.itemKey))
       .map(x=>({id:x.itemKey,decision:x.decision,qty:x.quantity}));
   });
@@ -434,7 +548,7 @@ try{
     const {projectMonitorToNormal}=await import('/src/replenishment/monitorToNormalMirror.js');
     const {printableMonitorMirror}=await import('/src/ui/monitorNormalMirrorUi.js');
     const snapshot=projectMonitorToNormal({
-      weekStart:'2026-10-12',
+      weekStart:window.__vigiaTestWeekStart,
       products:[{id:'prod-agua',name:'Agua mineral',categoryId:'bebidas',unitCode:'UND'}],
       categories:[{id:'bebidas',name:'BEBIDAS'}],
       serverItems:[{itemKey:'product:prod-agua',kind:'PRODUCT',productId:'prod-agua',

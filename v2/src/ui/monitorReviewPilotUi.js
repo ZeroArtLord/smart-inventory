@@ -10,11 +10,16 @@ import { renderProcurementTickets } from './procurementWorkspaceV6Print.js';
 import { buildMonitorNativeLists } from '../replenishment/monitorNativeTicketAdapter.js';
 import { fetchMonitorMirrorForNormal, assertMonitorPrintable } from './monitorNormalMirrorUi.js';
 import { printThermalProcurementList } from '../printing/thermalPrinterClient.js';
+import { searchMonitorProducts } from '../replenishment/monitorProductSearch.js';
+import { projectMonitorToNormal } from '../replenishment/monitorToNormalMirror.js';
+import { recentMonitorWeeks, isSelectableMonitorWeek } from '../replenishment/monitorReviewWeeks.js';
 import {
   readPilotPosition, savePilotPosition, restorePilotPosition
 } from './monitorPilotPosition.js';
 import {
-  readMonitorReview, queueMonitorReviewChange, syncMonitorReview
+  readMonitorReview, queueMonitorReviewChange, syncMonitorReview,
+  resolveMonitorActiveRound, closeMonitorReviewRound,
+  listMonitorReviewArchives, getMonitorReviewArchive
 } from '../replenishment/monitorReviewOffline.js';
 
 const root=document.getElementById('app');
@@ -24,7 +29,8 @@ const state={
   visible:false,loading:false,page:'home',week:weekMonday(),
   currentCategory:null,cursor:0,session:null,options:null,
   products:[],categories:[],local:null,message:'',error:'',
-  pendingReviewMode:false,printing:false
+  pendingReviewMode:false,printing:false,searchQuery:'',archives:[],archiveDetail:null,
+  closing:false,switching:false
 };
 if(root){
   launcher=document.createElement('button');
@@ -45,7 +51,7 @@ if(root){
   shell.addEventListener('click',event=>handleClick(event).catch(showError));
   shell.addEventListener('submit',event=>handleSubmit(event).catch(showError));
   shell.addEventListener('change',event=>handleChange(event).catch(showError));
-  shell.addEventListener('input',event=>handleSelectedInput(event));
+  shell.addEventListener('input',event=>{handleSelectedInput(event);handleProductSearch(event);});
   shell.addEventListener('focusout',event=>handleSelectedBlur(event));
   shell.addEventListener('keydown',event=>handleSelectedKeydown(event).catch(showError));
   window.addEventListener('online',()=>{if(state.visible)pushAndRefresh().catch(showError);});
@@ -75,12 +81,15 @@ async function openPilot(){
     ]);
     if(!session?.workspaceId || !session?.userId)throw new Error('Sesión válida requerida');
     state.session=session;
-    state.options={workspaceId:session.workspaceId,userId:session.userId,weekStart:state.week};
+    const baseOptions={workspaceId:session.workspaceId,userId:session.userId,weekStart:state.week};
+    const cycle=await resolveMonitorActiveRound(baseOptions);
+    state.options={...baseOptions,round:cycle.round};
     state.products=products.filter(p=>p&&p.active!==false&&p.id).sort((a,b)=>
       String(a.name).localeCompare(String(b.name),'es'));
     state.categories=categories.filter(c=>c&&c.active!==false&&c.id)
       .sort((a,b)=>String(a.name).localeCompare(String(b.name),'es'));
     state.local=await readMonitorReview(state.options);
+    state.archives=[];
     state.pendingReviewMode=false;
     const savedPosition=await readPilotPosition(state.options);
     const position=restorePilotPosition(savedPosition,groups());
@@ -94,6 +103,27 @@ async function openPilot(){
   }catch(error){
     state.loading=false;showError(error);
   }
+}
+async function switchMonitorWeek(week){
+  if(!isSelectableMonitorWeek(week))throw new Error('Semana de revisión inválida');
+  if(week===state.week)return;
+  if(state.closing||state.switching)throw new Error('Espera a que termine la operación actual');
+  state.switching=true;
+  try{
+    await flushAllSelected();
+    // Descarta respuestas de sincronización anteriores antes de cambiar contexto.
+    ++latestLocalUiEpoch;
+    const base={workspaceId:state.session.workspaceId,userId:state.session.userId,weekStart:week};
+    const cycle=await resolveMonitorActiveRound(base);
+    const options={...base,round:cycle.round};
+    const local=await readMonitorReview(options);
+    state.week=week;state.options=options;state.local=local;
+    state.currentCategory=null;state.cursor=0;state.pendingReviewMode=false;
+    state.page='home';state.archives=[];state.archiveDetail=null;state.searchQuery='';
+    state.error='';state.message='Semana '+week+' abierta para revisar o cerrar su ciclo.';
+    paint();
+    await pushAndRefresh();
+  }finally{state.switching=false;paint();}
 }
 async function persistPilotCursor(){
   if(!state.options)return;
@@ -160,7 +190,7 @@ function groups(){
     String(a.name).localeCompare(String(b.name),'es'));
 }
 function productChoices(){
-  const result={BUY:[],ORDER:[],PENDING:[],UNREVIEWED:[],NOT_NEEDED:[]};
+  const result={BUY:[],ORDER:[],PENDING:[],UNREVIEWED:[],NOT_NEEDED:[],ASK:[]};
   for(const p of state.products){
     const item=findRow(p.id);
     const key=item?.decision||'UNREVIEWED';
@@ -171,7 +201,7 @@ function productChoices(){
 function selectedItems(){
   const rows=[];
   for(const item of state.local?.items||[]){
-    if(item.deleted||!['BUY','ORDER'].includes(item.decision))continue;
+    if(item.deleted||!['BUY','ORDER','ASK'].includes(item.decision))continue;
     const extra=item.kind==='EXTRA';
     const p=extra?null:state.products.find(x=>x.id===item.productId);
     if(!extra&&!p)continue;
@@ -187,9 +217,9 @@ function progress(){
     total:state.products.length,
     reviewed:all.BUY.length+all.ORDER.length+all.NOT_NEEDED.length,
     pending:all.PENDING.length,
-    buying:all.BUY.length,ordering:all.ORDER.length,
+    buying:all.BUY.length,ordering:all.ORDER.length,asking:all.ASK.length,
     remaining:all.UNREVIEWED.length,
-    incomplete:selectedItems().filter(x=>x.quantity==null).length
+    incomplete:selectedItems().filter(x=>['BUY','ORDER'].includes(x.decision)&&x.quantity==null).length
   };
 }
 function esc(x){
@@ -213,7 +243,8 @@ function paint(){
   if(!state.visible)return;
   const tabs=[
     ['home','Inicio'],['review','Revisar'],['pending','Pendientes'],
-    ['selected','Seleccionados'],['extras','Extras'],['lists','Mis listas']
+    ['selected','Seleccionados'],['ask','Preguntar'],['extras','Extras'],
+    ['lists','Mis listas'],['history','Historial']
   ];
   const nav=tabs.map(([id,label])=>'<button type="button" data-mp-action="page" data-mp-page="'+id+
     '" '+(state.page===id?'aria-current="page"':'')+'>'+label+'</button>').join('');
@@ -224,12 +255,18 @@ function paint(){
     if(state.page==='review')content=renderReview();
     if(state.page==='pending')content=renderPending();
     if(state.page==='selected')content=renderSelected();
+    if(state.page==='ask')content=renderAsking();
+    if(state.page==='history')content=renderHistory();
     if(state.page==='extras')content=renderExtras();
     if(state.page==='lists')content=renderLists();
   }
   shell.innerHTML='<div class="mp-shell"><header class="mp-head"><div><small>PILOTO AISLADO · SIN MOVIMIENTOS DE STOCK</small>'+
-    '<h1>VIGÍA Monitor</h1><p>Revisión semanal '+esc(state.week)+' · '+
-    esc(state.products.length)+' productos del catálogo</p></div>'+
+    '<h1>VIGÍA Monitor</h1><p>Semana '+esc(state.week)+' · Ciclo '+esc(state.options?.round||1)+' · '+
+    esc(state.products.length)+' productos del catálogo</p>'+
+    '<label class="mp-week-label" for="mpWeekSelect">Semana de revisión ' +
+    '<select id="mpWeekSelect" '+(state.loading||state.closing||state.switching?'disabled':'')+'>'+recentMonitorWeeks().map(week=>
+      '<option value="'+week+'" '+(week===state.week?'selected':'')+'>'+week+
+      (week===recentMonitorWeeks()[0]?' · actual':'')+'</option>').join('')+'</select></label></div>'+
     button('Cerrar ✕','close',{cls:'mp-close'})+'</header>'+
     '<nav class="mp-nav mp-no-print" aria-label="Secciones del piloto">'+nav+'</nav>'+
     '<div class="mp-inline mp-no-print">'+info()+
@@ -240,7 +277,7 @@ function paint(){
 }
 function renderHome(){
   const p=progress();
-  const cards=[['Revisados',p.reviewed],['Pendientes',p.pending],['Comprar',p.buying],['Pedir',p.ordering]];
+  const cards=[['Revisados',p.reviewed],['Pendientes',p.pending],['Preguntar',p.asking],['Comprar',p.buying],['Pedir',p.ordering]];
   const stats='<div class="mp-kpis">'+cards.map(([k,v])=>
     '<div class="mp-kpi"><span class="mp-muted">'+k+'</span><b>'+v+'</b></div>').join('')+'</div>';
   const sections=groups().map(group=>{
@@ -251,9 +288,49 @@ function renderHome(){
       '<span>'+done+' / '+group.products.length+' revisados · '+pending+' pendientes</span>'+
       '<div class="mp-progress"><div style="width:'+(group.products.length?Math.round(done*100/group.products.length):0)+'%"></div></div></button>';
   }).join('');
-  return panel('Tu semana de trabajo',stats+
+  const complete=p.remaining===0&&p.pending===0&&p.asking===0&&p.reviewed===p.total;
+  const closeInfo=complete
+    ?'<p class="mp-warning">Revisión completada. Guarda esta lista y empieza otra sin perder el historial.</p>'+
+      button('✓ Cerrar esta revisión e iniciar una nueva','close-round',{cls:'mp-button mp-primary'})
+    :'<p class="mp-muted">Para cerrar: resuelve los productos sin revisar, Pendientes y Preguntar.</p>';
+  return panel('Tu ciclo de trabajo · '+(state.options?.round||1),stats+closeInfo+
     '<p class="mp-muted">Puedes revisar todo el catálogo. Las recomendaciones de stock no ocultan ningún producto.</p>'+
     '<h3>Categorías</h3><div class="mp-grid">'+sections+'</div>');
+}
+function renderSearchMatches(){
+  const found=searchMonitorProducts(state.products,state.searchQuery);
+  if(!state.searchQuery.trim())return '<p class="mp-muted">Escribe un nombre, código, SKU o código de barras.</p>';
+  if(!found.length)return '<p class="mp-muted">No se encontraron productos.</p>';
+  return found.map(p=>{
+    const category=state.categories.find(c=>String(c.id)===String(p.categoryId))?.name||'Sin categoría';
+    const mark=decisionLabel(findRow(p.id)?.decision||'UNREVIEWED');
+    return '<div class="mp-row"><div><strong>'+esc(p.name||p.id)+'</strong>'+
+      '<div class="mp-muted">'+esc(category)+' · '+esc(p.saintCode||p.sku||p.id)+' · '+esc(mark)+'</div></div>'+
+      button('Ir al producto','search-jump',{attrs:'data-mp-id="'+esc(p.id)+'"'})+'</div>';
+  }).join('');
+}
+function renderProductSearch(){
+  return '<div class="mp-card" style="margin-bottom:14px">'+
+    '<label for="mpProductSearch"><strong>🔎 Buscar producto</strong></label>'+
+    '<input id="mpProductSearch" type="search" autocomplete="off" placeholder="Nombre, código, SKU o barra…" value="'+esc(state.searchQuery)+'" style="width:100%;padding:10px;margin-top:8px">'+
+    '<div id="mpSearchMatches" style="max-height:280px;overflow:auto">'+renderSearchMatches()+'</div></div>';
+}
+function handleProductSearch(event){
+  if(event.target?.id!=='mpProductSearch')return;
+  state.searchQuery=String(event.target.value||'').slice(0,130);
+  const pane=shell.querySelector('#mpSearchMatches');
+  if(pane)pane.innerHTML=renderSearchMatches();
+}
+function renderReviewUnits(current){
+  const unit=String(current||'UND').trim().toUpperCase();
+  const choices=[['UND','und'],['KG','kg'],['CAJA','caja'],['BULTO','bulto'],['__OTHER__','otro']];
+  const selected=choices.some(([value])=>value===unit)?unit:'__OTHER__';
+  return '<fieldset class="mp-review-units"><legend>Unidad</legend>'+
+    '<div class="mp-review-unit-options">'+choices.map(([value,label])=>
+      '<label class="mp-review-unit-option"><input type="radio" name="mpReviewUnit" value="'+value+'" '+
+      (value===selected?'checked':'')+'><span>'+label+'</span></label>').join('')+'</div>'+
+    '<input id="mpUnitOther" aria-label="Otra unidad" maxlength="40" placeholder="Escribe otra unidad" '+
+    'value="'+esc(selected==='__OTHER__'?unit:'')+'" '+(selected==='__OTHER__'?'':'hidden')+'></fieldset>';
 }
 function renderReview(){
   const cats=groups();
@@ -264,7 +341,7 @@ function renderReview(){
   const p=group.products[state.cursor], row=findRow(p.id);
   const option=cats.map(c=>'<option value="'+esc(c.id)+'" '+(c.id===group.id?'selected':'')+'>'+esc(c.name)+'</option>').join('');
   const categorySelector='<label>Categoría <select id="mpCategoryPicker" data-mp-category-picker>'+option+'</select></label>';
-  const unit=esc(row?.unit||p.unitCode||'');
+  const unit=row?.unit||p.unitCode||'UND';
   const qty=row?.quantity==null?'':row.quantity;
   const note=esc(row?.notes||'');
   const pendingIndicator=state.pendingReviewMode
@@ -273,6 +350,7 @@ function renderReview(){
       button('← Volver a Pendientes','back-pending')+'</div>'
     : '';
   return panel('Revisión por categoría',pendingIndicator+
+    renderProductSearch()+
     '<div class="mp-form">'+categorySelector+'<div><span class="mp-muted">Avance en categoría</span>'+
     '<h3>'+esc(state.cursor+1)+' de '+group.products.length+'</h3></div></div>'+
     '<div class="mp-card"><span class="mp-chip">'+esc(group.name)+'</span>'+
@@ -280,12 +358,13 @@ function renderReview(){
     '<p class="mp-muted">Código: '+esc(p.saintCode||p.sku||p.id)+'</p>'+
     '<div class="mp-warning">VIGÍA puede sugerir reposiciones, pero aquí siempre decides tú.</div>'+
     '<div class="mp-form"><label>Cantidad (opcional)<input id="mpQuantity" inputmode="decimal" type="number" step="any" min="0.001" placeholder="Por definir" value="'+esc(qty)+'"></label>'+
-    '<label>Unidad <input id="mpUnit" value="'+unit+'" placeholder="UND / KG / CJ"></label></div>'+
+    renderReviewUnits(unit)+'</div>'+
     '<label>Observación (opcional)<textarea id="mpNotes" rows="2">'+note+'</textarea></label>'+
     '<p class="mp-muted">Decisión guardada: '+esc(decisionLabel(row?.decision||'UNREVIEWED'))+'</p>'+
     '<div class="mp-actions">'+[
       ['Comprar','BUY','mp-buy'],['Pedir','ORDER','mp-order'],
-      ['No hace falta','NOT_NEEDED','mp-none'],['Pendiente / Saltar','PENDING','mp-pending']
+      ['No hace falta','NOT_NEEDED','mp-none'],['Pendiente / Saltar','PENDING','mp-pending'],
+      ['Preguntar','ASK','mp-ask']
     ].map(([label,choice,cls])=>button(label,'choose',{cls:'mp-action '+cls,attrs:'data-mp-choice="'+choice+'"'})).join('')+'</div>'+
     '<div class="mp-inline">'+button('← Anterior','previous')+button('Siguiente →','next')+'</div></div>'
   );
@@ -334,7 +413,7 @@ function renderPending(){
       '</div></div>'+button('Revisar ahora','jump',{attrs:'data-mp-id="'+esc(p.id)+'"'})+'</div>').join(''));
 }
 function renderSelected(){
-  const items=selectedItems();
+  const items=selectedItems().filter(x=>['BUY','ORDER'].includes(x.decision));
   if(!items.length)return panel('Seleccionados','<p>Todavía no has marcado productos para Comprar o Pedir.</p>'+
     button('+ Agregar un extra','page',{attrs:'data-mp-page="extras"'}));
   return panel('Seleccionados ('+items.length+')',
@@ -505,16 +584,65 @@ function renderExtras(){
     '<p class="mp-muted">Anota cualquier cosa que no exista en VIGÍA: cinta métrica, guantes, bolsas, herramientas… Sin crear productos de inventario.</p>'+
     '<form id="mpExtraForm"><div class="mp-form">'+
     '<label>Nombre o descripción *<input name="description" maxlength="180" required placeholder="Ej. Cinta métrica"></label>'+
-    '<label>Tipo<select name="decision"><option value="BUY">Comprar</option><option value="ORDER">Pedir</option></select></label>'+
+    '<label>Tipo<select name="decision"><option value="BUY">Comprar</option><option value="ORDER">Pedir</option><option value="ASK">Preguntar</option></select></label>'+
     '<label>Cantidad (opcional)<input name="quantity" type="number" step="any" min="0.001" placeholder="Por definir"></label>'+
     '<label>Unidad (opcional)<input name="unit" maxlength="40" placeholder="UND"></label></div>'+
     '<label>Nota (opcional)<textarea name="notes" maxlength="500" rows="2"></textarea></label>'+
     '<button class="mp-button mp-primary" style="margin-top:15px" type="submit">+ Guardar extra</button></form>');
 }
+function renderAsking(){
+  const asked=selectedItems().filter(x=>x.decision==='ASK');
+  const printer=asked.length
+    ?button('🖨 Imprimir Preguntar · 1 copia','monitor-print',
+      {cls:'mp-button mp-primary',attrs:'data-mp-kind="INQUIRY"'})
+    :'';
+  const rows=asked.map(item=>{
+    const id=item.kind==='PRODUCT'?item.productId:null;
+    return '<div class="mp-row"><div><strong>'+esc(item.name)+'</strong>'+
+      '<div class="mp-muted">'+esc(item.category)+' · '+esc(item.notes||'Sin observación')+'</div></div>'+
+      (id?button('Resolver / Cambiar decisión','search-jump',{attrs:'data-mp-id="'+esc(id)+'"'}):
+        '<div class="mp-inline">'+
+        button('Comprar','resolve-ask-extra',{attrs:'data-mp-item="'+esc(item.itemKey)+'" data-mp-choice="BUY"'})+
+        button('Pedir','resolve-ask-extra',{attrs:'data-mp-item="'+esc(item.itemKey)+'" data-mp-choice="ORDER"'})+
+        button('No hace falta · quitar extra','resolve-ask-extra',{attrs:'data-mp-item="'+esc(item.itemKey)+'" data-mp-choice="REMOVE"'})+
+        '</div>')+'</div>';
+  }).join('');
+  return panel('Lista para Preguntar ('+asked.length+')',
+    '<p class="mp-muted">Productos por consultar en producción. Esta lista no modifica stock ni entra todavía a Comprar/Pedir. Imprime una sola copia con el mismo formato 80 mm.</p>'+
+    '<div class="mp-inline">'+printer+'</div>'+
+    (rows||'<p>No hay productos por preguntar. Puedes cerrar cuando también estén resueltos todos los pendientes.</p>')+
+    '<p class="mp-muted">Después de consultar, abre el producto y cambia su decisión a Comprar, Pedir o No hace falta.</p>');
+}
+function archivedSnapshot(detail){
+  return projectMonitorToNormal({
+    serverItems:detail.items||[],localState:null,
+    products:state.products,categories:state.categories,
+    weekStart:detail.weekStart,round:detail.round
+  });
+}
+function renderHistory(){
+  const archives=state.archives||[];
+  const cards=archives.map(a=>'<div class="mp-row"><div><strong>Ciclo '+esc(a.round)+'</strong>'+
+    '<div class="mp-muted">Semana '+esc(a.weekStart||state.week)+' · Cerrado: '+esc(a.closedAt||'')+
+    ' · Comprar '+esc(a.counts?.buy||0)+' · Pedir '+esc(a.counts?.order||0)+'</div></div>'+
+    button('Ver listas guardadas','history-view',{attrs:'data-mp-week="'+esc(a.weekStart||state.week)+'" data-mp-round="'+esc(a.round)+'"'})+'</div>').join('');
+  let detail='';
+  if(state.archiveDetail){
+    const snapshot=archivedSnapshot(state.archiveDetail);
+    const lists=buildMonitorNativeLists({...snapshot,closed:true},{ownerLabel:pilotOwnerLabel()});
+    detail='<h3>Listas archivadas · Ciclo '+esc(state.archiveDetail.round)+'</h3>'+
+      '<p class="mp-muted">Archivo de solo lectura. No puedes cambiar decisiones de un ciclo cerrado.</p>'+
+      '<div class="v6p-ticket-preview mp-ticket-grid">'+lists.map(list=>
+        list.items.length?renderProcurementTickets({list,businessName:pilotBusinessName()}):'').join('')+'</div>';
+  }
+  return panel('Historial de ciclos cerrados',
+    '<p class="mp-muted">Cada cierre conserva las decisiones y tickets sin mezclar ciclos nuevos.</p>'+
+    (cards||'<p>Todavía no hay ciclos cerrados o el historial estará disponible al conectar la VPN.</p>')+detail);
+}
 function renderLists(){
   const rows=selectedItems();
   const snapshot={
-    source:'monitor-weekly-review',weekStart:state.week,
+    source:'monitor-weekly-review',weekStart:state.week,round:state.options?.round||1,
     lists:{
       PURCHASE:rows.filter(x=>x.decision==='BUY').map(x=>({
         itemKey:x.itemKey,kind:x.kind,productId:x.productId,
@@ -522,6 +650,11 @@ function renderLists(){
         unit:x.unit,notes:x.notes
       })),
       ORDER:rows.filter(x=>x.decision==='ORDER').map(x=>({
+        itemKey:x.itemKey,kind:x.kind,productId:x.productId,
+        description:x.name,category:x.category,quantity:x.quantity,
+        unit:x.unit,notes:x.notes
+      })),
+      INQUIRY:rows.filter(x=>x.decision==='ASK').map(x=>({
         itemKey:x.itemKey,kind:x.kind,productId:x.productId,
         description:x.name,category:x.category,quantity:x.quantity,
         unit:x.unit,notes:x.notes
@@ -537,7 +670,8 @@ function renderLists(){
     : '<p class="mp-muted">Mismo formato VIGÍA normal (80 mm). Imprimir no cierra ni altera la semana.</p>';
   const buttons=state.printing?'<p>Enviando a impresora…</p>':
     button('🖨 Imprimir compras','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="PURCHASE"'})+
-    button('🖨 Imprimir pedidos','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="ORDER"'});
+    button('🖨 Imprimir pedidos','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="ORDER"'})+
+    button('🖨 Preguntar · 1 copia','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="INQUIRY"'});
   return panel('Mis listas semanales',
     '<div class="mp-no-print">'+warning+'<div class="mp-inline">'+buttons+'</div></div>'+
     '<div class="v6p-ticket-preview mp-ticket-grid">'+preview+'</div>');
@@ -553,7 +687,7 @@ function pilotOwnerLabel(){
 }
 async function pilotDirectPrint(kind){
   if(state.printing)return;
-  if(!['PURCHASE','ORDER'].includes(kind))throw new Error('Tipo de lista inválido');
+  if(!['PURCHASE','ORDER','INQUIRY'].includes(kind))throw new Error('Tipo de lista inválido');
   if(!state.options||!state.session)throw new Error('No hay sesión de Monitor');
   state.printing=true;state.error='';paint();
   try {
@@ -562,23 +696,24 @@ async function pilotDirectPrint(kind){
       session:state.session,products:state.products,categories:state.categories,
       weekStart:state.week,syncBeforeFetch:true
     });
+    if(Number(snapshot.round||1)!==Number(state.options.round))
+      throw new Error('El servidor tiene otro ciclo activo. Recarga antes de imprimir.');
     assertMonitorPrintable(snapshot);
     const list=buildMonitorNativeLists(snapshot,{ownerLabel:pilotOwnerLabel()})
       .find(x=>x.kind===kind);
     if(!list?.items.length)throw new Error('Lista sin artículos');
     const result=await printThermalProcurementList(list);
-    state.message=result.copies+' copias enviadas a '+result.printer.name+
+    state.message=result.copies+(result.copies===1?' copia enviada a ':' copias enviadas a ')+result.printer.name+
       ' · '+result.itemCount+' productos. No se cerró la revisión.';
   }finally{
     state.printing=false;paint();
   }
 }
 function decisionLabel(d){return ({
-  BUY:'Comprar',ORDER:'Pedir',PENDING:'Pendiente',NOT_NEEDED:'No hace falta',UNREVIEWED:'Sin revisar'
+  BUY:'Comprar',ORDER:'Pedir',ASK:'Preguntar',PENDING:'Pendiente',NOT_NEEDED:'No hace falta',UNREVIEWED:'Sin revisar'
 })[d]||d;}
 function weekMonday(){
-  const d=new Date();const weekday=(d.getDay()+6)%7;d.setDate(d.getDate()-weekday);
-  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
+  return recentMonitorWeeks()[0];
 }
 function moveToNextUndecided(){
   const group=groups().find(x=>x.id===state.currentCategory);
@@ -594,6 +729,72 @@ async function handleClick(event){
   if(!node)return;
   event.preventDefault();
   const action=node.dataset.mpAction;
+  if(action==='resolve-ask-extra'){
+    // Resolver o quitar consultas de extras sin cambiar el inventario.
+    const item=selectedItems().find(x=>x.kind==='EXTRA'&&
+      x.itemKey===node.dataset.mpItem&&x.decision==='ASK');
+    if(!item)return;
+    const choice=node.dataset.mpChoice;
+    if(!['BUY','ORDER','REMOVE'].includes(choice))throw new Error('Decisión de consulta inválida');
+    await localChange({
+      kind:'EXTRA',itemId:item.itemKey.slice(6),description:item.name,
+      decision:choice==='REMOVE'?'ASK':choice,
+      quantity:item.quantity,unit:item.unit,notes:item.notes||'',
+      deleted:choice==='REMOVE'
+    });
+    state.page='ask';
+    state.message=choice==='REMOVE'?'Extra retirado de la lista Preguntar.':
+      'Extra enviado a '+(choice==='BUY'?'Comprar.':'Pedir.');
+    paint();
+    return;
+  }
+  if(action==='search-jump'){
+    const id=node.dataset.mpId;
+    const group=groups().find(x=>x.products.some(p=>String(p.id)===String(id)));
+    if(!group)return;
+    state.currentCategory=group.id;
+    state.cursor=group.products.findIndex(p=>String(p.id)===String(id));
+    state.pendingReviewMode=false;
+    state.searchQuery='';
+    state.page='review';state.message='';
+    await persistPilotCursor();paint();
+    shell.querySelector('#mpQuantity')?.focus();
+    return;
+  }
+  if(action==='history-view'){
+    const round=Number(node.dataset.mpRound);
+    state.archiveDetail=await getMonitorReviewArchive(state.options,round,{weekStart:node.dataset.mpWeek});
+    state.error='';paint();return;
+  }
+  if(action==='close-round'){
+    if(state.closing||state.switching)return;
+    const p=progress();
+    if(p.remaining||p.pending||p.asking||p.reviewed!==p.total)
+      throw new Error('No se puede cerrar: faltan productos por resolver o por preguntar.');
+    if(state.local?.pendingCount||state.local?.conflictCount)
+      throw new Error('Hay cambios locales que debes sincronizar antes de cerrar.');
+    const accepted=window.confirm('¿Cerrar el ciclo '+state.options.round+
+      ' y guardar la lista en Historial? Se iniciará una revisión VACÍA para volver a comenzar.');
+    if(!accepted)return;
+    state.closing=true;
+    const closingOptions={...state.options};
+    try{
+      await flushAllSelected();
+      const result=await syncMonitorReview(closingOptions);
+      if(result.network!=='ONLINE'||result.pendingCount||result.conflictCount)
+        throw new Error('No se puede cerrar sin confirmación del servidor. Los datos locales siguen guardados.');
+      const closed=await closeMonitorReviewRound(closingOptions);
+      clearSelectedRecords();
+      state.options={...closingOptions,round:closed.currentRound};
+      state.local=await readMonitorReview(state.options);
+      state.currentCategory=null;state.cursor=0;
+      state.pendingReviewMode=false;state.archiveDetail=null;state.searchQuery='';
+      state.page='home';state.archives=[];
+      state.message='Ciclo '+closed.closedRound+' archivado. Ya puedes revisar nuevamente los '+p.total+' productos.';
+      state.error='';paint();
+    }finally{state.closing=false;}
+    return;
+  }
   if(action==='close'){
     try{await flushAllSelected();}catch(error){
       showSelectedStatus(shell.querySelector('.mp-selected-row'),'⚠ No se pudo guardar: '+error.message,'error');return;
@@ -611,7 +812,16 @@ async function handleClick(event){
     clearSelectedRecords();
     state.page=node.dataset.mpPage;
     state.pendingReviewMode=false;
-    state.message='';paint();return;
+    state.message='';
+    if(state.page==='history'){
+      try{
+        const data=await listMonitorReviewArchives(state.options);
+        state.archives=data.archives||[];
+      }catch{
+        state.message='El historial del servidor estará disponible cuando la VPN tenga conexión; no se borró ninguna lista.';
+      }
+    }
+    paint();return;
   }
   if(action==='category'){
     state.pendingReviewMode=false;
@@ -651,7 +861,10 @@ async function handleClick(event){
     const group=groups().find(x=>x.id===state.currentCategory);
     const p=group?.products[state.cursor];if(!p)return;
     const quantity=shell.querySelector('#mpQuantity')?.value||null;
-    const unit=shell.querySelector('#mpUnit')?.value||'';
+    const unit=selectedMonitorUnit({
+      selected:shell.querySelector('input[name="mpReviewUnit"]:checked')?.value,
+      custom:shell.querySelector('#mpUnitOther')?.value
+    });
     const notes=shell.querySelector('#mpNotes')?.value||'';
     await localChange({
       kind:'PRODUCT',itemId:p.id,decision:node.dataset.mpChoice,
@@ -664,6 +877,18 @@ async function handleClick(event){
   if(action==='print'){window.print();}
 }
 async function handleChange(event){
+  if(event.target?.name==='mpReviewUnit'){
+    const custom=shell.querySelector('#mpUnitOther');
+    custom.hidden=event.target.value!=='__OTHER__';
+    if(!custom.hidden)custom.focus();
+    return;
+  }
+  if(event.target?.id==='mpWeekSelect'){
+    if(state.closing||state.switching){event.target.value=state.week;return;}
+    try{await switchMonitorWeek(event.target.value);}
+    catch(error){event.target.value=state.week;throw error;}
+    return;
+  }
   const unitPicker=event.target.closest('.mp-edit-unit-select');
   if(unitPicker){
     const custom=unitPicker.closest('label')?.querySelector('.mp-edit-unit-other');

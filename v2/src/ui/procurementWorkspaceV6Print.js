@@ -50,10 +50,11 @@ export function renderPrintModal({ list, businessName, monitor = false }) {
 // Único render de los dos tickets. Lo consumen tanto las listas V6 tradicionales
 // como Monitor, que únicamente proyecta sus datos sin crear entidades V6.
 export function renderProcurementTickets({list,businessName}) {
-  const typeLabel=list.kind==='ORDER'?'LISTA DE PEDIDOS':'LISTA DE COMPRAS';
-  const copies=list.kind==='ORDER'
-    ? ['COPIA PEDIDO / PROVEEDOR','COPIA DEPÓSITO']
-    : ['COPIA CHÓFER','COPIA DEPÓSITO'];
+  const typeLabel=list.kind==='INQUIRY'?'LISTA PARA PREGUNTAR':
+    list.kind==='ORDER'?'LISTA DE PEDIDOS':'LISTA DE COMPRAS';
+  const copies=list.kind==='INQUIRY'?['COPIA ÚNICA · CONSULTA']:
+    list.kind==='ORDER'?['COPIA PEDIDO / PROVEEDOR','COPIA DEPÓSITO']:
+    ['COPIA CHÓFER','COPIA DEPÓSITO'];
   const groups=groupByCategory((list.items||[]).filter(x=>x.status!=='CANCELLED'));
   return copies.map(copy=>ticket({list,typeLabel,copy,groups,businessName})).join('');
 }
