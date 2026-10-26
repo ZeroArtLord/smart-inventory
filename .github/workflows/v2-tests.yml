@@ -232,14 +232,16 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Verify VIGIA Monitor desktop/mobile UI with real browser
-        run: node scripts/monitorPilotBrowserSmoke.mjs
+        run: |
+          node scripts/monitorPilotBrowserSmoke.mjs
+          node scripts/monitorSupplierBrowserSmoke.mjs
 
       - name: Save browser smoke screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: monitor-pilot-browser-screenshots
-          path: v2/test-results/monitor-pilot/
+          path: v2/test-results/
           if-no-files-found: ignore
 
   server-syntax:
@@ -376,7 +378,9 @@ jobs:
         run: node scripts/monitorSupplySmoke.js
 
       - name: Verify review cycle closure, immutable archive and no stock changes
-        run: node scripts/monitorReviewCyclesSmoke.js
+        run: |
+          node scripts/monitorReviewCyclesSmoke.js
+          node scripts/monitorSupplierOrdersSmoke.js
 
       - name: Restart API
         run: |
