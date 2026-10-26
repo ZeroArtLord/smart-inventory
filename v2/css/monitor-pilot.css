@@ -1,7 +1,7 @@
 /* VIGÍA Monitor pilot UI — standalone modal, never overrides V2 production flow. */
 #vigiaMonitorPilotLauncher{position:fixed;right:16px;bottom:18px;z-index:300;border:0;border-radius:18px;background:#0e526e;color:white;padding:14px 20px;box-shadow:0 8px 30px #102a3980;font:800 14px system-ui;cursor:pointer}
 #vigiaMonitorPilotLauncher[hidden]{display:none!important}
-#vigiaMonitorPilot{position:fixed;inset:0;z-index:500;background:#f3f6fb;color:#213247;font:15px/1.45 system-ui,sans-serif;overflow-y:auto;overscroll-behavior:contain}
+#vigiaMonitorPilot{position:fixed;inset:0;z-index:500;background:#f3f6fb;color:#213247;font:15px/1.45 system-ui,sans-serif;overflow-y:auto;overscroll-behavior:contain;overflow-anchor:none;scroll-behavior:auto}
 #vigiaMonitorPilot[hidden]{display:none!important}
 #vigiaMonitorPilot *{box-sizing:border-box}
 #vigiaMonitorPilot button,#vigiaMonitorPilot input,#vigiaMonitorPilot select,#vigiaMonitorPilot textarea{font:inherit}
@@ -159,3 +159,5 @@
 #vigiaMonitorPilot [data-ms-search][hidden]{display:none!important}
 #vigiaMonitorPilot .mp-suppliers button:disabled{opacity:.55;cursor:wait}
 @media(max-width:700px){#vigiaMonitorPilot .mp-supplier-picker{width:100%}}
+
+#vigiaMonitorPilot .mp-supplier-order-actions{min-height:44px}

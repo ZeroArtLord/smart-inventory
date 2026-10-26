@@ -153,17 +153,26 @@ async function pushAndRefresh(){
   const latest=await readMonitorReview(state.options);
   if(epoch!==latestLocalUiEpoch || !state.visible)return;
   state.local=latest;
-  if(state.local.status==='SYNCED' && state.message.startsWith('Guardado en este dispositivo'))state.message='';
+  const statusAnchor=shell.querySelector(state.page==='review'?'.mp-actions':'#mpContent');
+  const statusTop=statusAnchor?.getBoundingClientRect().top;
+  const statusHeight=shell.scrollHeight;
+  if(state.local.status==='SYNCED' && state.message.startsWith('Guardado en este dispositivo')){
+    state.message='';
+    const message=shell.querySelector('[data-mp-save-message]');
+    if(message){message.style.minHeight=message.getBoundingClientRect().height+'px';message.textContent='Guardado y sincronizado.';}
+  }
   // No interrumpir cantidad/unidad todavía bajo edición.
   const focus=document.activeElement;
-  if(state.page==='selected') {
-    // Con decenas de campos, jamás reemplazar sus nodos por una sincronización
-    // en segundo plano: se perdería el texto que aún no acabó de escribir.
-    const chip=shell.querySelector('.mp-chip');
+  if(state.page==='selected'||state.page==='review'||supplierPanel?.hasPage(state.page)) {
+    // La sincronización actualiza el estado; conserva formularios y tarjetas
+    // que el usuario está usando, incluidos sus valores todavía sin guardar.
+    const chip=shell.querySelector('[data-mp-sync-status]');
     if(chip)chip.textContent=state.local.status==='CONFLICT'
       ? '⚠ Conflictos sin resolver: '+state.local.conflictCount
       : state.local.pendingCount?'● Pendiente de sincronizar: '+state.local.pendingCount
       : '✓ Sincronizado';
+    shell.querySelector('.mp-shell').style.minHeight=statusHeight+'px';
+    if(statusAnchor)shell.scrollTop+=statusAnchor.getBoundingClientRect().top-statusTop;
     return;
   }
   if(shell.contains(focus)&&focus?.matches?.('input,textarea,select'))return;
@@ -242,10 +251,23 @@ function info(){
     :state.local?.network==='RETRY_LATER'?'● Servidor no disponible; datos locales intactos'
     :state.local?.status==='LOCAL'?'● Pendiente de sincronizar: '+state.local.pendingCount
     :state.local?'✓ Sincronizado':'Sin iniciar';
-  return '<span class="mp-chip">'+esc(label)+'</span>';
+  return '<span class="mp-chip" data-mp-sync-status>'+esc(label)+'</span>';
 }
 function paint(){
   if(!state.visible)return;
+  const viewKey=[state.page,state.week,state.options?.round||1].join(':');
+  const sameView=shell.dataset.mpView===viewKey;
+  const oldTop=shell.scrollTop,oldHeight=shell.scrollHeight;
+  const navLeft=shell.querySelector('.mp-nav')?.scrollLeft||0;
+  const candidates=state.page==='review'?['.mp-actions','#mpNotes','#mpQuantity','#mpProductSearch','#mpContent']:['#mpContent'];
+  const anchor=sameView?candidates.find(selector=>{
+    const rect=shell.querySelector(selector)?.getBoundingClientRect();
+    return rect&&rect.bottom>0&&rect.top<shell.clientHeight;
+  }):null;
+  const anchorTop=anchor?shell.querySelector(anchor).getBoundingClientRect().top:0;
+  const focus=document.activeElement;
+  const focusSelector=shell.contains(focus)?(focus.id?'#'+CSS.escape(focus.id):
+    focus.dataset.mpChoice?'[data-mp-choice="'+CSS.escape(focus.dataset.mpChoice)+'"]':null):null;
   const tabs=[
     ['home','Inicio'],['review','Revisar'],['pending','Pendientes'],
     ['selected','Seleccionados'],['ask','Preguntar'],['extras','Extras'],
@@ -278,9 +300,19 @@ function paint(){
     '<nav class="mp-nav mp-no-print" aria-label="Secciones del piloto">'+nav+'</nav>'+
     '<div class="mp-inline mp-no-print">'+info()+
     button('↻ Sincronizar','sync')+'</div>'+
-    (state.message?'<div class="mp-warning mp-no-print">'+esc(state.message)+'</div>':'')+
+    (state.message?'<div class="mp-warning mp-no-print" data-mp-save-message>'+esc(state.message)+'</div>':'')+
     (state.error?'<div class="mp-error mp-no-print">'+esc(state.error)+'</div>':'')+
-    content+'</div>';
+    '<div id="mpContent">'+content+'</div></div>';
+  shell.dataset.mpView=viewKey;
+  if(sameView){
+    // Mantener altura mientras cambia el producto evita que el navegador recorte
+    // scrollTop al desaparecer un aviso o un campo opcional.
+    shell.querySelector('.mp-shell').style.minHeight=oldHeight+'px';
+    const nextAnchor=anchor?shell.querySelector(anchor):null;
+    shell.scrollTop=nextAnchor?shell.scrollTop+nextAnchor.getBoundingClientRect().top-anchorTop:oldTop;
+    if(focusSelector)shell.querySelector(focusSelector)?.focus({preventScroll:true});
+  }
+  const navElement=shell.querySelector('.mp-nav');if(navElement)navElement.scrollLeft=navLeft;
 }
 function renderHome(){
   const p=progress();

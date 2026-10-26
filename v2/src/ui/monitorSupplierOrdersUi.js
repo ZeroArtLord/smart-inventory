@@ -63,10 +63,10 @@ export function createMonitorSupplierPanel({host,getContext,repaint,notify}){
      }catch(e){html+='<p class="mp-warning">'+esc(e.message)+'</p><p>Completa los datos en Seleccionados y Asignar pedidos.</p>';}
      html+='<h3>Pedidos preparados y enviados · recientes</h3>'+(data.orders.filter(o=>o.status!=='REPLACED').map(o=>{
        const editable=o.status==='FINALIZED';
-       return '<div class="mp-card"><h3>Pedido para '+esc(o.supplier.name)+'</h3><p>'+esc(o.supplier.phone)+' · Semana '+esc(o.weekStart)+' · Ciclo '+esc(o.round)+' · '+(editable?'Pendiente de enviar':'Enviado · confirmado manualmente')+(o.replacesOrderId?' · Actualización de un pedido anterior':'')+'</p>'+
-         '<pre class="mp-supplier-message">'+esc(buildSupplierMessage(o))+'</pre>'+ (editable?'<div class="mp-inline">'+
+       return '<div class="mp-card" data-ms-order="'+esc(o.id)+'"><h3>Pedido para '+esc(o.supplier.name)+'</h3><p>'+esc(o.supplier.phone)+' · Semana '+esc(o.weekStart)+' · Ciclo '+esc(o.round)+' · <span data-ms-status>'+(editable?'Pendiente de enviar':'Enviado · confirmado manualmente')+'</span>'+(o.replacesOrderId?' · Actualización de un pedido anterior':'')+'</p>'+
+         '<pre class="mp-supplier-message">'+esc(buildSupplierMessage(o))+'</pre><div class="mp-inline mp-supplier-order-actions">'+ (editable?
          button('Abrir en WhatsApp','whatsapp','data-ms-id="'+esc(o.id)+'"')+button('Copiar mensaje','copy','data-ms-id="'+esc(o.id)+'"')+
-         button('Marcar como enviado','sent','data-ms-id="'+esc(o.id)+'" '+(busy?'disabled':''))+'</div>':'')+'</div>';
+         button('Marcar como enviado','sent','data-ms-id="'+esc(o.id)+'" '+(busy?'disabled':'')):'<span>Confirmación guardada</span>')+'</div></div>';
      }).join('')||'<p>Todavía no has finalizado pedidos en este ciclo.</p>');
    }
    return html+'</div>';
@@ -112,9 +112,32 @@ export function createMonitorSupplierPanel({host,getContext,repaint,notify}){
    try{await supplierApi.saveSupplier(form.id,{...form,expectedVersion:form.version});form=emptySupplier();await load();notify('Proveedor guardado.');}
    catch(e){error=e.message;}finally{busy=false;repaint();}return true;
  }
+ async function markSent(node){
+   if(busy)return;
+   const current=data.orders.find(o=>o.id===node.dataset.msId);
+   if(!current||current.status!=='FINALIZED')return;
+   if(!window.confirm('¿Ya enviaste este pedido por WhatsApp? Esta confirmación se guardará y se usará para sugerir el proveedor.'))return;
+   const card=node.closest('[data-ms-order]');
+   const actions=card.querySelector('.mp-supplier-order-actions');
+   actions.style.minHeight=actions.getBoundingClientRect().height+'px';
+   const buttons=[...actions.querySelectorAll('button')];
+   busy=true;for(const button of buttons)button.disabled=true;
+   try{
+     const saved=(await supplierApi.sent(current.id)).order;
+     data.orders=data.orders.map(o=>o.id===saved.id?saved:o);
+     card.querySelector('[data-ms-status]').textContent='Enviado · confirmado manualmente';
+     const confirmed=document.createElement('span');confirmed.setAttribute('role','status');
+     confirmed.textContent='Confirmación guardada';actions.replaceChildren(confirmed);
+   }catch(e){
+     let message=actions.querySelector('[data-ms-send-error]');
+     if(!message){message=document.createElement('span');message.dataset.msSendError='';message.setAttribute('role','alert');actions.append(message);}
+     message.textContent=e.message;
+   }finally{busy=false;for(const button of buttons)if(button.isConnected)button.disabled=false;}
+ }
  async function handleClick(event){
    const node=event.target.closest('[data-ms-action]');if(!node)return false;
    const action=node.dataset.msAction;
+   if(action==='sent'){await markSent(node);return true;}
    if(action==='whatsapp'||action==='copy'){
      const o=data.orders.find(o=>o.id===node.dataset.msId);if(!o||o.status!=='FINALIZED')return true;
      if(action==='whatsapp'){
@@ -139,10 +162,7 @@ export function createMonitorSupplierPanel({host,getContext,repaint,notify}){
        const fingerprint=supplierOrderFingerprint(buildSupplierOrderGroups({...data,selections:selections()}));
        await supplierApi.finalize(context(),fingerprint);await load();notify('Pedidos preparados. Abre cada mensaje y envíalo por WhatsApp.');
      }
-     if(action==='sent'){
-       if(!window.confirm('¿Ya enviaste este pedido por WhatsApp? Esta confirmación se guardará y se usará para sugerir el proveedor.'))return true;
-       await supplierApi.sent(node.dataset.msId);await load();notify('Pedido marcado como enviado. Proveedor recordado para próximas revisiones.');
-     }
+
    }catch(e){error=e.message;}finally{busy=false;repaint();}return true;
  }
  return {isBusy:()=>busy,hasPage:page=>pages.has(page),render,load,reset,handleClick,handleChange,handleInput,handleSubmit};
