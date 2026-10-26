@@ -147,3 +147,15 @@
   #v6MonitorPrintPage .mp-ticket-line b{text-align:right;white-space:nowrap}
   @page{size:80mm auto;margin:2mm}
 }
+
+/* Proveedores y preparación manual de mensajes. */
+#vigiaMonitorPilot .mp-supplier-active{display:flex;align-items:center;gap:8px;margin:12px 0}
+#vigiaMonitorPilot .mp-supplier-active input{width:18px;height:18px;margin:0}
+#vigiaMonitorPilot .mp-suppliers h2,#vigiaMonitorPilot .mp-suppliers h3{margin-top:16px}
+#vigiaMonitorPilot .mp-supplier-picker{width:260px;max-width:100%;flex-shrink:0}
+#vigiaMonitorPilot .mp-supplier-assignment>div:first-child{min-width:0;overflow-wrap:anywhere}
+#vigiaMonitorPilot .mp-supplier-assignment small{display:block;color:#60758a}
+#vigiaMonitorPilot .mp-supplier-message{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.55 system-ui;max-width:100%;background:#f3f7fa;padding:12px;border-radius:8px}
+#vigiaMonitorPilot [data-ms-search][hidden]{display:none!important}
+#vigiaMonitorPilot .mp-suppliers button:disabled{opacity:.55;cursor:wait}
+@media(max-width:700px){#vigiaMonitorPilot .mp-supplier-picker{width:100%}}

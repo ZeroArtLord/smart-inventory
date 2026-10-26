@@ -168,6 +168,23 @@ jobs:
           & "./docs/VIGIA/tests/monitorTouchPrecheck.Tests.ps1"
           if ($LASTEXITCODE -ne 0) { throw "Monitor touch precheck regression failed" }
 
+      - name: Parse supplier deployment script and stage Node prechecks without BOM
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("docs/VIGIA/VIGIA_HP_MONITOR_SUPPLIERS_DEPLOY_SAFE.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors -join "`n") }
+          foreach($name in @('PRECHECK','POSTCHECK')) {
+            $source = & git show ("HEAD:docs/VIGIA/VIGIA_HP_MONITOR_SUPPLIERS_"+$name+"_READONLY.cjs")
+            if ($LASTEXITCODE -ne 0) { throw 'Missing supplier precheck' }
+            $file = Join-Path $env:RUNNER_TEMP ($name+'.cjs')
+            [IO.File]::WriteAllText($file,($source -join [Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+            & node --check $file
+            if ($LASTEXITCODE -ne 0) { throw 'Supplier precheck Node syntax invalid' }
+          }
+          Write-Host 'VIGIA_MONITOR_SUPPLIERS_WINDOWS_PARSE_PASS'
+
       - name: Verify staged Node precheck has no UTF-8 BOM
         shell: powershell
         run: |
@@ -232,14 +249,16 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Verify VIGIA Monitor desktop/mobile UI with real browser
-        run: node scripts/monitorPilotBrowserSmoke.mjs
+        run: |
+          node scripts/monitorPilotBrowserSmoke.mjs
+          node scripts/monitorSupplierBrowserSmoke.mjs
 
       - name: Save browser smoke screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: monitor-pilot-browser-screenshots
-          path: v2/test-results/monitor-pilot/
+          path: v2/test-results/
           if-no-files-found: ignore
 
   server-syntax:
@@ -376,7 +395,9 @@ jobs:
         run: node scripts/monitorSupplySmoke.js
 
       - name: Verify review cycle closure, immutable archive and no stock changes
-        run: node scripts/monitorReviewCyclesSmoke.js
+        run: |
+          node scripts/monitorReviewCyclesSmoke.js
+          node scripts/monitorSupplierOrdersSmoke.js
 
       - name: Restart API
         run: |

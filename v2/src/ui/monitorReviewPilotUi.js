@@ -1,5 +1,6 @@
 // Pilot isolated from V2 procurement: its launcher never replaces existing forms.
 // Requires authenticated V2 app session. NO stock movements or legacy sync writes.
+import { createMonitorSupplierPanel } from './monitorSupplierOrdersUi.js';
 import { getAll, STORES } from '../storage/database.js';
 import { resolveMonitorPilotSession } from '../replenishment/monitorPilotSession.js';
 import { isMonitorPilotEnabled } from './monitorPilotEnabled.js';
@@ -23,7 +24,7 @@ import {
 } from '../replenishment/monitorReviewOffline.js';
 
 const root=document.getElementById('app');
-let shell=null,launcher=null;
+let shell=null,launcher=null,supplierPanel=null;
 let pilotEnabled=false;
 const state={
   visible:false,loading:false,page:'home',week:weekMonday(),
@@ -41,6 +42,8 @@ if(root){
   shell=document.createElement('section');shell.id='vigiaMonitorPilot';
   shell.hidden=true;shell.setAttribute('aria-label','Piloto VIGÍA Monitor');
   document.body.append(shell);
+  supplierPanel=createMonitorSupplierPanel({host:shell,getContext:()=>state.options,
+    repaint:()=>paint(),notify:message=>{state.message=message;}});
 
   const observer=new MutationObserver(updateLauncher);
   observer.observe(root,{childList:true,subtree:true});
@@ -51,7 +54,7 @@ if(root){
   shell.addEventListener('click',event=>handleClick(event).catch(showError));
   shell.addEventListener('submit',event=>handleSubmit(event).catch(showError));
   shell.addEventListener('change',event=>handleChange(event).catch(showError));
-  shell.addEventListener('input',event=>{handleSelectedInput(event);handleProductSearch(event);});
+  shell.addEventListener('input',event=>{supplierPanel.handleInput(event);handleSelectedInput(event);handleProductSearch(event);});
   shell.addEventListener('focusout',event=>handleSelectedBlur(event));
   shell.addEventListener('keydown',event=>handleSelectedKeydown(event).catch(showError));
   window.addEventListener('online',()=>{if(state.visible)pushAndRefresh().catch(showError);});
@@ -73,6 +76,7 @@ function updateLauncher(){
 }
 async function openPilot(){
   if(!pilotEnabled)throw new Error('Monitor no está activado en este dispositivo');
+  supplierPanel?.reset();
   state.visible=true;state.loading=true;state.error='';
   shell.hidden=false;document.body.style.overflow='hidden';updateLauncher();paint();
   try{
@@ -107,7 +111,7 @@ async function openPilot(){
 async function switchMonitorWeek(week){
   if(!isSelectableMonitorWeek(week))throw new Error('Semana de revisión inválida');
   if(week===state.week)return;
-  if(state.closing||state.switching)throw new Error('Espera a que termine la operación actual');
+  if(state.closing||state.switching||supplierPanel?.isBusy())throw new Error('Espera a que termine la operación actual');
   state.switching=true;
   try{
     await flushAllSelected();
@@ -117,6 +121,7 @@ async function switchMonitorWeek(week){
     const cycle=await resolveMonitorActiveRound(base);
     const options={...base,round:cycle.round};
     const local=await readMonitorReview(options);
+    supplierPanel?.reset();
     state.week=week;state.options=options;state.local=local;
     state.currentCategory=null;state.cursor=0;state.pendingReviewMode=false;
     state.page='home';state.archives=[];state.archiveDetail=null;state.searchQuery='';
@@ -244,10 +249,11 @@ function paint(){
   const tabs=[
     ['home','Inicio'],['review','Revisar'],['pending','Pendientes'],
     ['selected','Seleccionados'],['ask','Preguntar'],['extras','Extras'],
-    ['lists','Mis listas'],['history','Historial']
+    ['lists','Mis listas'],['suppliers','Proveedores'],['supplier-assign','Asignar pedidos'],
+    ['supplier-final','Finalizar pedidos'],['history','Historial']
   ];
   const nav=tabs.map(([id,label])=>'<button type="button" data-mp-action="page" data-mp-page="'+id+
-    '" '+(state.page===id?'aria-current="page"':'')+'>'+label+'</button>').join('');
+    '" '+(supplierPanel?.isBusy()?'disabled ':'')+(state.page===id?'aria-current="page"':'')+'>'+label+'</button>').join('');
   let content='<p class="mp-muted">Preparando revisión semanal…</p>';
   if(state.error)content='<div class="mp-error">'+esc(state.error)+'</div>';
   if(!state.loading&&state.local){
@@ -259,12 +265,13 @@ function paint(){
     if(state.page==='history')content=renderHistory();
     if(state.page==='extras')content=renderExtras();
     if(state.page==='lists')content=renderLists();
+    if(supplierPanel?.hasPage(state.page))content=supplierPanel.render(state.page);
   }
   shell.innerHTML='<div class="mp-shell"><header class="mp-head"><div><small>PILOTO AISLADO · SIN MOVIMIENTOS DE STOCK</small>'+
     '<h1>VIGÍA Monitor</h1><p>Semana '+esc(state.week)+' · Ciclo '+esc(state.options?.round||1)+' · '+
     esc(state.products.length)+' productos del catálogo</p>'+
     '<label class="mp-week-label" for="mpWeekSelect">Semana de revisión ' +
-    '<select id="mpWeekSelect" '+(state.loading||state.closing||state.switching?'disabled':'')+'>'+recentMonitorWeeks().map(week=>
+    '<select id="mpWeekSelect" '+(state.loading||state.closing||state.switching||supplierPanel?.isBusy()?'disabled':'')+'>'+recentMonitorWeeks().map(week=>
       '<option value="'+week+'" '+(week===state.week?'selected':'')+'>'+week+
       (week===recentMonitorWeeks()[0]?' · actual':'')+'</option>').join('')+'</select></label></div>'+
     button('Cerrar ✕','close',{cls:'mp-close'})+'</header>'+
@@ -725,6 +732,8 @@ function moveToNextUndecided(){
   else {state.page='home';state.message='Categoría recorrida. Puedes abrir otra o revisar tus pendientes.';}
 }
 async function handleClick(event){
+  if(event.target.closest('[data-ms-action]')){await supplierPanel.handleClick(event);return;}
+  if(supplierPanel?.isBusy())return;
   const node=event.target.closest('[data-mp-action]');
   if(!node)return;
   event.preventDefault();
@@ -813,6 +822,7 @@ async function handleClick(event){
     state.page=node.dataset.mpPage;
     state.pendingReviewMode=false;
     state.message='';
+    if(supplierPanel?.hasPage(state.page)){await supplierPanel.load();paint();return;}
     if(state.page==='history'){
       try{
         const data=await listMonitorReviewArchives(state.options);
@@ -877,6 +887,7 @@ async function handleClick(event){
   if(action==='print'){window.print();}
 }
 async function handleChange(event){
+  if(event.target.matches('[data-ms-assignment]')){await supplierPanel.handleChange(event);return;}
   if(event.target?.name==='mpReviewUnit'){
     const custom=shell.querySelector('#mpUnitOther');
     custom.hidden=event.target.value!=='__OTHER__';
@@ -884,7 +895,7 @@ async function handleChange(event){
     return;
   }
   if(event.target?.id==='mpWeekSelect'){
-    if(state.closing||state.switching){event.target.value=state.week;return;}
+    if(state.closing||state.switching||supplierPanel?.isBusy()){event.target.value=state.week;return;}
     try{await switchMonitorWeek(event.target.value);}
     catch(error){event.target.value=state.week;throw error;}
     return;
@@ -917,6 +928,7 @@ async function handleChange(event){
   await persistPilotCursor();paint();
 }
 async function handleSubmit(event){
+  if(event.target.id==='mpSupplierForm'){await supplierPanel.handleSubmit(event);return;}
   if(event.target?.id!=='mpExtraForm')return;
   event.preventDefault();
   const data=new FormData(event.target);
