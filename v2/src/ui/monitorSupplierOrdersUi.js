@@ -1,6 +1,6 @@
 import {createLocalId} from '../core/ids.js';
 import {buildSupplierOrderGroups,supplierOrderFingerprint,buildSupplierMessage,supplierWhatsAppUrl} from '../replenishment/monitorSupplierOrders.js';
-import {supplierApi,readSupplierDraft,writeSupplierDraft} from '../replenishment/monitorSupplierClient.js';
+import {supplierApi,readSupplierDraft,writeSupplierDraft,reconcileSupplierDraft} from '../replenishment/monitorSupplierClient.js';
 const pages=new Set(['suppliers','supplier-assign','supplier-final']);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const button=(text,action,attrs='')=>'<button type="button" class="mp-button" data-ms-action="'+action+'" '+attrs+'>'+text+'</button>';
@@ -18,7 +18,7 @@ export function createMonitorSupplierPanel({host,getContext,repaint,notify}){
      const [fresh,pending]=await Promise.all([supplierApi.load(ctx),readSupplierDraft(ctx)]);
      if(epoch!==loadEpoch||currentKey()!==key)return;
      if(fresh.round!==ctx.round)throw Error('La revisión cambió de ciclo. Cierra y vuelve a abrir Monitor.');
-     data=fresh;scope=key;draft=Object.fromEntries(Object.entries(pending).filter(([itemKey])=>fresh.items.some(i=>i.itemKey===itemKey)));
+     data=fresh;scope=key;draft=reconcileSupplierDraft(pending,fresh);
      await writeSupplierDraft(ctx,draft);
    }catch(e){if(epoch===loadEpoch)error=e.message;}
    finally{if(epoch===loadEpoch){loading=false;repaint();}}

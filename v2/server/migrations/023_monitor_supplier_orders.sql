@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS monitor_supplier_orders (
  status text NOT NULL DEFAULT 'FINALIZED' CHECK(status IN ('FINALIZED','SENT','REPLACED')),
  finalized_by uuid NOT NULL REFERENCES users(id),finalized_at timestamptz NOT NULL DEFAULT now(),
  sent_by uuid REFERENCES users(id),sent_at timestamptz,
- PRIMARY KEY(workspace_id,id),UNIQUE(workspace_id,week_start,round_number,supplier_id,fingerprint),
+ PRIMARY KEY(workspace_id,id),
  FOREIGN KEY(workspace_id,supplier_id) REFERENCES monitor_suppliers(workspace_id,id),
  FOREIGN KEY(workspace_id,replaces_order_id) REFERENCES monitor_supplier_orders(workspace_id,id)
 );

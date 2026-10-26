@@ -45,7 +45,7 @@ export function supplierOrderFingerprint(groups){
 export function buildSupplierMessage(order,{now=new Date()}={}){
   const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'America/Caracas',hour:'2-digit',hourCycle:'h23'}).format(now));
   const greeting=hour<12?'buenos días':hour<19?'buenas tardes':'buenas noches';
-  const lines=order.items.map(i=>'- '+new Intl.NumberFormat('es-VE',{maximumFractionDigits:6}).format(i.quantity)+
+  const lines=order.items.map(i=>'- '+new Intl.NumberFormat('es-VE',{maximumSignificantDigits:21,useGrouping:false}).format(i.quantity)+
     ' '+i.unit+' — '+i.name+(i.notes?' ('+i.notes+')':''));
   return 'Hola, '+greeting+'. Le escribo de parte del Club social deportivo y campestre el establo, c.a para hacerle el siguiente pedido:\n\n'+
     (order.replacesOrderId?'Actualización del pedido anterior:\n':'')+lines.join('\n')+
@@ -54,4 +54,10 @@ export function buildSupplierMessage(order,{now=new Date()}={}){
 export function supplierWhatsAppUrl(order,options){
   const supplier=normalizeSupplier(order.supplier);
   return 'https://wa.me/'+supplier.phone+'?text='+encodeURIComponent(buildSupplierMessage(order,options));
+}
+export function findReusableSupplierOrder(history,fingerprint){
+  // history está ordenado de la versión más reciente a la más antigua.
+  const pending=history.find(o=>o.status==='FINALIZED');
+  const sent=history.find(o=>o.status==='SENT');
+  return pending?.fingerprint===fingerprint?pending:sent?.fingerprint===fingerprint?sent:null;
 }

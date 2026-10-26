@@ -732,7 +732,7 @@ function moveToNextUndecided(){
   else {state.page='home';state.message='Categoría recorrida. Puedes abrir otra o revisar tus pendientes.';}
 }
 async function handleClick(event){
-  if(await supplierPanel?.handleClick(event))return;
+  if(event.target.closest('[data-ms-action]')){await supplierPanel.handleClick(event);return;}
   if(supplierPanel?.isBusy())return;
   const node=event.target.closest('[data-mp-action]');
   if(!node)return;
@@ -887,7 +887,7 @@ async function handleClick(event){
   if(action==='print'){window.print();}
 }
 async function handleChange(event){
-  if(await supplierPanel?.handleChange(event))return;
+  if(event.target.matches('[data-ms-assignment]')){await supplierPanel.handleChange(event);return;}
   if(event.target?.name==='mpReviewUnit'){
     const custom=shell.querySelector('#mpUnitOther');
     custom.hidden=event.target.value!=='__OTHER__';
@@ -928,7 +928,7 @@ async function handleChange(event){
   await persistPilotCursor();paint();
 }
 async function handleSubmit(event){
-  if(await supplierPanel?.handleSubmit(event))return;
+  if(event.target.id==='mpSupplierForm'){await supplierPanel.handleSubmit(event);return;}
   if(event.target?.id!=='mpExtraForm')return;
   event.preventDefault();
   const data=new FormData(event.target);

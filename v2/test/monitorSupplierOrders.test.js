@@ -33,3 +33,18 @@ test('mensaje usa saludo de Venezuela, texto acordado, notas y enlace codificado
  assert.match(buildSupplierMessage(order,{now:new Date('2026-10-27T01:00:00Z')}),/buenas noches/);
  const url=new URL(supplierWhatsAppUrl(order,{now}));assert.equal(url.hostname,'wa.me');assert.equal(url.pathname,'/584141234567');assert.equal(url.searchParams.get('text'),text);
 });
+test('el mensaje conserva decimales pequeños o largos sin redondear cantidades',()=>{
+ const order={supplier:suppliers[0],items:[{name:'Aceite',quantity:1.23456789,unit:'KG',notes:''},
+   {name:'Concentrado',quantity:0.0000004,unit:'KG',notes:''}]};
+ const text=buildSupplierMessage(order);
+ assert.match(text,/1,23456789 KG — Aceite/);
+ assert.match(text,/0,0000004 KG — Concentrado/);
+});
+test('solo reutiliza el último pendiente o enviado, nunca una versión histórica anterior',async()=>{
+ const {findReusableSupplierOrder}=await import('../src/replenishment/monitorSupplierOrders.js');
+ const a={id:'a',status:'SENT',fingerprint:'qty3'},b={id:'b',status:'SENT',fingerprint:'qty4'};
+ assert.equal(findReusableSupplierOrder([b,a],'qty4')?.id,'b');
+ assert.equal(findReusableSupplierOrder([b,a],'qty3'),null);
+ const c={id:'c',status:'FINALIZED',fingerprint:'qty3'};
+ assert.equal(findReusableSupplierOrder([c,b,a],'qty3')?.id,'c');
+});

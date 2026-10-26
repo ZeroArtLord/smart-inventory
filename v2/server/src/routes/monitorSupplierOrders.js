@@ -4,7 +4,7 @@ import {pool,withTransaction} from '../db.js';
 import {hasPermission,PERMISSIONS} from '../security/permissions.js';
 import {writeAuditEvent} from '../audit/auditService.js';
 import {requireActiveMonitorRound} from './monitorReviewCycles.js';
-import {normalizeSupplier,buildSupplierOrderGroups,supplierOrderFingerprint} from '../../../src/replenishment/monitorSupplierOrders.js';
+import {normalizeSupplier,buildSupplierOrderGroups,supplierOrderFingerprint,findReusableSupplierOrder} from '../../../src/replenishment/monitorSupplierOrders.js';
 export const monitorSupplierOrderRouter=Router();
 function fail(message,code='MONITOR_SUPPLIER_INVALID',statusCode=400){const e=Error(message);e.code=code;e.statusCode=statusCode;return e;}
 function access(auth,write=false){
@@ -79,15 +79,20 @@ monitorSupplierOrderRouter.post('/reviews/:weekStart/supplier-orders',async(req,
    const selections=Object.fromEntries(draft.items.map(i=>[i.itemKey,draft.assignments.find(a=>a.itemKey===i.itemKey)?.supplierId||draft.preferences[i.productId]]));
    let groups;try{groups=buildSupplierOrderGroups({...draft,selections});}catch(e){throw fail(e.message);}
    if(req.body?.fingerprint!==supplierOrderFingerprint(groups))throw fail('El pedido cambió. Actualiza y revisa cantidades, empaque y proveedor antes de finalizar.','MONITOR_ORDER_CHANGED',409);
+   const history=(await c.query('SELECT *,week_start::text AS week_start FROM monitor_supplier_orders WHERE workspace_id=$1 AND week_start=$2::date AND round_number=$3 ORDER BY finalized_at DESC,id FOR UPDATE',[req.auth.workspaceId,date,round])).rows;
    await c.query("UPDATE monitor_supplier_orders SET status='REPLACED' WHERE workspace_id=$1 AND week_start=$2::date AND round_number=$3 AND status='FINALIZED'",[req.auth.workspaceId,date,round]);
    const orders=[];
    for(const group of groups){
      const fingerprint=createHash('sha256').update(supplierOrderFingerprint([{...group,items:group.items.map(i=>({...i,version:0}))}])).digest('hex');
-     const previous=(await c.query("SELECT id FROM monitor_supplier_orders WHERE workspace_id=$1 AND week_start=$2::date AND round_number=$3 AND supplier_id=$4 AND status='SENT' ORDER BY sent_at DESC,id LIMIT 1",[req.auth.workspaceId,date,round,group.supplierId])).rows[0];
+     const supplierHistory=history.filter(o=>o.supplier_id===group.supplierId);
+     const reusable=findReusableSupplierOrder(supplierHistory,fingerprint);
+     if(reusable){
+       if(reusable.status==='FINALIZED')await c.query("UPDATE monitor_supplier_orders SET status='FINALIZED' WHERE workspace_id=$1 AND id=$2",[req.auth.workspaceId,reusable.id]);
+       orders.push(order(reusable));continue;
+     }
+     const previous=supplierHistory.find(o=>o.status==='SENT');
      const r=await c.query(`INSERT INTO monitor_supplier_orders(workspace_id,week_start,round_number,supplier_id,supplier_snapshot,items,fingerprint,replaces_order_id,finalized_by)
        VALUES($1,$2::date,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9)
-       ON CONFLICT(workspace_id,week_start,round_number,supplier_id,fingerprint) DO UPDATE SET
-         status=CASE WHEN monitor_supplier_orders.status='REPLACED' THEN 'FINALIZED' ELSE monitor_supplier_orders.status END
        RETURNING *,week_start::text AS week_start`,[req.auth.workspaceId,date,round,group.supplierId,JSON.stringify(group.supplier),JSON.stringify(group.items),fingerprint,previous?.id||null,req.auth.userId]);
      orders.push(order(r.rows[0]));
    }

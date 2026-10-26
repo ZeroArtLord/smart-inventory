@@ -1,6 +1,6 @@
 # Monitor Supplier Orders Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Crear proveedores, asignar los pedidos semanales y preparar mensajes por proveedor con validación obligatoria y aprendizaje de pedidos enviados.
 **Architecture:** Modelo compartido puro, rutas Monitor protegidas y transacciones PostgreSQL, panel cliente separado con borrador local persistente. Snapshots de pedidos y preferencias independientes de stock.
@@ -25,19 +25,19 @@
 ### Task 1: Modelo de proveedores, mensajes y validación
 **Files:** v2/src/replenishment/monitorSupplierOrders.js, v2/test/monitorSupplierOrders.test.js.
 **Interfaces:** normalizeSupplier(input), buildSupplierOrderGroups({items,suppliers,selections}), supplierOrderFingerprint(groups), buildSupplierMessage(order,{now}), supplierWhatsAppUrl(order,{now}).
-- [ ] Escribir pruebas que fallen para teléfono venezolano/internacional, campos obligatorios, agrupación exacta, notas, saludo en Caracas, ausencia de conversiones y URL codificada.
-- [ ] Ejecutar `node --test test/monitorSupplierOrders.test.js`; implementar funciones y repetir hasta verde.
+- [x] Escribir pruebas que fallen para teléfono venezolano/internacional, campos obligatorios, agrupación exacta, notas, saludo en Caracas, ausencia de conversiones y URL codificada.
+- [x] Ejecutar `node --test test/monitorSupplierOrders.test.js`; implementar funciones y repetir hasta verde.
 
 ### Task 2: Persistencia y API
 **Files:** migration 023_monitor_supplier_orders.sql, routes/monitorSupplierOrders.js, app.js, scripts/monitorSupplierOrdersSmoke.js, CI workflow.
 **Interfaces:** GET/PUT /monitor/suppliers; GET /monitor/reviews/:week/supplier-orders; PUT /monitor/reviews/:week/supplier-assignments/:key; POST /monitor/reviews/:week/supplier-orders (round, fingerprint); POST /monitor/supplier-orders/:id/sent.
-- [ ] Añadir smoke de DB real para CRUD/concurrencia, finalización incompleta, snapshots, reintento, aislamiento workspace/ciclo y aprendizaje idempotente.
-- [ ] Implementar rutas transaccionales sobre datos canónicos del servidor, comprobar fingerprint del cliente y bloquear ciclo viejo.
-- [ ] Ejecutar migración y smoke en PostgreSQL aislado; integrar CI y verificar cero movimientos.
+- [x] Añadir smoke de DB real para CRUD/concurrencia, finalización incompleta, snapshots, reintento, aislamiento workspace/ciclo y aprendizaje idempotente.
+- [x] Implementar rutas transaccionales sobre datos canónicos del servidor, comprobar fingerprint del cliente y bloquear ciclo viejo.
+- [x] Ejecutar migración y smoke en PostgreSQL aislado; integrar CI y verificar cero movimientos.
 
 ### Task 3: Panel Monitor y entrega
 **Files:** ui/monitorSupplierOrdersUi.js, replenishment/monitorSupplierClient.js, monitorReviewPilotUi.js, monitor-pilot.css, sw.js, browser smoke and HP rollout docs.
 **Interfaces:** createMonitorSupplierPanel({host,getContext,repaint,notify}) with render/load/handleClick/handleChange/handleSubmit/reset, three tabs.
-- [ ] Prueba de navegador: crear proveedor, buscarlo/asignarlo, recargar conservando selección, bloquear faltantes, finalizar, abrir/copy sin enviar, marcar enviado y sugerir en siguiente ciclo.
-- [ ] Implementar panel separado y borrador local por workspace/usuario/semana/ciclo; cantidad y empaque editables en Seleccionados.
-- [ ] Ejecutar npm test y browser smoke; revisar toda la rama; publicar candidato y preparar despliegue HP con respaldo/restore previo a migración 023.
+- [x] Prueba de navegador: crear proveedor, buscarlo/asignarlo, recargar conservando selección, bloquear faltantes, finalizar, abrir/copy sin enviar, marcar enviado y sugerir en siguiente ciclo.
+- [x] Implementar panel separado y borrador local por workspace/usuario/semana/ciclo; cantidad y empaque editables en Seleccionados.
+- [x] Ejecutar npm test y browser smoke; revisar toda la rama; publicar candidato y preparar despliegue HP con respaldo/restore previo a migración 023.
