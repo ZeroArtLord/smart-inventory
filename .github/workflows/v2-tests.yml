@@ -168,6 +168,15 @@ jobs:
           & "./docs/VIGIA/tests/monitorTouchPrecheck.Tests.ps1"
           if ($LASTEXITCODE -ne 0) { throw "Monitor touch precheck regression failed" }
 
+      - name: Parse Monitor scroll stability frontend updater
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("docs/VIGIA/VIGIA_HP_MONITOR_SCROLL_SAFE.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors -join "`n") }
+          Write-Host 'VIGIA_MONITOR_SCROLL_SCRIPT_PARSE_PASS'
+
       - name: Parse supplier deployment script and stage Node prechecks without BOM
         shell: powershell
         run: |

@@ -49,7 +49,18 @@ try{
  await tab('supplier-final').click();await page.locator('[data-ms-action="finalize"]').click();await page.locator('[data-ms-action="whatsapp"]').waitFor();assert.equal(await page.locator('[data-ms-action="whatsapp"]').count(),1);
  await page.locator('[data-ms-action="whatsapp"]').click();const opened=await page.evaluate(()=>window.__opened);assert.equal(opened.length,1);const text=new URL(opened[0]).searchParams.get('text');assert.match(text,/3 CAJA — Servilletas \(Blancas\)/);assert.match(text,/2 BULTO — Aceite/);assert.equal(await page.locator('[data-ms-action="sent"]').count(),1,'open is not sent');
  await page.locator('[data-ms-action="copy"]').click();assert.match(await page.evaluate(()=>navigator.clipboard.readText()),/confirma despacho y facturación/);
- page.once('dialog',d=>d.accept());await page.locator('[data-ms-action="sent"]').click();await page.getByText(/Enviado · confirmado manualmente/).waitFor();await page.screenshot({path:'test-results/monitor-suppliers/pedidos-mobile.png'});
+ await page.locator('[data-ms-action="sent"]').scrollIntoViewIfNeeded();
+ const beforeSent=await page.evaluate(()=>{
+   window.__supplierPanelBeforeSent=document.querySelector('.mp-suppliers');
+   return {top:document.querySelector('#vigiaMonitorPilot').scrollTop,nav:document.querySelector('.mp-nav').scrollLeft};
+ });
+ assert.ok(beforeSent.top>100,'test must mark sent while scrolled down');
+ page.once('dialog',d=>d.accept());await page.locator('[data-ms-action="sent"]').click();await page.getByText(/Enviado · confirmado manualmente/).waitFor();
+ const afterSent=await page.evaluate(()=>({same:window.__supplierPanelBeforeSent===document.querySelector('.mp-suppliers'),
+   top:document.querySelector('#vigiaMonitorPilot').scrollTop,nav:document.querySelector('.mp-nav').scrollLeft}));
+ assert.equal(afterSent.same,true,'mark sent must update the existing panel without reloading it');
+ assert.ok(Math.abs(afterSent.top-beforeSent.top)<=1,'mark sent moved vertical scroll: '+JSON.stringify({beforeSent,afterSent}));
+ assert.equal(afterSent.nav,beforeSent.nav,'mark sent moved navigation scroll');await page.screenshot({path:'test-results/monitor-suppliers/pedidos-mobile.png'});
  await page.locator('#mpWeekSelect').selectOption('2026-10-26');await page.waitForFunction(()=>!document.querySelector('#mpWeekSelect').disabled);await tab('supplier-assign').click();await page.getByText('Sugerido según tu último pedido enviado').first().waitFor();assert.equal(await row('Servilletas').locator('select').inputValue(),id);
  const layout=await page.evaluate(()=>({width:document.querySelector('#vigiaMonitorPilot').scrollWidth,viewport:innerWidth}));assert.ok(layout.width<=layout.viewport+1,JSON.stringify(layout));await page.screenshot({path:'test-results/monitor-suppliers/asignar-mobile.png'});assert.deepEqual(errors,[]);
  console.log('MONITOR_SUPPLIER_BROWSER_PASS: catalogue, search, durable assignments, required quantity, grouped WhatsApp/copy, manual sent and next-week learning');
