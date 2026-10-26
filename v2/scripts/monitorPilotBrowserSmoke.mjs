@@ -5,12 +5,14 @@ import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
+import { buildProcurementJob, DEFAULT_THERMAL_CONFIG } from '../server/src/printing/thermalEscPos.js';
 
 const root=process.cwd();
 const screenshots=path.join(root,'test-results','monitor-pilot');
 const errors=[];
 const stored=new Map();
 let postAttempts=0,networkDown=false;
+const printedJobs=[];
 const server=createServer(async(req,res)=>{
   try {
     const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
@@ -99,7 +101,8 @@ await page.route('**/api/v1/monitor/reviews/**',async route=>{
     if(delayedReviewWeek && new URL(req.url()).pathname.endsWith('/'+delayedReviewWeek))
       await new Promise(resolve=>setTimeout(resolve,350));
     return route.fulfill({status:200,contentType:'application/json',
-      body:JSON.stringify({ok:true,items:[...reviewItems.values()]})});
+      body:JSON.stringify({ok:true,workspaceId:'workspace-browser-lab',
+        weekStart:new URL(req.url()).pathname.split('/').pop(),currentRound:1,items:[...reviewItems.values()]})});
   }
   const b=req.postDataJSON();
   const itemKey=(b.kind==='PRODUCT'?'product:':'extra:')+b.itemId;
@@ -114,6 +117,14 @@ await page.route('**/api/v1/monitor/reviews/**',async route=>{
   reviewItems.set(itemKey,row);
   return route.fulfill({status:200,contentType:'application/json',
     body:JSON.stringify({ok:true,item:row,appliedVersion:row.version,replayed:false})});
+});
+await page.route('**/api/v1/thermal-printer/ticket',async route=>{
+  const payload=route.request().postDataJSON().list;
+  const job=buildProcurementJob(DEFAULT_THERMAL_CONFIG,payload);
+  printedJobs.push({payload,job});
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+    ok:true,copies:job.copies,itemCount:job.itemCount,printer:{name:'RC-8002 LAB'}
+  })});
 });
 try{
   await mkdir(screenshots,{recursive:true});
@@ -292,8 +303,47 @@ try{
   delayedReviewWeek='';
   await page.locator('#vigiaMonitorPilot #mpWeekSelect').selectOption(await page.evaluate(()=>window.__vigiaTestWeekStart));
   await page.locator('#vigiaMonitorPilot .mp-tile').first().click();
-  await page.locator('#vigiaMonitorPilot #mpQuantity').fill('');
+  // La revisión ofrece cinco unidades de un toque y conserva cantidad/nota.
+  await page.locator('#vigiaMonitorPilot #mpQuantity').waitFor();
+  const quickUnits=page.locator('#vigiaMonitorPilot input[name="mpReviewUnit"]');
+  assert.equal(await quickUnits.count(),5,'review needs five compact tap options');
+  await page.locator('#mpQuantity').fill('2');
+  await page.locator('#mpNotes').fill('Consultar producción');
+  for(const unit of ['KG','CAJA','BULTO','UND']){
+    await quickUnits.locator('xpath=..').filter({has:page.locator('input[value="'+unit+'"]')}).click();
+    assert.equal(await page.locator('#mpQuantity').inputValue(),'2');
+    assert.equal(await page.locator('#mpNotes').inputValue(),'Consultar producción');
+    assert.equal(await page.locator('input[name="mpReviewUnit"]:checked').inputValue(),unit);
+  }
+  await page.locator('label').filter({has:page.locator('input[name="mpReviewUnit"][value="__OTHER__"]')}).click();
+  await page.locator('#mpUnitOther').fill('GAVETA');
+  await page.locator('#vigiaMonitorPilot [data-mp-choice="ASK"]').click();
+  await page.locator('#vigiaMonitorPilot [data-mp-page="ask"]').click();
+  await page.locator('#vigiaMonitorPilot .mp-row').filter({hasText:'Agua mineral'}).waitFor();
+  await page.locator('#vigiaMonitorPilot [data-mp-kind="INQUIRY"]').click();
+  await page.getByText(/1 copia.*RC-8002 LAB/).waitFor();
+  assert.equal(printedJobs.length,1);
+  const {payload,job}=printedJobs[0];
+  assert.equal(payload.kind,'INQUIRY');
+  assert.equal(payload.items.length,1);
+  assert.equal(payload.items[0].quantityText,'2 GAVETA');
+  assert.equal(payload.items[0].note,'Consultar producción');
+  assert.equal(job.copies,1);
+  assert.equal(job.buffer.toString('hex').split('1d5600').length-1,1,'only one physical cut');
+  const printText=job.buffer.toString('latin1');
+  for(const text of ['EL ESTABLO','LISTA PARA PREGUNTAR','PRODUCTO','CANT.','OK','Firma:'])assert.ok(printText.includes(text),text);
+  assert.ok(!printText.includes('COPIA CHOFER'));
+  assert.ok(!printText.includes('COPIA DEPOSITO'));
+  await page.locator('#vigiaMonitorPilot .mp-row').filter({hasText:'Agua mineral'})
+    .getByRole('button',{name:'Resolver / Cambiar decisión'}).click();
+  assert.equal(await page.locator('input[name="mpReviewUnit"]:checked').inputValue(),'__OTHER__');
+  assert.equal(await page.locator('#mpUnitOther').inputValue(),'GAVETA','saved special unit must survive reopening');
+  await page.screenshot({path:path.join(screenshots,'revision-unidades-mobile.png')});
+  await page.locator('label').filter({has:page.locator('input[name="mpReviewUnit"][value="CAJA"]')}).click();
+  assert.equal(await page.locator('#mpUnitOther').isHidden(),true);
+  await page.locator('#mpQuantity').fill('');
   await page.locator('#vigiaMonitorPilot [data-mp-choice="BUY"]').click();
+  console.log('MONITOR_QUICK_UNITS_AND_INQUIRY_PRINT_PASS: tap units, preserved custom unit, real print payload and ESC/POS single copy/cut');
 
   // Seleccionados: cantidad + unidad del catálogo, manual, Enter y persistencia.
   await page.locator('#vigiaMonitorPilot [data-mp-page="selected"]').click();

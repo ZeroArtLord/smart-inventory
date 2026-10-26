@@ -154,6 +154,18 @@ jobs:
           }
           Write-Host "VIGIA_MONITOR_NATIVE_80MM_PENDING_DEPLOY_PARSE_PASS"
 
+      - name: Parse Monitor touch units client update script
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("docs/VIGIA/VIGIA_HP_MONITOR_TOUCH_UNITS_SAFE.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+          Write-Host "VIGIA_MONITOR_TOUCH_SCRIPT_PARSE_PASS"
+
       - name: Verify staged Node precheck has no UTF-8 BOM
         shell: powershell
         run: |

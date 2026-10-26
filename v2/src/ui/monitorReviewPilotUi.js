@@ -321,6 +321,17 @@ function handleProductSearch(event){
   const pane=shell.querySelector('#mpSearchMatches');
   if(pane)pane.innerHTML=renderSearchMatches();
 }
+function renderReviewUnits(current){
+  const unit=String(current||'UND').trim().toUpperCase();
+  const choices=[['UND','und'],['KG','kg'],['CAJA','caja'],['BULTO','bulto'],['__OTHER__','otro']];
+  const selected=choices.some(([value])=>value===unit)?unit:'__OTHER__';
+  return '<fieldset class="mp-review-units"><legend>Unidad</legend>'+
+    '<div class="mp-review-unit-options">'+choices.map(([value,label])=>
+      '<label class="mp-review-unit-option"><input type="radio" name="mpReviewUnit" value="'+value+'" '+
+      (value===selected?'checked':'')+'><span>'+label+'</span></label>').join('')+'</div>'+
+    '<input id="mpUnitOther" aria-label="Otra unidad" maxlength="40" placeholder="Escribe otra unidad" '+
+    'value="'+esc(selected==='__OTHER__'?unit:'')+'" '+(selected==='__OTHER__'?'':'hidden')+'></fieldset>';
+}
 function renderReview(){
   const cats=groups();
   if(!cats.length)return panel('Revisar','<p>No hay productos activos cargados en este dispositivo.</p>');
@@ -330,7 +341,7 @@ function renderReview(){
   const p=group.products[state.cursor], row=findRow(p.id);
   const option=cats.map(c=>'<option value="'+esc(c.id)+'" '+(c.id===group.id?'selected':'')+'>'+esc(c.name)+'</option>').join('');
   const categorySelector='<label>Categoría <select id="mpCategoryPicker" data-mp-category-picker>'+option+'</select></label>';
-  const unit=esc(row?.unit||p.unitCode||'');
+  const unit=row?.unit||p.unitCode||'UND';
   const qty=row?.quantity==null?'':row.quantity;
   const note=esc(row?.notes||'');
   const pendingIndicator=state.pendingReviewMode
@@ -347,7 +358,7 @@ function renderReview(){
     '<p class="mp-muted">Código: '+esc(p.saintCode||p.sku||p.id)+'</p>'+
     '<div class="mp-warning">VIGÍA puede sugerir reposiciones, pero aquí siempre decides tú.</div>'+
     '<div class="mp-form"><label>Cantidad (opcional)<input id="mpQuantity" inputmode="decimal" type="number" step="any" min="0.001" placeholder="Por definir" value="'+esc(qty)+'"></label>'+
-    '<label>Unidad <input id="mpUnit" value="'+unit+'" placeholder="UND / KG / CJ"></label></div>'+
+    renderReviewUnits(unit)+'</div>'+
     '<label>Observación (opcional)<textarea id="mpNotes" rows="2">'+note+'</textarea></label>'+
     '<p class="mp-muted">Decisión guardada: '+esc(decisionLabel(row?.decision||'UNREVIEWED'))+'</p>'+
     '<div class="mp-actions">'+[
@@ -692,7 +703,7 @@ async function pilotDirectPrint(kind){
       .find(x=>x.kind===kind);
     if(!list?.items.length)throw new Error('Lista sin artículos');
     const result=await printThermalProcurementList(list);
-    state.message=result.copies+' copias enviadas a '+result.printer.name+
+    state.message=result.copies+(result.copies===1?' copia enviada a ':' copias enviadas a ')+result.printer.name+
       ' · '+result.itemCount+' productos. No se cerró la revisión.';
   }finally{
     state.printing=false;paint();
@@ -850,7 +861,10 @@ async function handleClick(event){
     const group=groups().find(x=>x.id===state.currentCategory);
     const p=group?.products[state.cursor];if(!p)return;
     const quantity=shell.querySelector('#mpQuantity')?.value||null;
-    const unit=shell.querySelector('#mpUnit')?.value||'';
+    const unit=selectedMonitorUnit({
+      selected:shell.querySelector('input[name="mpReviewUnit"]:checked')?.value,
+      custom:shell.querySelector('#mpUnitOther')?.value
+    });
     const notes=shell.querySelector('#mpNotes')?.value||'';
     await localChange({
       kind:'PRODUCT',itemId:p.id,decision:node.dataset.mpChoice,
@@ -863,6 +877,12 @@ async function handleClick(event){
   if(action==='print'){window.print();}
 }
 async function handleChange(event){
+  if(event.target?.name==='mpReviewUnit'){
+    const custom=shell.querySelector('#mpUnitOther');
+    custom.hidden=event.target.value!=='__OTHER__';
+    if(!custom.hidden)custom.focus();
+    return;
+  }
   if(event.target?.id==='mpWeekSelect'){
     if(state.closing||state.switching){event.target.value=state.week;return;}
     try{await switchMonitorWeek(event.target.value);}

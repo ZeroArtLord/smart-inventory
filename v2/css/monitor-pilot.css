@@ -36,6 +36,15 @@
 #vigiaMonitorPilot .mp-order{background:#2457a5}
 #vigiaMonitorPilot .mp-none{background:#63788c}
 #vigiaMonitorPilot .mp-pending{background:#a4600d}
+#vigiaMonitorPilot .mp-ask{background:#69448c}
+/* Revisión rápida: cinco opciones de un toque; el editor completo sigue en Seleccionados. */
+#vigiaMonitorPilot .mp-review-units{min-width:0;border:0;margin:0;padding:0}
+#vigiaMonitorPilot .mp-review-units legend{font-size:13px;font-weight:700;padding:0}
+#vigiaMonitorPilot .mp-review-unit-options{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+#vigiaMonitorPilot .mp-review-unit-option{display:flex;align-items:center;gap:3px;min-height:44px;padding:7px 4px;border:1px solid #bed0dd;border-radius:7px;background:#fff;cursor:pointer;font-size:12px}
+#vigiaMonitorPilot .mp-review-unit-option:has(input:checked){border-color:#0e526e;background:#e8f3f8;color:#0e526e}
+#vigiaMonitorPilot .mp-review-unit-option input{width:13px;height:13px;margin:0;padding:0;accent-color:#0e526e;flex-shrink:0}
+#vigiaMonitorPilot #mpUnitOther[hidden]{display:none!important}
 #vigiaMonitorPilot .mp-button{border:1px solid #bdd0dc;color:#18405b;background:white;padding:12px 16px;border-radius:12px;font-weight:700;min-height:44px}
 #vigiaMonitorPilot .mp-primary{background:#0e526e;color:white;border-color:#0e526e}
 #vigiaMonitorPilot .mp-inline{display:flex;flex-wrap:wrap;gap:9px;align-items:center}

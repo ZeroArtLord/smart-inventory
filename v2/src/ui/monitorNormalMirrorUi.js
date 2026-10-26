@@ -19,17 +19,25 @@ export async function fetchMonitorMirrorForNormal({ session, products, categorie
   const workspaceId = String(session?.workspaceId || session?.workspace?.id || '');
   const userId = String(session?.userId || '');
   if (!workspaceId || !userId) throw new Error('Se requiere sesión y almacén');
-  if (syncBeforeFetch) {
-    // Reintento controlado de los cambios en ESTE dispositivo antes de imprimir.
-    // No descarta conflictos ni elimina la cola si falla la red.
-    await syncMonitorReview({ workspaceId, userId, weekStart });
-  }
-  const response = await apiRequest('/api/v1/monitor/reviews/' + encodeURIComponent(weekStart));
-  if (String(response.workspaceId) !== workspaceId || response.weekStart !== weekStart) {
-    throw new Error('La respuesta Monitor no corresponde a esta sesión');
+  const url='/api/v1/monitor/reviews/'+encodeURIComponent(weekStart);
+  const readRemote=async()=>{
+    const response=await apiRequest(url);
+    if(String(response.workspaceId)!==workspaceId || response.weekStart!==weekStart)
+      throw new Error('La respuesta Monitor no corresponde a esta sesión');
+    return response;
+  };
+  let response=await readRemote();
+  const round=Number(response.currentRound||1);
+  if(syncBeforeFetch){
+    // La cola es independiente por ciclo: obtener el activo ANTES del envío.
+    const synced=await syncMonitorReview({workspaceId,userId,weekStart,round});
+    if(synced.network!=='ONLINE')
+      throw new Error('No se pudo sincronizar el ciclo activo. Sincroniza antes de imprimir.');
+    response=await readRemote();
+    if(Number(response.currentRound||1)!==round)
+      throw new Error('El servidor tiene otro ciclo activo. Recarga antes de imprimir.');
   }
   // Si IndexedDB falla, los datos remotos siguen intactos y visibles.
-  const round=Number(response.currentRound||1);
   let localState = null;
   try { localState = await readMonitorReview({ workspaceId, userId, weekStart, round }); }
   catch (error) { console.warn('Vista local Monitor no disponible', error); }
