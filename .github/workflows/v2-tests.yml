@@ -165,6 +165,8 @@ jobs:
             exit 1
           }
           Write-Host "VIGIA_MONITOR_TOUCH_SCRIPT_PARSE_PASS"
+          & "./docs/VIGIA/tests/monitorTouchPrecheck.Tests.ps1"
+          if ($LASTEXITCODE -ne 0) { throw "Monitor touch precheck regression failed" }
 
       - name: Verify staged Node precheck has no UTF-8 BOM
         shell: powershell

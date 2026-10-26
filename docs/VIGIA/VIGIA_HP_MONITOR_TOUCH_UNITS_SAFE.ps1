@@ -14,7 +14,8 @@ $branch='feature/vigia-monitor-ciclos-preguntar-busqueda-20261025'
 $runtime=@('v2/css/monitor-pilot.css','v2/src/ui/monitorReviewPilotUi.js',
   'v2/src/ui/monitorNormalMirrorUi.js','v2/sw.js')
 $allowed=$runtime+@('v2/scripts/monitorPilotBrowserSmoke.mjs','v2/test/monitorPrintFlow.test.js','v2/test/monitorReviewWeeks.test.js',
-  '.github/workflows/v2-tests.yml','docs/VIGIA/VIGIA_HP_MONITOR_TOUCH_UNITS_SAFE.ps1')
+  '.github/workflows/v2-tests.yml','docs/VIGIA/VIGIA_HP_MONITOR_TOUCH_UNITS_SAFE.ps1',
+  'docs/VIGIA/tests/monitorTouchPrecheck.Tests.ps1')
 $updated=$false
 function Demand([bool]$ok,[string]$reason){if(-not $ok){throw $reason}}
 function Git([string[]]$arguments){
@@ -42,7 +43,7 @@ try{
   Demand ((Git @('rev-parse','FETCH_HEAD')) -ceq $TargetSha) 'TargetSha no coincide con la rama remota'
   & git.exe -C $root merge-base --is-ancestor $base $TargetSha
   Demand ($LASTEXITCODE -eq 0) 'El candidato no desciende de la version instalada'
-  $changes=@((Git @('diff','--name-only',$base,$TargetSha)) -split "`n" | Where-Object {$_})
+  $changes=@((Git @('diff','--name-only',$base,$TargetSha)) -split "\r?\n" | Where-Object {$_})
   Demand ($changes.Count -gt 0) 'Candidato sin cambios'
   foreach($file in $changes){Demand ($allowed -contains $file) ('Archivo fuera del alcance: '+$file)}
   foreach($file in $runtime){Demand ($changes -contains $file) ('Falta archivo esperado: '+$file)}
