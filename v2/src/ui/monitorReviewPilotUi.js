@@ -31,7 +31,7 @@ const state={
   currentCategory:null,cursor:0,session:null,options:null,
   products:[],categories:[],local:null,message:'',error:'',
   pendingReviewMode:false,printing:false,searchQuery:'',archives:[],archiveDetail:null,
-  closing:false,switching:false
+  closing:false,switching:false,printSnapshot:null,printPreviewLoading:false,printPreviewError:''
 };
 if(root){
   launcher=document.createElement('button');
@@ -93,6 +93,7 @@ async function openPilot(){
     state.categories=categories.filter(c=>c&&c.active!==false&&c.id)
       .sort((a,b)=>String(a.name).localeCompare(String(b.name),'es'));
     state.local=await readMonitorReview(state.options);
+    state.printSnapshot=null;state.printPreviewError='';
     state.archives=[];
     state.pendingReviewMode=false;
     const savedPosition=await readPilotPosition(state.options);
@@ -104,6 +105,7 @@ async function openPilot(){
     }
     state.loading=false;paint();
     await pushAndRefresh();
+    if(state.page==='lists')await loadPrintPreview();
   }catch(error){
     state.loading=false;showError(error);
   }
@@ -123,6 +125,7 @@ async function switchMonitorWeek(week){
     const local=await readMonitorReview(options);
     supplierPanel?.reset();
     state.week=week;state.options=options;state.local=local;
+    state.printSnapshot=null;state.printPreviewError='';
     state.currentCategory=null;state.cursor=0;state.pendingReviewMode=false;
     state.page='home';state.archives=[];state.archiveDetail=null;state.searchQuery='';
     state.error='';state.message='Semana '+week+' abierta para revisar o cerrar su ciclo.';
@@ -679,31 +682,12 @@ function renderHistory(){
     (cards||'<p>Todavía no hay ciclos cerrados o el historial estará disponible al conectar la VPN.</p>')+detail);
 }
 function renderLists(){
-  const rows=selectedItems();
-  const snapshot={
-    source:'monitor-weekly-review',weekStart:state.week,round:state.options?.round||1,
-    lists:{
-      PURCHASE:rows.filter(x=>x.decision==='BUY').map(x=>({
-        itemKey:x.itemKey,kind:x.kind,productId:x.productId,
-        description:x.name,category:x.category,quantity:x.quantity,
-        unit:x.unit,notes:x.notes
-      })),
-      ORDER:rows.filter(x=>x.decision==='ORDER').map(x=>({
-        itemKey:x.itemKey,kind:x.kind,productId:x.productId,
-        description:x.name,category:x.category,quantity:x.quantity,
-        unit:x.unit,notes:x.notes
-      })),
-      INQUIRY:rows.filter(x=>x.decision==='ASK').map(x=>({
-        itemKey:x.itemKey,kind:x.kind,productId:x.productId,
-        description:x.name,category:x.category,quantity:x.quantity,
-        unit:x.unit,notes:x.notes
-      }))
-    }
-  };
-  const lists=buildMonitorNativeLists(snapshot,{ownerLabel:pilotOwnerLabel()});
-  const preview=lists.map(list=>renderProcurementTickets({
-    list,businessName:pilotBusinessName()
-  })).join('');
+  const snapshot=state.printSnapshot;
+  const preview=snapshot&&snapshot.weekStart===state.week&&Number(snapshot.round)===Number(state.options?.round||1)
+    ? buildMonitorNativeLists(snapshot,{ownerLabel:pilotOwnerLabel()}).map(list=>
+      renderProcurementTickets({list,businessName:pilotBusinessName()})).join('')
+    : '<p class="mp-muted">'+esc(state.printPreviewLoading?'Cargando proveedores y listas…':
+      state.printPreviewError||'Actualiza para ver las listas con sus proveedores.')+'</p>';
   const warning=(state.local?.pendingCount||state.local?.conflictCount)
     ? '<p class="mp-warning">Hay cambios por sincronizar o conflictos. Antes de imprimir se verificará la lista directamente con el servidor.</p>'
     : '<p class="mp-muted">Mismo formato VIGÍA normal (80 mm). Imprimir no cierra ni altera la semana.</p>';
@@ -714,6 +698,19 @@ function renderLists(){
   return panel('Mis listas semanales',
     '<div class="mp-no-print">'+warning+'<div class="mp-inline">'+buttons+'</div></div>'+
     '<div class="v6p-ticket-preview mp-ticket-grid">'+preview+'</div>');
+}
+
+async function loadPrintPreview(){
+  const options=state.options;
+  state.printPreviewLoading=true;state.printPreviewError='';state.printSnapshot=null;paint();
+  try{
+    const snapshot=await fetchMonitorMirrorForNormal({
+      session:state.session,products:state.products,categories:state.categories,
+      weekStart:state.week
+    });
+    if(state.options===options)state.printSnapshot=snapshot;
+  }catch(error){if(state.options===options)state.printPreviewError=String(error.message||error);}
+  finally{if(state.options===options){state.printPreviewLoading=false;paint();}}
 }
 
 function pilotBusinessName(){
@@ -738,6 +735,7 @@ async function pilotDirectPrint(kind){
     if(Number(snapshot.round||1)!==Number(state.options.round))
       throw new Error('El servidor tiene otro ciclo activo. Recarga antes de imprimir.');
     assertMonitorPrintable(snapshot);
+    state.printSnapshot=snapshot;state.printPreviewError='';
     const list=buildMonitorNativeLists(snapshot,{ownerLabel:pilotOwnerLabel()})
       .find(x=>x.kind===kind);
     if(!list?.items.length)throw new Error('Lista sin artículos');
@@ -844,7 +842,9 @@ async function handleClick(event){
   }
   if(action==='sync'){
     try{await flushAllSelected();}catch(error){state.error=String(error.message||error);return;}
-    await pushAndRefresh();return;
+    await pushAndRefresh();
+    if(state.page==='lists')await loadPrintPreview();
+    return;
   }
   if(action==='page'){
     try{await flushAllSelected();}catch(error){
@@ -863,6 +863,7 @@ async function handleClick(event){
         state.message='El historial del servidor estará disponible cuando la VPN tenga conexión; no se borró ninguna lista.';
       }
     }
+    if(state.page==='lists'){await loadPrintPreview();return;}
     paint();return;
   }
   if(action==='category'){

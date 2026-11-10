@@ -41,9 +41,29 @@ export async function fetchMonitorMirrorForNormal({ session, products, categorie
   let localState = null;
   try { localState = await readMonitorReview({ workspaceId, userId, weekStart, round }); }
   catch (error) { console.warn('Vista local Monitor no disponible', error); }
-  return projectMonitorToNormal({
+  const snapshot=projectMonitorToNormal({
     serverItems: response.items || [], localState, products, categories, weekStart, round
   });
+  const supplierData=await apiRequest('/api/v1/monitor/reviews/'+encodeURIComponent(weekStart)+'/supplier-orders');
+  return attachMonitorSupplierPrint(snapshot,supplierData);
+}
+
+// La asignación explícita del ciclo determina los títulos impresos. Las
+// preferencias aprendidas son sugerencias, nunca una asignación confirmada.
+export function attachMonitorSupplierPrint(snapshot,data){
+  if(snapshot.weekStart!==data?.weekStart||Number(snapshot.round||1)!==Number(data.round||1))
+    throw new Error('El proveedor corresponde a otro ciclo. Actualiza la lista antes de imprimir.');
+  const remote=new Map((data.items||[]).map(item=>[item.itemKey,item]));
+  const rows=snapshot.lists.ORDER||[];
+  const current=rows.filter(item=>!item.localOnly);
+  if(current.length!==remote.size||current.some(item=>!remote.has(item.itemKey)||
+    Number(remote.get(item.itemKey).version)!==Number(item.version)))
+    throw new Error('La lista de pedidos cambió. Actualiza antes de imprimir.');
+  const suppliers=new Map((data.suppliers||[]).map(s=>[s.id,s.name]));
+  const assigned=new Map((data.assignments||[]).map(a=>[a.itemKey,a.supplierId]));
+  return {...snapshot,lists:{...snapshot.lists,ORDER:rows.map(item=>({
+    ...item,printSupplierName:suppliers.get(assigned.get(item.itemKey))||''
+  }))}};
 }
 
 function escapeHtml(value) {

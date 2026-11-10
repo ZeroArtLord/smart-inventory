@@ -177,6 +177,15 @@ jobs:
           if ($errors.Count -gt 0) { throw ($errors -join "`n") }
           Write-Host 'VIGIA_MONITOR_SCROLL_SCRIPT_PARSE_PASS'
 
+      - name: Parse Monitor supplier print updater
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("docs/VIGIA/VIGIA_HP_MONITOR_PRINT_SUPPLIERS_SAFE.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors -join "`n") }
+          Write-Host 'VIGIA_MONITOR_PRINT_SUPPLIERS_SCRIPT_PARSE_PASS'
+
       - name: Parse supplier deployment script and stage Node prechecks without BOM
         shell: powershell
         run: |
@@ -234,7 +243,7 @@ jobs:
           node --check sw.js
 
   browser-pilot:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
       run:
@@ -317,7 +326,7 @@ jobs:
 
 
   server-integration:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     services:
       postgres:

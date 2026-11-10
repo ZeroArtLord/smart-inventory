@@ -118,6 +118,14 @@ await page.route('**/api/v1/monitor/reviews/**',async route=>{
   return route.fulfill({status:200,contentType:'application/json',
     body:JSON.stringify({ok:true,item:row,appliedVersion:row.version,replayed:false})});
 });
+await page.route('**/api/v1/monitor/reviews/*/supplier-orders',route=>{
+  const weekStart=new URL(route.request().url()).pathname.split('/')[5];
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+    ok:true,weekStart,round:1,
+    items:[...reviewItems.values()].filter(x=>x.decision==='ORDER'&&!x.deleted).map(x=>({itemKey:x.itemKey,version:x.version})),
+    suppliers:[],assignments:[],preferences:{},orders:[]
+  })});
+});
 await page.route('**/api/v1/thermal-printer/ticket',async route=>{
   const payload=route.request().postDataJSON().list;
   const job=buildProcurementJob(DEFAULT_THERMAL_CONFIG,payload);
@@ -493,6 +501,7 @@ try{
   });
   await page.locator('#vigiaMonitorPilot [data-mp-page="lists"]').click();
   await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().waitFor();
+  assert.match(await page.locator('#vigiaMonitorPilot .v6p-ticket.is-order').first().innerText(),/SIN PROVEEDOR ASIGNADO/);
   const nativeTicketText=await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().innerText();
   console.log('MONITOR_SELECTED_NATIVE_PRINT_TEXT',JSON.stringify(nativeTicketText.slice(0,900)));
   assert.match(nativeTicketText,/2\s+CJ/,

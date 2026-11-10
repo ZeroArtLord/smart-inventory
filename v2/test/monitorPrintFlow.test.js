@@ -15,6 +15,8 @@ test('imprimir Preguntar sincroniza el ciclo activo y conserva la cola del ciclo
   const remote=[],puts=[];
   const previousFetch=globalThis.fetch;
   globalThis.fetch=async(url,config={})=>{
+    if(String(url).endsWith('/supplier-orders'))return Response.json({ok:true,
+      weekStart:options.weekStart,round:2,items:[],assignments:[],suppliers:[]});
     assert.match(String(url),/\/api\/v1\/monitor\/reviews\/2026-10-19(?:\/items)?$/);
     if(config.method==='PUT'){
       const body=JSON.parse(config.body);puts.push(body);
