@@ -48,8 +48,8 @@ export async function fetchMonitorMirrorForNormal({ session, products, categorie
   return attachMonitorSupplierPrint(snapshot,supplierData);
 }
 
-// La asignación explícita del ciclo determina los títulos impresos. Las
-// preferencias aprendidas son sugerencias, nunca una asignación confirmada.
+// Misma prioridad que Asignar/Finalizar pedidos: selección explícita del ciclo
+// y, cuando todavía no existe, proveedor aprendido para el producto.
 export function attachMonitorSupplierPrint(snapshot,data){
   if(snapshot.weekStart!==data?.weekStart||Number(snapshot.round||1)!==Number(data.round||1))
     throw new Error('El proveedor corresponde a otro ciclo. Actualiza la lista antes de imprimir.');
@@ -62,7 +62,7 @@ export function attachMonitorSupplierPrint(snapshot,data){
   const suppliers=new Map((data.suppliers||[]).map(s=>[s.id,s.name]));
   const assigned=new Map((data.assignments||[]).map(a=>[a.itemKey,a.supplierId]));
   return {...snapshot,lists:{...snapshot.lists,ORDER:rows.map(item=>({
-    ...item,printSupplierName:suppliers.get(assigned.get(item.itemKey))||''
+    ...item,printSupplierName:suppliers.get(assigned.get(item.itemKey)||data.preferences?.[item.productId])||''
   }))}};
 }
 
