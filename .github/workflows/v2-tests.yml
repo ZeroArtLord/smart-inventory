@@ -243,7 +243,7 @@ jobs:
           node --check sw.js
 
   browser-pilot:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
       run:
@@ -326,7 +326,7 @@ jobs:
 
 
   server-integration:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     services:
       postgres:
