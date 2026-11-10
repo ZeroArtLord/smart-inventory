@@ -195,6 +195,15 @@ jobs:
           if ($errors.Count -gt 0) { throw ($errors -join "`n") }
           Write-Host 'VIGIA_MONITOR_ASK_QUEUE_ORDERS_SCRIPT_PARSE_PASS'
 
+      - name: Parse Monitor supplier print alignment updater
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("docs/VIGIA/VIGIA_HP_MONITOR_SUPPLIER_PRINT_ALIGNMENT_SAFE.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors -join "`n") }
+          Write-Host 'VIGIA_MONITOR_SUPPLIER_PRINT_ALIGNMENT_SCRIPT_PARSE_PASS'
+
       - name: Parse supplier deployment script and stage Node prechecks without BOM
         shell: powershell
         run: |

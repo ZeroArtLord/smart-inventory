@@ -153,7 +153,8 @@ test('Monitor pedido groups preview and thermal copies by assigned supplier, kee
   ]});
   const supplierData={weekStart:'2026-10-12',round:1,
     items:[{itemKey:'product:p2',version:2},{itemKey:'extra:e3',version:1},{itemKey:'extra:e4',version:1}],
-    assignments:[{itemKey:'product:p2',supplierId:'s2'},{itemKey:'extra:e4',supplierId:'s1'}],
+    assignments:[{itemKey:'extra:e4',supplierId:'s1'}],
+    preferences:{p2:'s2'},
     suppliers:[{id:'s1',name:'SUMERVALCA',active:true},{id:'s2',name:'TOLEDO',active:true}]};
   const snapshot=attachMonitorSupplierPrint(base,supplierData);
   const list=buildMonitorNativeLists(snapshot).find(x=>x.kind==='ORDER');
@@ -163,6 +164,7 @@ test('Monitor pedido groups preview and thermal copies by assigned supplier, kee
   assert.equal((html.match(/SIN PROVEEDOR ASIGNADO/g)||[]).length,2);
   const payload=buildThermalPrintPayload(list);
   assert.equal(payload.items.find(x=>x.name==='Aceite').category,'PROVEEDOR: SUMERVALCA');
+  assert.equal(payload.items.find(x=>x.name==='Malta Polar').category,'PROVEEDOR: TOLEDO');
   assert.equal(payload.items.find(x=>x.name==='Vasos').category,'SIN PROVEEDOR ASIGNADO');
   const job=buildProcurementJob(DEFAULT_THERMAL_CONFIG,payload);
   const receipt=job.buffer.toString('latin1');
@@ -173,6 +175,14 @@ test('Monitor pedido groups preview and thermal copies by assigned supplier, kee
   assert.equal((receipt.match(/VASOS/g)||[]).length,2);
   assert.equal((receipt.match(/3 CJ/g)||[]).length,2);
   assert.equal((receipt.match(/4 BUL/g)||[]).length,2);
+});
+
+test('Explicit assignment wins over learned supplier when preparing the printed list',()=>{
+  const snapshot=project({serverItems:[rows[1]]});
+  const attached=attachMonitorSupplierPrint(snapshot,{weekStart:snapshot.weekStart,round:snapshot.round,
+    items:[{itemKey:'product:p2',version:2}],suppliers:[{id:'s1',name:'Toledo'},{id:'s2',name:'Sumervalca'}],
+    assignments:[{itemKey:'product:p2',supplierId:'s1'}],preferences:{p2:'s2'}});
+  assert.equal(buildThermalPrintPayload(buildMonitorNativeLists(attached)[1]).items[0].category,'PROVEEDOR: Toledo');
 });
 
 test('Supplier print refuses a stale cycle or changed order rather than mislabel products',()=>{
