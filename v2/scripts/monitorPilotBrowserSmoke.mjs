@@ -490,6 +490,7 @@ try{
     const opts={workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart};
     await mod.queueMonitorReviewChange(opts,{kind:'PRODUCT',itemId:'prod-cafe',decision:'ASK',unit:'UND'});
     await mod.queueMonitorReviewChange(opts,{kind:'PRODUCT',itemId:'prod-yuca',decision:'ASK',unit:'KG'});
+    await mod.queueMonitorReviewChange(opts,{kind:'PRODUCT',itemId:'prod-zumo',decision:'ASK',unit:'UND'});
   });
   await page.locator('#vigiaMonitorPilot [data-mp-action="sync"]').click();
   await page.locator('#vigiaMonitorPilot [data-mp-page="ask"]').click();
@@ -498,7 +499,7 @@ try{
   await page.locator('#vigiaMonitorPilot [data-mp-choice="BUY"]').click();
   await page.waitForFunction(()=>document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent==='Yuca de prueba');
   await page.locator('#vigiaMonitorPilot [data-mp-action="next"]').click();
-  await page.waitForFunction(()=>document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent==='Agua mineral');
+  await page.waitForFunction(()=>document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent==='Zumo de prueba');
 
   // Extras también pueden empezar como Preguntar y luego pasar a Pedido.
   await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
