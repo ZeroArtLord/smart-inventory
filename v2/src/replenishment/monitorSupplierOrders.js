@@ -61,3 +61,7 @@ export function findReusableSupplierOrder(history,fingerprint){
   const sent=history.find(o=>o.status==='SENT');
   return pending?.fingerprint===fingerprint?pending:sent?.fingerprint===fingerprint?sent:null;
 }
+export function visibleSupplierOrders(orders=[],{weekStart,round}={}){
+  return orders.filter(order=>order.status!=='REPLACED'&&
+    order.weekStart===weekStart&&Number(order.round)===Number(round));
+}

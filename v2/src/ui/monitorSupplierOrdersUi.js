@@ -1,5 +1,5 @@
 import {createLocalId} from '../core/ids.js';
-import {buildSupplierOrderGroups,supplierOrderFingerprint,buildSupplierMessage,supplierWhatsAppUrl} from '../replenishment/monitorSupplierOrders.js';
+import {buildSupplierOrderGroups,supplierOrderFingerprint,buildSupplierMessage,supplierWhatsAppUrl,visibleSupplierOrders} from '../replenishment/monitorSupplierOrders.js';
 import {supplierApi,readSupplierDraft,writeSupplierDraft,reconcileSupplierDraft} from '../replenishment/monitorSupplierClient.js';
 const pages=new Set(['suppliers','supplier-assign','supplier-final']);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -61,13 +61,13 @@ export function createMonitorSupplierPanel({host,getContext,repaint,notify}){
        html+=groups.map(g=>'<div class="mp-card"><h3>Pedido para '+esc(g.supplier.name)+'</h3>'+g.items.map(i=>'<p>'+esc(i.quantity)+' '+esc(i.unit)+' — '+esc(i.name)+(i.notes?' ('+esc(i.notes)+')':'')+'</p>').join('')+'</div>').join('');
        html+=button('Finalizar y preparar mensajes','finalize',busy?'disabled':'');
      }catch(e){html+='<p class="mp-warning">'+esc(e.message)+'</p><p>Completa los datos en Seleccionados y Asignar pedidos.</p>';}
-     html+='<h3>Pedidos preparados y enviados · recientes</h3>'+(data.orders.filter(o=>o.status!=='REPLACED').map(o=>{
+     html+='<h3>Pedidos preparados y enviados · esta semana y ciclo</h3>'+(visibleSupplierOrders(data.orders,context()).map(o=>{
        const editable=o.status==='FINALIZED';
        return '<div class="mp-card" data-ms-order="'+esc(o.id)+'"><h3>Pedido para '+esc(o.supplier.name)+'</h3><p>'+esc(o.supplier.phone)+' · Semana '+esc(o.weekStart)+' · Ciclo '+esc(o.round)+' · <span data-ms-status>'+(editable?'Pendiente de enviar':'Enviado · confirmado manualmente')+'</span>'+(o.replacesOrderId?' · Actualización de un pedido anterior':'')+'</p>'+
          '<pre class="mp-supplier-message">'+esc(buildSupplierMessage(o))+'</pre><div class="mp-inline mp-supplier-order-actions">'+ (editable?
          button('Abrir en WhatsApp','whatsapp','data-ms-id="'+esc(o.id)+'"')+button('Copiar mensaje','copy','data-ms-id="'+esc(o.id)+'"')+
          button('Marcar como enviado','sent','data-ms-id="'+esc(o.id)+'" '+(busy?'disabled':'')):'<span>Confirmación guardada</span>')+'</div></div>';
-     }).join('')||'<p>Todavía no has finalizado pedidos en este ciclo.</p>');
+     }).join('')||'<p>Todavía no has finalizado pedidos en esta semana y ciclo.</p>');
    }
    return html+'</div>';
  }
