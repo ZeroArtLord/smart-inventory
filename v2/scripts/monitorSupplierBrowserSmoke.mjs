@@ -62,6 +62,7 @@ try{
  assert.ok(Math.abs(afterSent.top-beforeSent.top)<=1,'mark sent moved vertical scroll: '+JSON.stringify({beforeSent,afterSent}));
  assert.equal(afterSent.nav,beforeSent.nav,'mark sent moved navigation scroll');await page.screenshot({path:'test-results/monitor-suppliers/pedidos-mobile.png'});
  await page.locator('#mpWeekSelect').selectOption('2026-10-26');await page.waitForFunction(()=>!document.querySelector('#mpWeekSelect').disabled);await tab('supplier-assign').click();await page.getByText('Sugerido según tu último pedido enviado').first().waitFor();assert.equal(await row('Servilletas').locator('select').inputValue(),id);
+ await tab('supplier-final').click();assert.equal(await page.locator('[data-ms-order]').count(),0,'past-week messages should be hidden from the new week');assert.equal(orders.length,1,'past orders remain stored for suggestions/history');
  const layout=await page.evaluate(()=>({width:document.querySelector('#vigiaMonitorPilot').scrollWidth,viewport:innerWidth}));assert.ok(layout.width<=layout.viewport+1,JSON.stringify(layout));await page.screenshot({path:'test-results/monitor-suppliers/asignar-mobile.png'});assert.deepEqual(errors,[]);
  console.log('MONITOR_SUPPLIER_BROWSER_PASS: catalogue, search, durable assignments, required quantity, grouped WhatsApp/copy, manual sent and next-week learning');
 }catch(e){await page.screenshot({path:'test-results/monitor-suppliers/failure.png'});console.error(e);process.exitCode=1;}finally{await browser.close();server.close();}

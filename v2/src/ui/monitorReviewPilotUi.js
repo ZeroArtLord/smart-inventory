@@ -30,7 +30,7 @@ const state={
   visible:false,loading:false,page:'home',week:weekMonday(),
   currentCategory:null,cursor:0,session:null,options:null,
   products:[],categories:[],local:null,message:'',error:'',
-  pendingReviewMode:false,printing:false,searchQuery:'',archives:[],archiveDetail:null,
+  pendingReviewMode:false,askingReviewMode:false,printing:false,searchQuery:'',archives:[],archiveDetail:null,
   closing:false,switching:false,printSnapshot:null,printPreviewLoading:false,printPreviewError:''
 };
 if(root){
@@ -95,7 +95,7 @@ async function openPilot(){
     state.local=await readMonitorReview(state.options);
     state.printSnapshot=null;state.printPreviewError='';
     state.archives=[];
-    state.pendingReviewMode=false;
+    state.pendingReviewMode=false;state.askingReviewMode=false;
     const savedPosition=await readPilotPosition(state.options);
     const position=restorePilotPosition(savedPosition,groups());
     if(position){
@@ -126,7 +126,7 @@ async function switchMonitorWeek(week){
     supplierPanel?.reset();
     state.week=week;state.options=options;state.local=local;
     state.printSnapshot=null;state.printPreviewError='';
-    state.currentCategory=null;state.cursor=0;state.pendingReviewMode=false;
+    state.currentCategory=null;state.cursor=0;state.pendingReviewMode=false;state.askingReviewMode=false;
     state.page='home';state.archives=[];state.archiveDetail=null;state.searchQuery='';
     state.error='';state.message='Semana '+week+' abierta para revisar o cerrar su ciclo.';
     paint();
@@ -390,7 +390,10 @@ function renderReview(){
     ? '<div class="mp-warning">Modo Pendientes · '+pendingProducts().length+
       ' por revisar. Al decidir pasarás al siguiente pendiente, incluso de otra categoría. '+
       button('← Volver a Pendientes','back-pending')+'</div>'
-    : '';
+    : state.askingReviewMode
+      ? '<div class="mp-warning">Modo Preguntar · '+askedProducts().length+
+        ' por resolver. Al decidir pasarás al siguiente producto por preguntar. '+
+        button('← Volver a Preguntar','back-ask')+'</div>' : '';
   return panel('Revisión por categoría',pendingIndicator+
     renderProductSearch()+
     '<div class="mp-form">'+categorySelector+'<div><span class="mp-muted">Avance en categoría</span>'+
@@ -413,6 +416,7 @@ function renderReview(){
 }
 // Cola global de pendientes (cruza categorías); mantiene orden del catálogo.
 function pendingProducts(){return productChoices().PENDING;}
+function askedProducts(){return productChoices().ASK;}
 function showPendingProduct(product){
   if(!product)return false;
   const group=groups().find(x=>x.products.some(p=>p.id===product.id));
@@ -443,6 +447,30 @@ function advancePendingReview(currentId,direction=1){
     return;
   }
   showPendingProduct(ordered);
+}
+function showAskedProduct(product){
+  if(!showPendingProduct(product))return false;
+  state.pendingReviewMode=false;
+  state.askingReviewMode=true;
+  return true;
+}
+function advanceAskedReview(currentId,direction=1){
+  const asked=askedProducts();
+  if(!asked.length){
+    state.askingReviewMode=false;state.page='ask';
+    state.message='¡Listo! No quedan productos por preguntar.';
+    return;
+  }
+  const from=state.products.findIndex(x=>x.id===currentId);
+  const next=direction>=0
+    ? asked.find(x=>state.products.findIndex(p=>p.id===x.id)>from)||asked[0]
+    : [...asked].reverse().find(x=>state.products.findIndex(p=>p.id===x.id)<from)||asked[asked.length-1];
+  if(next.id===currentId&&asked.length===1){
+    state.askingReviewMode=false;state.page='ask';
+    state.message='Este producto continúa en Preguntar.';
+    return;
+  }
+  showAskedProduct(next);
 }
 
 function renderPending(){
@@ -642,7 +670,7 @@ function renderAsking(){
     const id=item.kind==='PRODUCT'?item.productId:null;
     return '<div class="mp-row"><div><strong>'+esc(item.name)+'</strong>'+
       '<div class="mp-muted">'+esc(item.category)+' · '+esc(item.notes||'Sin observación')+'</div></div>'+
-      (id?button('Resolver / Cambiar decisión','search-jump',{attrs:'data-mp-id="'+esc(id)+'"'}):
+      (id?button('Resolver / Cambiar decisión','ask-jump',{attrs:'data-mp-id="'+esc(id)+'"'}):
         '<div class="mp-inline">'+
         button('Comprar','resolve-ask-extra',{attrs:'data-mp-item="'+esc(item.itemKey)+'" data-mp-choice="BUY"'})+
         button('Pedir','resolve-ask-extra',{attrs:'data-mp-item="'+esc(item.itemKey)+'" data-mp-choice="ORDER"'})+
@@ -793,12 +821,18 @@ async function handleClick(event){
     if(!group)return;
     state.currentCategory=group.id;
     state.cursor=group.products.findIndex(p=>String(p.id)===String(id));
-    state.pendingReviewMode=false;
+    state.pendingReviewMode=false;state.askingReviewMode=false;
     state.searchQuery='';
     state.page='review';state.message='';
     await persistPilotCursor();paint();
     shell.querySelector('#mpQuantity')?.focus();
     return;
+  }
+  if(action==='ask-jump'){
+    const product=state.products.find(x=>String(x.id)===node.dataset.mpId);
+    if(!product||findRow(product.id)?.decision!=='ASK'||!showAskedProduct(product))return;
+    state.searchQuery='';state.message='';
+    await persistPilotCursor();paint();shell.querySelector('#mpQuantity')?.focus();return;
   }
   if(action==='history-view'){
     const round=Number(node.dataset.mpRound);
@@ -827,7 +861,7 @@ async function handleClick(event){
       state.options={...closingOptions,round:closed.currentRound};
       state.local=await readMonitorReview(state.options);
       state.currentCategory=null;state.cursor=0;
-      state.pendingReviewMode=false;state.archiveDetail=null;state.searchQuery='';
+      state.pendingReviewMode=false;state.askingReviewMode=false;state.archiveDetail=null;state.searchQuery='';
       state.page='home';state.archives=[];
       state.message='Ciclo '+closed.closedRound+' archivado. Ya puedes revisar nuevamente los '+p.total+' productos.';
       state.error='';paint();
@@ -852,7 +886,7 @@ async function handleClick(event){
     }
     clearSelectedRecords();
     state.page=node.dataset.mpPage;
-    state.pendingReviewMode=false;
+    state.pendingReviewMode=false;state.askingReviewMode=false;
     state.message='';
     if(supplierPanel?.hasPage(state.page)){await supplierPanel.load();paint();return;}
     if(state.page==='history'){
@@ -867,7 +901,7 @@ async function handleClick(event){
     paint();return;
   }
   if(action==='category'){
-    state.pendingReviewMode=false;
+    state.pendingReviewMode=false;state.askingReviewMode=false;
     state.currentCategory=node.dataset.mpCategory;
     const group=groups().find(x=>x.id===state.currentCategory);
     state.cursor=Math.max(0,group?.products.findIndex(p=>!findRow(p.id))??0);
@@ -880,14 +914,23 @@ async function handleClick(event){
     const group=groups().find(x=>x.products.some(x=>x.id===id));
     state.currentCategory=group.id;
     state.cursor=group.products.findIndex(x=>x.id===id);
-    state.page='review';state.pendingReviewMode=true;
+    state.page='review';state.pendingReviewMode=true;state.askingReviewMode=false;
     state.message='';await persistPilotCursor();paint();return;
   }
   if(action==='back-pending'){
     state.page='pending';state.pendingReviewMode=false;state.message='';paint();return;
   }
+  if(action==='back-ask'){
+    state.page='ask';state.askingReviewMode=false;state.message='';paint();return;
+  }
   if(action==='monitor-print'){await pilotDirectPrint(node.dataset.mpKind);return;}
   if(action==='previous'||action==='next'){
+    if(state.askingReviewMode){
+      const group=groups().find(x=>x.id===state.currentCategory);
+      const current=group?.products[state.cursor];
+      if(current)advanceAskedReview(current.id,action==='previous'?-1:1);
+      await persistPilotCursor();paint();return;
+    }
     if(state.pendingReviewMode){
       const group=groups().find(x=>x.id===state.currentCategory);
       const current=group?.products[state.cursor];
@@ -913,7 +956,8 @@ async function handleClick(event){
       kind:'PRODUCT',itemId:p.id,decision:node.dataset.mpChoice,
       quantity,unit,notes
     });
-    if(state.pendingReviewMode)advancePendingReview(p.id);
+    if(state.askingReviewMode)advanceAskedReview(p.id);
+    else if(state.pendingReviewMode)advancePendingReview(p.id);
     else moveToNextUndecided();
     await persistPilotCursor();paint();return;
   }
@@ -955,7 +999,7 @@ async function handleChange(event){
   if(!picker)return;
   const chosen=groups().find(group=>group.id===picker.value);
   if(!chosen)return;
-  state.pendingReviewMode=false;
+  state.pendingReviewMode=false;state.askingReviewMode=false;
   state.currentCategory=chosen.id;
   state.cursor=Math.max(0,chosen.products.findIndex(product=>!findRow(product.id)));
   await persistPilotCursor();paint();

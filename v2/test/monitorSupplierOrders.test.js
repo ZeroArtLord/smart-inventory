@@ -1,9 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeSupplier,buildSupplierOrderGroups,supplierOrderFingerprint,buildSupplierMessage,supplierWhatsAppUrl } from '../src/replenishment/monitorSupplierOrders.js';
+import { normalizeSupplier,buildSupplierOrderGroups,supplierOrderFingerprint,buildSupplierMessage,supplierWhatsAppUrl,visibleSupplierOrders } from '../src/replenishment/monitorSupplierOrders.js';
 const suppliers=[{id:'s1',name:'Sumervalca',phone:'584141234567',active:true},{id:'s2',name:'Toledo',phone:'584241234567',active:true}];
 const items=[{itemKey:'product:p1',productId:'p1',name:'Servilletas',quantity:3,unit:'CAJA',notes:'Blancas',version:1},
  {itemKey:'product:p2',productId:'p2',name:'Aceite',quantity:2,unit:'BULTO',notes:'',version:2}];
+test('Finalizar muestra solo mensajes del ciclo actual sin borrar los anteriores',()=>{
+ const history=[{id:'old-week',weekStart:'2026-10-19',round:1,status:'SENT'},
+  {id:'old-round',weekStart:'2026-10-26',round:1,status:'SENT'},
+  {id:'current',weekStart:'2026-10-26',round:2,status:'FINALIZED'},
+  {id:'replaced',weekStart:'2026-10-26',round:2,status:'REPLACED'}];
+ assert.deepEqual(visibleSupplierOrders(history,{weekStart:'2026-10-26',round:2}).map(x=>x.id),['current']);
+ assert.equal(history.length,4);
+});
 test('normaliza proveedor y teléfono internacional sin inventar números',()=>{
  assert.deepEqual(normalizeSupplier({name:' Sumervalca ',phone:'0414-1234567'}),{name:'Sumervalca',phone:'584141234567',active:true});
  assert.equal(normalizeSupplier({name:'USA',phone:'+1 (212) 555-1234'}).phone,'12125551234');

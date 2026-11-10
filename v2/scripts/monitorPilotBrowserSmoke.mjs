@@ -484,6 +484,22 @@ try{
   await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Cinta métrica');
   await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
+  // Preguntar recorre la cola de productos entre categorías como Pendientes.
+  await page.evaluate(async()=>{
+    const mod=await import('/src/replenishment/monitorReviewOffline.js');
+    const opts={workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart};
+    await mod.queueMonitorReviewChange(opts,{kind:'PRODUCT',itemId:'prod-cafe',decision:'ASK',unit:'UND'});
+    await mod.queueMonitorReviewChange(opts,{kind:'PRODUCT',itemId:'prod-yuca',decision:'ASK',unit:'KG'});
+  });
+  await page.locator('#vigiaMonitorPilot [data-mp-action="sync"]').click();
+  await page.locator('#vigiaMonitorPilot [data-mp-page="ask"]').click();
+  await page.locator('#vigiaMonitorPilot .mp-row').filter({hasText:'Café de prueba'}).locator('[data-mp-action="ask-jump"]').click();
+  assert.match(await page.locator('#vigiaMonitorPilot .mp-warning').first().innerText(),/Modo Preguntar/);
+  await page.locator('#vigiaMonitorPilot [data-mp-choice="BUY"]').click();
+  await page.waitForFunction(()=>document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent==='Yuca de prueba');
+  await page.locator('#vigiaMonitorPilot [data-mp-action="next"]').click();
+  await page.waitForFunction(()=>document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent==='Agua mineral');
+
   // Extras también pueden empezar como Preguntar y luego pasar a Pedido.
   await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Etiqueta consulta');
