@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectMonitorToNormal } from '../src/replenishment/monitorToNormalMirror.js';
-import { renderMonitorMirrorForNormal, printableMonitorMirror, currentMonitorWeek } from '../src/ui/monitorNormalMirrorUi.js';
+import { renderMonitorMirrorForNormal, printableMonitorMirror, currentMonitorWeek, attachMonitorSupplierPrint } from '../src/ui/monitorNormalMirrorUi.js';
 import { buildMonitorNativeLists } from '../src/replenishment/monitorNativeTicketAdapter.js';
 import { renderProcurementTickets } from '../src/ui/procurementWorkspaceV6Print.js';
 import { buildThermalPrintPayload } from '../src/printing/thermalPrinterClient.js';
+import { DEFAULT_THERMAL_CONFIG, buildProcurementJob } from '../server/src/printing/thermalEscPos.js';
 import { readFileSync } from 'node:fs';
 
 const PRODUCTS = [
@@ -142,6 +143,55 @@ test('Native ESC POS payload respects blank quantities and does not treat null a
     ]
   };
   assert.equal(buildThermalPrintPayload(normalList).items[0].quantityText,'3 UND');
+});
+
+test('Monitor pedido groups preview and thermal copies by assigned supplier, keeping unassigned items',()=>{
+  const base=project({serverItems:[
+    {...rows[1],itemKey:'product:p2',productId:'p2',quantity:2},
+    {itemKey:'extra:e3',kind:'EXTRA',description:'Vasos',decision:'ORDER',quantity:4,unit:'BUL',notes:'Azules',version:1},
+    {itemKey:'extra:e4',kind:'EXTRA',description:'Aceite',decision:'ORDER',quantity:3,unit:'CJ',version:1}
+  ]});
+  const supplierData={weekStart:'2026-10-12',round:1,
+    items:[{itemKey:'product:p2',version:2},{itemKey:'extra:e3',version:1},{itemKey:'extra:e4',version:1}],
+    assignments:[{itemKey:'product:p2',supplierId:'s2'},{itemKey:'extra:e4',supplierId:'s1'}],
+    suppliers:[{id:'s1',name:'SUMERVALCA',active:true},{id:'s2',name:'TOLEDO',active:true}]};
+  const snapshot=attachMonitorSupplierPrint(base,supplierData);
+  const list=buildMonitorNativeLists(snapshot).find(x=>x.kind==='ORDER');
+  const html=renderProcurementTickets({list,businessName:'El Establo'});
+  assert.equal((html.match(/PROVEEDOR: SUMERVALCA/g)||[]).length,2);
+  assert.equal((html.match(/PROVEEDOR: TOLEDO/g)||[]).length,2);
+  assert.equal((html.match(/SIN PROVEEDOR ASIGNADO/g)||[]).length,2);
+  const payload=buildThermalPrintPayload(list);
+  assert.equal(payload.items.find(x=>x.name==='Aceite').category,'PROVEEDOR: SUMERVALCA');
+  assert.equal(payload.items.find(x=>x.name==='Vasos').category,'SIN PROVEEDOR ASIGNADO');
+  const job=buildProcurementJob(DEFAULT_THERMAL_CONFIG,payload);
+  const receipt=job.buffer.toString('latin1');
+  assert.equal(job.copies,2);
+  assert.equal((receipt.match(/PROVEEDOR: SUMERVALCA/g)||[]).length,2);
+  assert.equal((receipt.match(/SIN PROVEEDOR ASIGNADO/g)||[]).length,2);
+  assert.equal((receipt.match(/ACEITE/g)||[]).length,2);
+  assert.equal((receipt.match(/VASOS/g)||[]).length,2);
+  assert.equal((receipt.match(/3 CJ/g)||[]).length,2);
+  assert.equal((receipt.match(/4 BUL/g)||[]).length,2);
+});
+
+test('Supplier print refuses a stale cycle or changed order rather than mislabel products',()=>{
+  const snapshot=project();
+  const data={weekStart:'2026-10-12',round:1,items:[{itemKey:'product:p2',version:2}],assignments:[],suppliers:[]};
+  assert.throws(()=>attachMonitorSupplierPrint(snapshot,{...data,round:2}),/ciclo/);
+  assert.throws(()=>attachMonitorSupplierPrint(snapshot,{...data,items:[]}),/cambió/);
+});
+
+test('Thermal ticket keeps a long supplier name readable instead of truncating it',()=>{
+  const snapshot=project({serverItems:[rows[1]]});
+  const supplierName='Distribuidora de alimentos y empaques para el establo central';
+  const assigned=attachMonitorSupplierPrint(snapshot,{weekStart:snapshot.weekStart,round:snapshot.round,
+    items:[{itemKey:'product:p2',version:2}],suppliers:[{id:'large',name:supplierName}],
+    assignments:[{itemKey:'product:p2',supplierId:'large'}]});
+  const list=buildMonitorNativeLists(assigned)[1];
+  const job=buildProcurementJob(DEFAULT_THERMAL_CONFIG,buildThermalPrintPayload(list));
+  const text=job.buffer.toString('latin1');
+  assert.equal((text.match(/ESTABLO CENTRAL/g)||[]).length,2);
 });
 
 test('Printing refuses conflicts, queued changes even when NONE of them selected', () => {
