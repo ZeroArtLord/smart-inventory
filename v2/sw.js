@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-79-monitor-letter-orders-1';
+const CACHE_NAME = 'smart-inventory-v2-shell-80-monitor-letter-orders-popup-1';
 // procurement-weekly-edit-hotfix-2026-10-07
 // procurement-cancelled-line-visibility-hotfix-2026-10-07
 

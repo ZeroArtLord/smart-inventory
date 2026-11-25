@@ -1,9 +1,10 @@
 import { buildThermalPrintPayload } from './thermalPrinterClient.js';
 
+export const LETTER_ORDER_COPIES=['COPIA PEDIDO / PROVEEDOR','COPIA DEPÓSITO'];
+
 const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({
   '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
 })[char]);
-const scriptLiteral=value=>JSON.stringify(value).replace(/</g,'\\u003c');
 
 export function reserveLetterOrderWindow(){
   const tab=window.open('','_blank');
@@ -19,6 +20,9 @@ export function showLetterOrderPrint(tab,list,businessName){
   tab.document.open();
   tab.document.write(renderLetterOrderPrintHtml(list,businessName));
   tab.document.close();
+  paginateOrderTab(tab,list,businessName);
+  tab.document.getElementById('print-orders').addEventListener('click',()=>tab.print());
+  tab.setTimeout(()=>tab.print(),250);
 }
 
 export function renderLetterOrderPrintHtml(list,businessName){
@@ -42,10 +46,7 @@ export function renderLetterOrderPrintHtml(list,businessName){
       <b>${escapeHtml(item.quantityText)}</b><i aria-label="Pendiente"></i>
     </div>`).join('')}
   </section>`).join('');
-  const heading=escapeHtml(businessName||'NOMBRE DEL NEGOCIO');
   const code=escapeHtml(payload.code);
-  const date=escapeHtml(payload.dateLabel);
-  const owner=escapeHtml(payload.ownerLabel);
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>VIGÍA · Pedidos · ${code}</title>
 <style>
   @page{size:letter;margin:0}
@@ -75,18 +76,27 @@ export function renderLetterOrderPrintHtml(list,businessName){
   .footer-line,.footer-bottom{display:flex;justify-content:space-between;gap:10px}.footer-bottom{margin-top:6px}
   @media print{html,body{background:white}#pages{padding:0}.toolbar{display:none}.sheet{margin:0;box-shadow:none}}
 </style></head><body>
-<div class="toolbar"><button type="button" onclick="window.print()">Imprimir pedidos</button><span>Selecciona \\\\BANCOS\\EPSON L3250 Series · Papel Carta · Escala 100 % · Sin encabezados ni pies del navegador. Comprueba la vista previa antes de confirmar.</span></div>
+<div class="toolbar"><button id="print-orders" type="button">Imprimir pedidos</button><span>Selecciona \\\\BANCOS\\EPSON L3250 Series · Papel Carta · Escala 100 % · Sin encabezados ni pies del navegador. Comprueba la vista previa antes de confirmar.</span></div>
 <main id="pages"></main><template id="order-source">${source}</template>
-<script>
-  const heading=${scriptLiteral(heading)},code=${scriptLiteral(code)},date=${scriptLiteral(date)},owner=${scriptLiteral(owner)};
-  const copies=['COPIA PEDIDO / PROVEEDOR','COPIA DEPÓSITO'];
-  const source=[...document.querySelector('#order-source').content.querySelectorAll('.source-group')];
-  const pages=document.querySelector('#pages');
+</body></html>`;
+}
+
+function paginateOrderTab(tab,list,businessName){
+  const doc=tab.document;
+  const payload=buildThermalPrintPayload(list);
+  const meta={heading:businessName||'NOMBRE DEL NEGOCIO',code:payload.code,
+    date:payload.dateLabel,owner:payload.ownerLabel};
+  const source=[...doc.querySelector('#order-source').content.querySelectorAll('.source-group')];
+  const pages=doc.querySelector('#pages');
   function newPage(copy){
-    const sheet=document.createElement('section');sheet.className='sheet';
-    sheet.innerHTML='<header class="sheet-header"><div class="brand">'+heading+'</div><div class="title-line"><strong>LISTA DE PEDIDOS</strong><span class="copy-label">'+copy+'</span></div><div class="meta"><span>Lista: '+code+' · Fecha: '+date+'<br>Almacenista: '+owner+'</span><span class="page-number"></span></div></header><div class="columns"></div><footer class="sheet-footer"><div class="footer-line"><span class="observations"></span><span class="signature"></span></div><div class="footer-bottom"><span>LISTA DE PEDIDOS · '+copy+'</span><span class="page-number"></span></div></footer>';
+    const sheet=doc.createElement('section');sheet.className='sheet';
+    sheet.innerHTML='<header class="sheet-header"><div class="brand"></div><div class="title-line"><strong>LISTA DE PEDIDOS</strong><span class="copy-label"></span></div><div class="meta"><span class="identity"></span><span class="page-number"></span></div></header><div class="columns"></div><footer class="sheet-footer"><div class="footer-line"><span class="observations"></span><span class="signature"></span></div><div class="footer-bottom"><span class="footer-copy"></span><span class="page-number"></span></div></footer>';
+    sheet.querySelector('.brand').textContent=meta.heading;
+    sheet.querySelector('.copy-label').textContent=copy;
+    sheet.querySelector('.identity').textContent=`Lista: ${meta.code} · Fecha: ${meta.date} · Almacenista: ${meta.owner}`;
+    sheet.querySelector('.footer-copy').textContent='LISTA DE PEDIDOS · '+copy;
     for(let i=0;i<2;i++){
-      const col=document.createElement('div');col.className='column';
+      const col=doc.createElement('div');col.className='column';
       col.innerHTML='<div class="legend"><span>PRODUCTO / DETALLE</span><span>CANT.</span><span>OK</span></div><div class="column-body"></div>';
       sheet.querySelector('.columns').append(col);
     }
@@ -105,7 +115,7 @@ export function renderLetterOrderPrintHtml(list,businessName){
       let heading=null;let count=0;
       for(let index=0;index<items.length;index++){
         if(!heading){
-          heading=document.createElement('div');heading.className='supplier';
+          heading=doc.createElement('div');heading.className='supplier';
           heading.textContent=group.dataset.supplier+(index?' (CONT.)':'');body().append(heading);count=0;
         }
         const row=items[index].cloneNode(true);body().append(row);
@@ -127,7 +137,5 @@ export function renderLetterOrderPrintHtml(list,businessName){
       }else page.querySelector('.observations').textContent='Continúa en la siguiente hoja · mantener juntas las páginas de esta copia';
     });
   }
-  paginate(copies[0]);paginate(copies[1]);
-  window.addEventListener('load',()=>setTimeout(()=>window.print(),250));
-</script></body></html>`;
+  LETTER_ORDER_COPIES.forEach(paginate);
 }

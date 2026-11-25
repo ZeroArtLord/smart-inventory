@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { renderLetterOrderPrintHtml } from '../src/printing/letterOrderPrint.js';
+import { renderLetterOrderPrintHtml, LETTER_ORDER_COPIES } from '../src/printing/letterOrderPrint.js';
 
 test('solo pedidos usa carta, agrupa por proveedor y conserva dos copias',()=>{
   const html=renderLetterOrderPrintHtml({
@@ -21,9 +21,10 @@ test('solo pedidos usa carta, agrupa por proveedor y conserva dos copias',()=>{
   assert.match(html,/3 BUL/);
   assert.match(html,/Presentación 1 L/);
   assert.doesNotMatch(html,/DESCARTADO/);
-  assert.match(html,/COPIA PEDIDO \/ PROVEEDOR/);
-  assert.match(html,/COPIA DEPÓSITO/);
-  assert.match(html,/paginate\(copies\[0\]\);paginate\(copies\[1\]\)/);
+  assert.deepEqual(LETTER_ORDER_COPIES,['COPIA PEDIDO / PROVEEDOR','COPIA DEPÓSITO']);
+  assert.match(html,/<template id="order-source">/);
+  assert.match(html,/id="print-orders"/);
+  assert.doesNotMatch(html,/<script|onclick=/);
 });
 
 test('no inventa cantidad, conserva nombres completos y escapa contenido',()=>{
@@ -33,7 +34,6 @@ test('no inventa cantidad, conserva nombres completos y escapa contenido',()=>{
   assert.match(html,/LÍNEA &lt;especial&gt; &amp; larga/);
   assert.match(html,/________ CJ/);
   assert.match(html,/Verificar &lt;tamaño&gt;/);
-  assert.match(html,/El Establo &#39;Central&#39;/);
   assert.doesNotMatch(html,/<especial>/);
   assert.throws(()=>renderLetterOrderPrintHtml({kind:'PURCHASE',items:[]}),/solo a pedidos/);
 });
@@ -41,5 +41,5 @@ test('no inventa cantidad, conserva nombres completos y escapa contenido',()=>{
 test('el módulo de carta queda disponible en la caché sin conexión',async()=>{
   const sw=await readFile(new URL('../sw.js',import.meta.url),'utf8');
   assert.match(sw,/\.\/src\/printing\/letterOrderPrint\.js/);
-  assert.match(sw,/shell-79-monitor-letter-orders-1/);
+  assert.match(sw,/shell-80-monitor-letter-orders-popup-1/);
 });
