@@ -11,6 +11,7 @@ import { renderProcurementTickets } from './procurementWorkspaceV6Print.js';
 import { buildMonitorNativeLists } from '../replenishment/monitorNativeTicketAdapter.js';
 import { fetchMonitorMirrorForNormal, assertMonitorPrintable } from './monitorNormalMirrorUi.js';
 import { printThermalProcurementList } from '../printing/thermalPrinterClient.js';
+import { reserveLetterOrderWindow, showLetterOrderPrint } from '../printing/letterOrderPrint.js';
 import { searchMonitorProducts } from '../replenishment/monitorProductSearch.js';
 import { projectMonitorToNormal } from '../replenishment/monitorToNormalMirror.js';
 import { recentMonitorWeeks, isSelectableMonitorWeek } from '../replenishment/monitorReviewWeeks.js';
@@ -718,10 +719,10 @@ function renderLists(){
       state.printPreviewError||'Actualiza para ver las listas con sus proveedores.')+'</p>';
   const warning=(state.local?.pendingCount||state.local?.conflictCount)
     ? '<p class="mp-warning">Hay cambios por sincronizar o conflictos. Antes de imprimir se verificará la lista directamente con el servidor.</p>'
-    : '<p class="mp-muted">Mismo formato VIGÍA normal (80 mm). Imprimir no cierra ni altera la semana.</p>';
+    : '<p class="mp-muted">Compras y Preguntar: 80 mm. Pedidos: papel Carta por proveedor, dos copias. Imprimir no cierra ni altera la semana.</p>';
   const buttons=state.printing?'<p>Enviando a impresora…</p>':
     button('🖨 Imprimir compras','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="PURCHASE"'})+
-    button('🖨 Imprimir pedidos','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="ORDER"'})+
+    button('🖨 Imprimir pedidos · Carta','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="ORDER"'})+
     button('🖨 Preguntar · 1 copia','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="INQUIRY"'});
   return panel('Mis listas semanales',
     '<div class="mp-no-print">'+warning+'<div class="mp-inline">'+buttons+'</div></div>'+
@@ -753,6 +754,7 @@ async function pilotDirectPrint(kind){
   if(state.printing)return;
   if(!['PURCHASE','ORDER','INQUIRY'].includes(kind))throw new Error('Tipo de lista inválido');
   if(!state.options||!state.session)throw new Error('No hay sesión de Monitor');
+  const letterTab=kind==='ORDER'?reserveLetterOrderWindow():null;
   state.printing=true;state.error='';paint();
   try {
     // Traer una copia FRESCA; jamás imprimir del estado local anterior.
@@ -767,9 +769,17 @@ async function pilotDirectPrint(kind){
     const list=buildMonitorNativeLists(snapshot,{ownerLabel:pilotOwnerLabel()})
       .find(x=>x.kind===kind);
     if(!list?.items.length)throw new Error('Lista sin artículos');
-    const result=await printThermalProcurementList(list);
-    state.message=result.copies+(result.copies===1?' copia enviada a ':' copias enviadas a ')+result.printer.name+
-      ' · '+result.itemCount+' productos. No se cerró la revisión.';
+    if(letterTab){
+      showLetterOrderPrint(letterTab,list,pilotBusinessName());
+      state.message='Pedidos listos en papel Carta. Selecciona la Epson en el diálogo de Windows. No se cerró la revisión.';
+    }else{
+      const result=await printThermalProcurementList(list);
+      state.message=result.copies+(result.copies===1?' copia enviada a ':' copias enviadas a ')+result.printer.name+
+        ' · '+result.itemCount+' productos. No se cerró la revisión.';
+    }
+  }catch(error){
+    if(letterTab&&!letterTab.closed)letterTab.close();
+    throw error;
   }finally{
     state.printing=false;paint();
   }

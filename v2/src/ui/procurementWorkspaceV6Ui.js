@@ -22,6 +22,7 @@ import { syncNow } from '../sync/syncEngine.js';
 import { renderWorkspace, renderReviewModal, renderManualModal, renderListModal, renderAddToListModal, esc } from './procurementWorkspaceV6Render.js';
 import { renderPrintModal } from './procurementWorkspaceV6Print.js';
 import { printThermalProcurementList } from '../printing/thermalPrinterClient.js';
+import { reserveLetterOrderWindow, showLetterOrderPrint } from '../printing/letterOrderPrint.js';
 import { buildMonitorNativeLists } from '../replenishment/monitorNativeTicketAdapter.js';
 import { fetchMonitorMirrorForNormal, renderMonitorMirrorForNormal, assertMonitorPrintable } from './monitorNormalMirrorUi.js';
 
@@ -287,6 +288,7 @@ function openMonitorPrintPreview(kind,remember=true) {
 async function monitorNativePrintFlow(kind,{direct=false}={}) {
   if(!['PURCHASE','ORDER'].includes(kind))throw new Error('Tipo de lista inválido');
   if(state.monitorDirectPrinting)return;
+  const letterTab=direct&&kind==='ORDER'?reserveLetterOrderWindow():null;
   state.monitorDirectPrinting=true;
   try{
     const updated=await refreshMonitorMirror({syncBeforeFetch:true});
@@ -296,12 +298,20 @@ async function monitorNativePrintFlow(kind,{direct=false}={}) {
       .find(row=>row.kind===kind);
     if(!list?.items.length)throw new Error('Esa lista no contiene artículos');
     if(direct){
-      const result=await printThermalProcurementList(list);
-      toast(result.copies+' copias enviadas a '+result.printer.name+
-        ' · '+result.itemCount+' productos');
+      if(letterTab){
+        showLetterOrderPrint(letterTab,list,businessName());
+        toast('Pedidos en carta listos. Selecciona la Epson en Windows.');
+      }else{
+        const result=await printThermalProcurementList(list);
+        toast(result.copies+' copias enviadas a '+result.printer.name+
+          ' · '+result.itemCount+' productos');
+      }
     }else{
       openMonitorPrintPreview(kind);
     }
+  }catch(error){
+    if(letterTab&&!letterTab.closed)letterTab.close();
+    throw error;
   }finally{
     state.monitorDirectPrinting=false;
   }
