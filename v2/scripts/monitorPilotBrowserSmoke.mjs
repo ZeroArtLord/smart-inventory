@@ -118,6 +118,14 @@ await page.route('**/api/v1/monitor/reviews/**',async route=>{
   return route.fulfill({status:200,contentType:'application/json',
     body:JSON.stringify({ok:true,item:row,appliedVersion:row.version,replayed:false})});
 });
+await page.route('**/api/v1/monitor/reviews/*/supplier-orders',route=>{
+  const weekStart=new URL(route.request().url()).pathname.split('/')[5];
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+    ok:true,weekStart,round:1,
+    items:[...reviewItems.values()].filter(x=>x.decision==='ORDER'&&!x.deleted).map(x=>({itemKey:x.itemKey,version:x.version})),
+    suppliers:[],assignments:[],preferences:{},orders:[]
+  })});
+});
 await page.route('**/api/v1/thermal-printer/ticket',async route=>{
   const payload=route.request().postDataJSON().list;
   const job=buildProcurementJob(DEFAULT_THERMAL_CONFIG,payload);
@@ -141,6 +149,7 @@ try{
       id:'prod-agua',name:'Agua mineral',categoryId:'bebidas',sku:'AGUA',
       unitCode:'UND',active:true
     });
+    await storage.put(storage.STORES.PRODUCTS,{id:'prod-zumo',name:'Zumo de prueba',categoryId:'bebidas',unitCode:'UND',active:true});
     await storage.put(storage.STORES.CATEGORIES,{
       id:'bebidas',name:'Bebidas',active:true
     });
@@ -317,7 +326,27 @@ try{
   }
   await page.locator('label').filter({has:page.locator('input[name="mpReviewUnit"][value="__OTHER__"]')}).click();
   await page.locator('#mpUnitOther').fill('GAVETA');
+  // Una sincronización automática no reemplaza el formulario bajo revisión.
+  const beforeSync=await page.evaluate(()=>{
+    document.activeElement?.blur();window.__reviewInputBeforeSync=document.querySelector('#mpQuantity');
+    return {top:document.querySelector('#vigiaMonitorPilot').scrollTop,nav:document.querySelector('.mp-nav').scrollLeft};
+  });
+  const syncedResponse=page.waitForResponse(r=>r.url().includes('/monitor/reviews/')&&r.request().method()==='GET');
+  await page.evaluate(()=>window.dispatchEvent(new Event('online')));await syncedResponse;
+  await page.waitForTimeout(200);
+  const afterSync=await page.evaluate(()=>({same:window.__reviewInputBeforeSync===document.querySelector('#mpQuantity'),
+    quantity:document.querySelector('#mpQuantity').value,top:document.querySelector('#vigiaMonitorPilot').scrollTop,
+    nav:document.querySelector('.mp-nav').scrollLeft}));
+  assert.equal(afterSync.same,true,'background sync replaced review form');
+  assert.equal(afterSync.quantity,'2','background sync erased uncommitted quantity');
+  assert.equal(afterSync.top,beforeSync.top,'background sync moved vertical scroll');
+  assert.equal(afterSync.nav,beforeSync.nav,'background sync moved navigation');
+  await page.locator('#vigiaMonitorPilot [data-mp-choice="ASK"]').scrollIntoViewIfNeeded();
+  const beforeDecision=await page.locator('#vigiaMonitorPilot .mp-actions').evaluate(el=>el.getBoundingClientRect().top);
   await page.locator('#vigiaMonitorPilot [data-mp-choice="ASK"]').click();
+  await page.waitForFunction(()=>document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent==='Zumo de prueba');
+  const afterDecision=await page.locator('#vigiaMonitorPilot .mp-actions').evaluate(el=>el.getBoundingClientRect().top);
+  assert.ok(Math.abs(afterDecision-beforeDecision)<=1,'decision auto-advance moved controls: '+JSON.stringify({beforeDecision,afterDecision}));
   await page.locator('#vigiaMonitorPilot [data-mp-page="ask"]').click();
   await page.locator('#vigiaMonitorPilot .mp-row').filter({hasText:'Agua mineral'}).waitFor();
   await page.locator('#vigiaMonitorPilot [data-mp-kind="INQUIRY"]').click();
@@ -455,6 +484,23 @@ try{
   await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Cinta métrica');
   await page.locator('#vigiaMonitorPilot #mpExtraForm button[type="submit"]').click();
+  // Preguntar recorre la cola de productos entre categorías como Pendientes.
+  await page.evaluate(async()=>{
+    const mod=await import('/src/replenishment/monitorReviewOffline.js');
+    const opts={workspaceId:'workspace-browser-lab',userId:'worker-browser-lab',weekStart:window.__vigiaTestWeekStart};
+    await mod.queueMonitorReviewChange(opts,{kind:'PRODUCT',itemId:'prod-cafe',decision:'ASK',unit:'UND'});
+    await mod.queueMonitorReviewChange(opts,{kind:'PRODUCT',itemId:'prod-yuca',decision:'ASK',unit:'KG'});
+    await mod.queueMonitorReviewChange(opts,{kind:'PRODUCT',itemId:'prod-zumo',decision:'ASK',unit:'UND'});
+  });
+  await page.locator('#vigiaMonitorPilot [data-mp-action="sync"]').click();
+  await page.locator('#vigiaMonitorPilot [data-mp-page="ask"]').click();
+  await page.locator('#vigiaMonitorPilot .mp-row').filter({hasText:'Café de prueba'}).locator('[data-mp-action="ask-jump"]').click();
+  assert.match(await page.locator('#vigiaMonitorPilot .mp-warning').first().innerText(),/Modo Preguntar/);
+  await page.locator('#vigiaMonitorPilot [data-mp-choice="BUY"]').click();
+  await page.waitForFunction(()=>document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent==='Yuca de prueba');
+  await page.locator('#vigiaMonitorPilot [data-mp-action="next"]').click();
+  await page.waitForFunction(()=>document.querySelector('#vigiaMonitorPilot .mp-card h2[style]')?.textContent==='Zumo de prueba');
+
   // Extras también pueden empezar como Preguntar y luego pasar a Pedido.
   await page.locator('#vigiaMonitorPilot .mp-nav [data-mp-page="extras"]').click();
   await page.locator('#vigiaMonitorPilot #mpExtraForm [name="description"]').fill('Etiqueta consulta');
@@ -472,6 +518,7 @@ try{
   });
   await page.locator('#vigiaMonitorPilot [data-mp-page="lists"]').click();
   await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().waitFor();
+  assert.match(await page.locator('#vigiaMonitorPilot .v6p-ticket.is-order').first().innerText(),/SIN PROVEEDOR ASIGNADO/);
   const nativeTicketText=await page.locator('#vigiaMonitorPilot .v6p-ticket').filter({hasText:'COPIA CHÓFER'}).first().innerText();
   console.log('MONITOR_SELECTED_NATIVE_PRINT_TEXT',JSON.stringify(nativeTicketText.slice(0,900)));
   assert.match(nativeTicketText,/2\s+CJ/,

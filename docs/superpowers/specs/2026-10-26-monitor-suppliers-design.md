@@ -1,0 +1,9 @@
+# Proveedores y pedidos por WhatsApp en Monitor
+
+Diseño aprobado en conversación: catálogo de proveedores con nombre/teléfono; asignación por producto marcado Pedir mediante selector con búsqueda; agrupación por proveedor; cantidad positiva, empaque explícito y proveedor obligatorios antes de finalizar. Mensaje con saludo por hora de Venezuela, presentación de Club social deportivo y campestre el establo, c.a, productos/cantidades/empaques/notas y solicitud de confirmación de despacho/facturación. WhatsApp Business manual, sin API: abrir borrador, copiar texto y marcar enviado explícitamente.
+
+Implementación: PostgreSQL como fuente de proveedores, asignaciones y pedidos confirmados; caché local de selecciones para conservar trabajo ante fallos de conexión. Preferencias por producto aprendidas solo al marcar enviado y sugeridas, siempre modificables. Extras pueden asignarse pero no generan preferencias de catálogo. Los pedidos finalizados son snapshots inmutables, asociados a semana/ciclo; finalización y enviado idempotentes. No se toca stock ni documentos V2. Se reutiliza acceso piloto existente.
+
+Elección técnica: enlaces oficiales wa.me y botón Copiar (no automatización del envío). Frente a automatización/API, este enfoque coincide con el envío manual autorizado. El sistema no declara entregado ni facturado: Enviado es una confirmación manual.
+
+Decisiones de implementación: teléfono internacional obligatorio antes de finalizar; normalizar celulares venezolanos 04xx a 584xx, aceptar otros países con +/00. Un producto tiene un proveedor por ciclo. Producto sin cantidad/empaque se corrige en Seleccionados. Las actualizaciones posteriores conservan las versiones previas y su estado; versiones modificadas se muestran como actualización para evitar confundirlas con el pedido original.

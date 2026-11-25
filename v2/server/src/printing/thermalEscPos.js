@@ -308,7 +308,7 @@ function normalizeItem(item = {}, index = 0) {
     item.category ||
       item.categoryName ||
       (item.extra ? 'EXTRAS' : 'SIN CATEGORIA'),
-    60
+    180
   ).toUpperCase();
   const note = cleanText(item.note || item.notes || '', 180);
 
@@ -404,7 +404,8 @@ function renderCategory(writer, config, category, items) {
   rule(writer);
   writer.center();
   writer.bold(true);
-  writer.line(cleanText(category, config.charsPerLine).toUpperCase());
+  for(const line of wrapWords(cleanText(category,180).toUpperCase(),config.charsPerLine))
+    writer.line(line);
   writer.bold(false);
   writer.left();
   rule(writer);

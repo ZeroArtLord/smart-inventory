@@ -68,7 +68,8 @@ export function buildThermalPrintPayload(list = {}) {
         quantityText,
         category: item.printCategory || procurementCategoryOf(item),
         note: item.notes || '',
-        extra: item.printExtra === true || isProcurementExtra(item)
+        extra: list.source === 'monitor-weekly-review' && list.kind === 'ORDER'
+          ? false : item.printExtra === true || isProcurementExtra(item)
       };
     });
 

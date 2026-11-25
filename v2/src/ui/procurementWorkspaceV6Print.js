@@ -6,15 +6,15 @@ import {
 import { esc } from './procurementWorkspaceV6Render.js';
 
 export function renderPrintModal({ list, businessName, monitor = false }) {
+  const letter=list.kind==='ORDER';
   return `
     <div class="v6p-modal v6p-print-modal">
       <div class="v6p-modal-head">
         <div>
-          <div class="v6p-eyebrow">PREVISUALIZACIÓN 80MM</div>
-          <h3>Así saldrá en la RC-8002</h3>
+          <div class="v6p-eyebrow">${letter?'IMPRESIÓN EN CARTA':'PREVISUALIZACIÓN 80MM'}</div>
+          <h3>${letter?'Lista de pedidos por proveedor':'Así saldrá en la RC-8002'}</h3>
           <p>
-            La vista conserva el formato visual; el botón envía ESC/POS
-            directo por TCP/IP y corta cada copia.
+            ${letter?'El botón abre el formato de dos columnas y el diálogo de impresión de Windows. Elige papel Carta y la Epson L3250.':'La vista conserva el formato visual; el botón envía ESC/POS directo por TCP/IP y corta cada copia.'}
           </p>
         </div>
         <button
@@ -27,16 +27,17 @@ export function renderPrintModal({ list, businessName, monitor = false }) {
       <div class="v6p-modal-body">
         <div class="v6p-print-toolbar">
           <div class="v6p-printer-hint">
-            <strong>RC-8002 · 80mm · ESC/POS directo</strong><br>
-            La calibración e IP viven en Configuración → Impresión 80mm.
+            <strong>${letter?'Epson L3250 · papel Carta':'RC-8002 · 80mm · ESC/POS directo'}</strong><br>
+            ${letter?'La vista de carta se abre en otra pestaña. Selecciona la impresora en Windows.':'La calibración e IP viven en Configuración → Impresión 80mm.'}
           </div>
           <button
             class="v6p-primary"
             ${monitor ? 'data-v6p-action="monitor-direct-print"' : 'data-v6p-action="direct-print"'}
             data-list-id="${esc(list.id)}"
+            data-list-kind="${esc(list.kind)}"
             ${monitor ? `data-monitor-kind="${list.kind}"` : ''}
             type="button"
-          >🖨 Imprimir ticket</button>
+          >${letter?'🖨 Imprimir pedidos en carta':'🖨 Imprimir ticket'}</button>
         </div>
 
         <div class="v6p-ticket-preview">

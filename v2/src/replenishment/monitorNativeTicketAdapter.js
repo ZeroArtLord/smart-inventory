@@ -17,7 +17,7 @@ export function buildMonitorNativeLists(snapshot, { ownerLabel = 'Usuario VIGÍA
       notes:item.notes || '',
       printQuantity:item.quantity,
       printUnit:item.unit || '',
-      printCategory:item.category || 'SIN CATEGORÍA',
+      printCategory:kind==='ORDER' ? (item.printSupplierName?'PROVEEDOR: '+item.printSupplierName:'SIN PROVEEDOR ASIGNADO') : item.category || 'SIN CATEGORÍA',
       printExtra:item.kind === 'EXTRA',
       sourceSuggestion:{
         kind:item.kind === 'EXTRA' ? 'EXTRA' : 'PRODUCT',

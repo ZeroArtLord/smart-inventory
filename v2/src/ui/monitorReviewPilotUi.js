@@ -1,5 +1,6 @@
 // Pilot isolated from V2 procurement: its launcher never replaces existing forms.
 // Requires authenticated V2 app session. NO stock movements or legacy sync writes.
+import { createMonitorSupplierPanel } from './monitorSupplierOrdersUi.js';
 import { getAll, STORES } from '../storage/database.js';
 import { resolveMonitorPilotSession } from '../replenishment/monitorPilotSession.js';
 import { isMonitorPilotEnabled } from './monitorPilotEnabled.js';
@@ -10,6 +11,7 @@ import { renderProcurementTickets } from './procurementWorkspaceV6Print.js';
 import { buildMonitorNativeLists } from '../replenishment/monitorNativeTicketAdapter.js';
 import { fetchMonitorMirrorForNormal, assertMonitorPrintable } from './monitorNormalMirrorUi.js';
 import { printThermalProcurementList } from '../printing/thermalPrinterClient.js';
+import { reserveLetterOrderWindow, showLetterOrderPrint } from '../printing/letterOrderPrint.js';
 import { searchMonitorProducts } from '../replenishment/monitorProductSearch.js';
 import { projectMonitorToNormal } from '../replenishment/monitorToNormalMirror.js';
 import { recentMonitorWeeks, isSelectableMonitorWeek } from '../replenishment/monitorReviewWeeks.js';
@@ -23,14 +25,14 @@ import {
 } from '../replenishment/monitorReviewOffline.js';
 
 const root=document.getElementById('app');
-let shell=null,launcher=null;
+let shell=null,launcher=null,supplierPanel=null;
 let pilotEnabled=false;
 const state={
   visible:false,loading:false,page:'home',week:weekMonday(),
   currentCategory:null,cursor:0,session:null,options:null,
   products:[],categories:[],local:null,message:'',error:'',
-  pendingReviewMode:false,printing:false,searchQuery:'',archives:[],archiveDetail:null,
-  closing:false,switching:false
+  pendingReviewMode:false,askingReviewMode:false,printing:false,searchQuery:'',archives:[],archiveDetail:null,
+  closing:false,switching:false,printSnapshot:null,printPreviewLoading:false,printPreviewError:''
 };
 if(root){
   launcher=document.createElement('button');
@@ -41,6 +43,8 @@ if(root){
   shell=document.createElement('section');shell.id='vigiaMonitorPilot';
   shell.hidden=true;shell.setAttribute('aria-label','Piloto VIGÍA Monitor');
   document.body.append(shell);
+  supplierPanel=createMonitorSupplierPanel({host:shell,getContext:()=>state.options,
+    repaint:()=>paint(),notify:message=>{state.message=message;}});
 
   const observer=new MutationObserver(updateLauncher);
   observer.observe(root,{childList:true,subtree:true});
@@ -51,7 +55,7 @@ if(root){
   shell.addEventListener('click',event=>handleClick(event).catch(showError));
   shell.addEventListener('submit',event=>handleSubmit(event).catch(showError));
   shell.addEventListener('change',event=>handleChange(event).catch(showError));
-  shell.addEventListener('input',event=>{handleSelectedInput(event);handleProductSearch(event);});
+  shell.addEventListener('input',event=>{supplierPanel.handleInput(event);handleSelectedInput(event);handleProductSearch(event);});
   shell.addEventListener('focusout',event=>handleSelectedBlur(event));
   shell.addEventListener('keydown',event=>handleSelectedKeydown(event).catch(showError));
   window.addEventListener('online',()=>{if(state.visible)pushAndRefresh().catch(showError);});
@@ -73,6 +77,7 @@ function updateLauncher(){
 }
 async function openPilot(){
   if(!pilotEnabled)throw new Error('Monitor no está activado en este dispositivo');
+  supplierPanel?.reset();
   state.visible=true;state.loading=true;state.error='';
   shell.hidden=false;document.body.style.overflow='hidden';updateLauncher();paint();
   try{
@@ -89,8 +94,9 @@ async function openPilot(){
     state.categories=categories.filter(c=>c&&c.active!==false&&c.id)
       .sort((a,b)=>String(a.name).localeCompare(String(b.name),'es'));
     state.local=await readMonitorReview(state.options);
+    state.printSnapshot=null;state.printPreviewError='';
     state.archives=[];
-    state.pendingReviewMode=false;
+    state.pendingReviewMode=false;state.askingReviewMode=false;
     const savedPosition=await readPilotPosition(state.options);
     const position=restorePilotPosition(savedPosition,groups());
     if(position){
@@ -100,6 +106,7 @@ async function openPilot(){
     }
     state.loading=false;paint();
     await pushAndRefresh();
+    if(state.page==='lists')await loadPrintPreview();
   }catch(error){
     state.loading=false;showError(error);
   }
@@ -107,7 +114,7 @@ async function openPilot(){
 async function switchMonitorWeek(week){
   if(!isSelectableMonitorWeek(week))throw new Error('Semana de revisión inválida');
   if(week===state.week)return;
-  if(state.closing||state.switching)throw new Error('Espera a que termine la operación actual');
+  if(state.closing||state.switching||supplierPanel?.isBusy())throw new Error('Espera a que termine la operación actual');
   state.switching=true;
   try{
     await flushAllSelected();
@@ -117,8 +124,10 @@ async function switchMonitorWeek(week){
     const cycle=await resolveMonitorActiveRound(base);
     const options={...base,round:cycle.round};
     const local=await readMonitorReview(options);
+    supplierPanel?.reset();
     state.week=week;state.options=options;state.local=local;
-    state.currentCategory=null;state.cursor=0;state.pendingReviewMode=false;
+    state.printSnapshot=null;state.printPreviewError='';
+    state.currentCategory=null;state.cursor=0;state.pendingReviewMode=false;state.askingReviewMode=false;
     state.page='home';state.archives=[];state.archiveDetail=null;state.searchQuery='';
     state.error='';state.message='Semana '+week+' abierta para revisar o cerrar su ciclo.';
     paint();
@@ -148,17 +157,26 @@ async function pushAndRefresh(){
   const latest=await readMonitorReview(state.options);
   if(epoch!==latestLocalUiEpoch || !state.visible)return;
   state.local=latest;
-  if(state.local.status==='SYNCED' && state.message.startsWith('Guardado en este dispositivo'))state.message='';
+  const statusAnchor=shell.querySelector(state.page==='review'?'.mp-actions':'#mpContent');
+  const statusTop=statusAnchor?.getBoundingClientRect().top;
+  const statusHeight=shell.scrollHeight;
+  if(state.local.status==='SYNCED' && state.message.startsWith('Guardado en este dispositivo')){
+    state.message='';
+    const message=shell.querySelector('[data-mp-save-message]');
+    if(message){message.style.minHeight=message.getBoundingClientRect().height+'px';message.textContent='Guardado y sincronizado.';}
+  }
   // No interrumpir cantidad/unidad todavía bajo edición.
   const focus=document.activeElement;
-  if(state.page==='selected') {
-    // Con decenas de campos, jamás reemplazar sus nodos por una sincronización
-    // en segundo plano: se perdería el texto que aún no acabó de escribir.
-    const chip=shell.querySelector('.mp-chip');
+  if(state.page==='selected'||state.page==='review'||supplierPanel?.hasPage(state.page)) {
+    // La sincronización actualiza el estado; conserva formularios y tarjetas
+    // que el usuario está usando, incluidos sus valores todavía sin guardar.
+    const chip=shell.querySelector('[data-mp-sync-status]');
     if(chip)chip.textContent=state.local.status==='CONFLICT'
       ? '⚠ Conflictos sin resolver: '+state.local.conflictCount
       : state.local.pendingCount?'● Pendiente de sincronizar: '+state.local.pendingCount
       : '✓ Sincronizado';
+    shell.querySelector('.mp-shell').style.minHeight=statusHeight+'px';
+    if(statusAnchor)shell.scrollTop+=statusAnchor.getBoundingClientRect().top-statusTop;
     return;
   }
   if(shell.contains(focus)&&focus?.matches?.('input,textarea,select'))return;
@@ -237,17 +255,31 @@ function info(){
     :state.local?.network==='RETRY_LATER'?'● Servidor no disponible; datos locales intactos'
     :state.local?.status==='LOCAL'?'● Pendiente de sincronizar: '+state.local.pendingCount
     :state.local?'✓ Sincronizado':'Sin iniciar';
-  return '<span class="mp-chip">'+esc(label)+'</span>';
+  return '<span class="mp-chip" data-mp-sync-status>'+esc(label)+'</span>';
 }
 function paint(){
   if(!state.visible)return;
+  const viewKey=[state.page,state.week,state.options?.round||1].join(':');
+  const sameView=shell.dataset.mpView===viewKey;
+  const oldTop=shell.scrollTop,oldHeight=shell.scrollHeight;
+  const navLeft=shell.querySelector('.mp-nav')?.scrollLeft||0;
+  const candidates=state.page==='review'?['.mp-actions','#mpNotes','#mpQuantity','#mpProductSearch','#mpContent']:['#mpContent'];
+  const anchor=sameView?candidates.find(selector=>{
+    const rect=shell.querySelector(selector)?.getBoundingClientRect();
+    return rect&&rect.bottom>0&&rect.top<shell.clientHeight;
+  }):null;
+  const anchorTop=anchor?shell.querySelector(anchor).getBoundingClientRect().top:0;
+  const focus=document.activeElement;
+  const focusSelector=shell.contains(focus)?(focus.id?'#'+CSS.escape(focus.id):
+    focus.dataset.mpChoice?'[data-mp-choice="'+CSS.escape(focus.dataset.mpChoice)+'"]':null):null;
   const tabs=[
     ['home','Inicio'],['review','Revisar'],['pending','Pendientes'],
     ['selected','Seleccionados'],['ask','Preguntar'],['extras','Extras'],
-    ['lists','Mis listas'],['history','Historial']
+    ['lists','Mis listas'],['suppliers','Proveedores'],['supplier-assign','Asignar pedidos'],
+    ['supplier-final','Finalizar pedidos'],['history','Historial']
   ];
   const nav=tabs.map(([id,label])=>'<button type="button" data-mp-action="page" data-mp-page="'+id+
-    '" '+(state.page===id?'aria-current="page"':'')+'>'+label+'</button>').join('');
+    '" '+(supplierPanel?.isBusy()?'disabled ':'')+(state.page===id?'aria-current="page"':'')+'>'+label+'</button>').join('');
   let content='<p class="mp-muted">Preparando revisión semanal…</p>';
   if(state.error)content='<div class="mp-error">'+esc(state.error)+'</div>';
   if(!state.loading&&state.local){
@@ -259,21 +291,32 @@ function paint(){
     if(state.page==='history')content=renderHistory();
     if(state.page==='extras')content=renderExtras();
     if(state.page==='lists')content=renderLists();
+    if(supplierPanel?.hasPage(state.page))content=supplierPanel.render(state.page);
   }
   shell.innerHTML='<div class="mp-shell"><header class="mp-head"><div><small>PILOTO AISLADO · SIN MOVIMIENTOS DE STOCK</small>'+
     '<h1>VIGÍA Monitor</h1><p>Semana '+esc(state.week)+' · Ciclo '+esc(state.options?.round||1)+' · '+
     esc(state.products.length)+' productos del catálogo</p>'+
     '<label class="mp-week-label" for="mpWeekSelect">Semana de revisión ' +
-    '<select id="mpWeekSelect" '+(state.loading||state.closing||state.switching?'disabled':'')+'>'+recentMonitorWeeks().map(week=>
+    '<select id="mpWeekSelect" '+(state.loading||state.closing||state.switching||supplierPanel?.isBusy()?'disabled':'')+'>'+recentMonitorWeeks().map(week=>
       '<option value="'+week+'" '+(week===state.week?'selected':'')+'>'+week+
       (week===recentMonitorWeeks()[0]?' · actual':'')+'</option>').join('')+'</select></label></div>'+
     button('Cerrar ✕','close',{cls:'mp-close'})+'</header>'+
     '<nav class="mp-nav mp-no-print" aria-label="Secciones del piloto">'+nav+'</nav>'+
     '<div class="mp-inline mp-no-print">'+info()+
     button('↻ Sincronizar','sync')+'</div>'+
-    (state.message?'<div class="mp-warning mp-no-print">'+esc(state.message)+'</div>':'')+
+    (state.message?'<div class="mp-warning mp-no-print" data-mp-save-message>'+esc(state.message)+'</div>':'')+
     (state.error?'<div class="mp-error mp-no-print">'+esc(state.error)+'</div>':'')+
-    content+'</div>';
+    '<div id="mpContent">'+content+'</div></div>';
+  shell.dataset.mpView=viewKey;
+  if(sameView){
+    // Mantener altura mientras cambia el producto evita que el navegador recorte
+    // scrollTop al desaparecer un aviso o un campo opcional.
+    shell.querySelector('.mp-shell').style.minHeight=oldHeight+'px';
+    const nextAnchor=anchor?shell.querySelector(anchor):null;
+    shell.scrollTop=nextAnchor?shell.scrollTop+nextAnchor.getBoundingClientRect().top-anchorTop:oldTop;
+    if(focusSelector)shell.querySelector(focusSelector)?.focus({preventScroll:true});
+  }
+  const navElement=shell.querySelector('.mp-nav');if(navElement)navElement.scrollLeft=navLeft;
 }
 function renderHome(){
   const p=progress();
@@ -348,7 +391,10 @@ function renderReview(){
     ? '<div class="mp-warning">Modo Pendientes · '+pendingProducts().length+
       ' por revisar. Al decidir pasarás al siguiente pendiente, incluso de otra categoría. '+
       button('← Volver a Pendientes','back-pending')+'</div>'
-    : '';
+    : state.askingReviewMode
+      ? '<div class="mp-warning">Modo Preguntar · '+askedProducts().length+
+        ' por resolver. Al decidir pasarás al siguiente producto por preguntar. '+
+        button('← Volver a Preguntar','back-ask')+'</div>' : '';
   return panel('Revisión por categoría',pendingIndicator+
     renderProductSearch()+
     '<div class="mp-form">'+categorySelector+'<div><span class="mp-muted">Avance en categoría</span>'+
@@ -371,6 +417,7 @@ function renderReview(){
 }
 // Cola global de pendientes (cruza categorías); mantiene orden del catálogo.
 function pendingProducts(){return productChoices().PENDING;}
+function askedProducts(){return productChoices().ASK;}
 function showPendingProduct(product){
   if(!product)return false;
   const group=groups().find(x=>x.products.some(p=>p.id===product.id));
@@ -401,6 +448,30 @@ function advancePendingReview(currentId,direction=1){
     return;
   }
   showPendingProduct(ordered);
+}
+function showAskedProduct(product){
+  if(!showPendingProduct(product))return false;
+  state.pendingReviewMode=false;
+  state.askingReviewMode=true;
+  return true;
+}
+function advanceAskedReview(currentId,direction=1){
+  const asked=askedProducts();
+  if(!asked.length){
+    state.askingReviewMode=false;state.page='ask';
+    state.message='¡Listo! No quedan productos por preguntar.';
+    return;
+  }
+  const from=state.products.findIndex(x=>x.id===currentId);
+  const next=direction>=0
+    ? asked.find(x=>state.products.findIndex(p=>p.id===x.id)>from)||asked[0]
+    : [...asked].reverse().find(x=>state.products.findIndex(p=>p.id===x.id)<from)||asked[asked.length-1];
+  if(next.id===currentId&&asked.length===1){
+    state.askingReviewMode=false;state.page='ask';
+    state.message='Este producto continúa en Preguntar.';
+    return;
+  }
+  showAskedProduct(next);
 }
 
 function renderPending(){
@@ -600,7 +671,7 @@ function renderAsking(){
     const id=item.kind==='PRODUCT'?item.productId:null;
     return '<div class="mp-row"><div><strong>'+esc(item.name)+'</strong>'+
       '<div class="mp-muted">'+esc(item.category)+' · '+esc(item.notes||'Sin observación')+'</div></div>'+
-      (id?button('Resolver / Cambiar decisión','search-jump',{attrs:'data-mp-id="'+esc(id)+'"'}):
+      (id?button('Resolver / Cambiar decisión','ask-jump',{attrs:'data-mp-id="'+esc(id)+'"'}):
         '<div class="mp-inline">'+
         button('Comprar','resolve-ask-extra',{attrs:'data-mp-item="'+esc(item.itemKey)+'" data-mp-choice="BUY"'})+
         button('Pedir','resolve-ask-extra',{attrs:'data-mp-item="'+esc(item.itemKey)+'" data-mp-choice="ORDER"'})+
@@ -640,41 +711,35 @@ function renderHistory(){
     (cards||'<p>Todavía no hay ciclos cerrados o el historial estará disponible al conectar la VPN.</p>')+detail);
 }
 function renderLists(){
-  const rows=selectedItems();
-  const snapshot={
-    source:'monitor-weekly-review',weekStart:state.week,round:state.options?.round||1,
-    lists:{
-      PURCHASE:rows.filter(x=>x.decision==='BUY').map(x=>({
-        itemKey:x.itemKey,kind:x.kind,productId:x.productId,
-        description:x.name,category:x.category,quantity:x.quantity,
-        unit:x.unit,notes:x.notes
-      })),
-      ORDER:rows.filter(x=>x.decision==='ORDER').map(x=>({
-        itemKey:x.itemKey,kind:x.kind,productId:x.productId,
-        description:x.name,category:x.category,quantity:x.quantity,
-        unit:x.unit,notes:x.notes
-      })),
-      INQUIRY:rows.filter(x=>x.decision==='ASK').map(x=>({
-        itemKey:x.itemKey,kind:x.kind,productId:x.productId,
-        description:x.name,category:x.category,quantity:x.quantity,
-        unit:x.unit,notes:x.notes
-      }))
-    }
-  };
-  const lists=buildMonitorNativeLists(snapshot,{ownerLabel:pilotOwnerLabel()});
-  const preview=lists.map(list=>renderProcurementTickets({
-    list,businessName:pilotBusinessName()
-  })).join('');
+  const snapshot=state.printSnapshot;
+  const preview=snapshot&&snapshot.weekStart===state.week&&Number(snapshot.round)===Number(state.options?.round||1)
+    ? buildMonitorNativeLists(snapshot,{ownerLabel:pilotOwnerLabel()}).map(list=>
+      renderProcurementTickets({list,businessName:pilotBusinessName()})).join('')
+    : '<p class="mp-muted">'+esc(state.printPreviewLoading?'Cargando proveedores y listas…':
+      state.printPreviewError||'Actualiza para ver las listas con sus proveedores.')+'</p>';
   const warning=(state.local?.pendingCount||state.local?.conflictCount)
     ? '<p class="mp-warning">Hay cambios por sincronizar o conflictos. Antes de imprimir se verificará la lista directamente con el servidor.</p>'
-    : '<p class="mp-muted">Mismo formato VIGÍA normal (80 mm). Imprimir no cierra ni altera la semana.</p>';
+    : '<p class="mp-muted">Compras y Preguntar: 80 mm. Pedidos: papel Carta por proveedor, dos copias. Imprimir no cierra ni altera la semana.</p>';
   const buttons=state.printing?'<p>Enviando a impresora…</p>':
     button('🖨 Imprimir compras','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="PURCHASE"'})+
-    button('🖨 Imprimir pedidos','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="ORDER"'})+
+    button('🖨 Imprimir pedidos · Carta','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="ORDER"'})+
     button('🖨 Preguntar · 1 copia','monitor-print',{cls:'mp-button mp-primary',attrs:'data-mp-kind="INQUIRY"'});
   return panel('Mis listas semanales',
     '<div class="mp-no-print">'+warning+'<div class="mp-inline">'+buttons+'</div></div>'+
     '<div class="v6p-ticket-preview mp-ticket-grid">'+preview+'</div>');
+}
+
+async function loadPrintPreview(){
+  const options=state.options;
+  state.printPreviewLoading=true;state.printPreviewError='';state.printSnapshot=null;paint();
+  try{
+    const snapshot=await fetchMonitorMirrorForNormal({
+      session:state.session,products:state.products,categories:state.categories,
+      weekStart:state.week
+    });
+    if(state.options===options)state.printSnapshot=snapshot;
+  }catch(error){if(state.options===options)state.printPreviewError=String(error.message||error);}
+  finally{if(state.options===options){state.printPreviewLoading=false;paint();}}
 }
 
 function pilotBusinessName(){
@@ -689,6 +754,7 @@ async function pilotDirectPrint(kind){
   if(state.printing)return;
   if(!['PURCHASE','ORDER','INQUIRY'].includes(kind))throw new Error('Tipo de lista inválido');
   if(!state.options||!state.session)throw new Error('No hay sesión de Monitor');
+  const letterTab=kind==='ORDER'?reserveLetterOrderWindow():null;
   state.printing=true;state.error='';paint();
   try {
     // Traer una copia FRESCA; jamás imprimir del estado local anterior.
@@ -699,12 +765,21 @@ async function pilotDirectPrint(kind){
     if(Number(snapshot.round||1)!==Number(state.options.round))
       throw new Error('El servidor tiene otro ciclo activo. Recarga antes de imprimir.');
     assertMonitorPrintable(snapshot);
+    state.printSnapshot=snapshot;state.printPreviewError='';
     const list=buildMonitorNativeLists(snapshot,{ownerLabel:pilotOwnerLabel()})
       .find(x=>x.kind===kind);
     if(!list?.items.length)throw new Error('Lista sin artículos');
-    const result=await printThermalProcurementList(list);
-    state.message=result.copies+(result.copies===1?' copia enviada a ':' copias enviadas a ')+result.printer.name+
-      ' · '+result.itemCount+' productos. No se cerró la revisión.';
+    if(letterTab){
+      showLetterOrderPrint(letterTab,list,pilotBusinessName());
+      state.message='Pedidos listos en papel Carta. Selecciona la Epson en el diálogo de Windows. No se cerró la revisión.';
+    }else{
+      const result=await printThermalProcurementList(list);
+      state.message=result.copies+(result.copies===1?' copia enviada a ':' copias enviadas a ')+result.printer.name+
+        ' · '+result.itemCount+' productos. No se cerró la revisión.';
+    }
+  }catch(error){
+    if(letterTab&&!letterTab.closed)letterTab.close();
+    throw error;
   }finally{
     state.printing=false;paint();
   }
@@ -725,6 +800,8 @@ function moveToNextUndecided(){
   else {state.page='home';state.message='Categoría recorrida. Puedes abrir otra o revisar tus pendientes.';}
 }
 async function handleClick(event){
+  if(event.target.closest('[data-ms-action]')){await supplierPanel.handleClick(event);return;}
+  if(supplierPanel?.isBusy())return;
   const node=event.target.closest('[data-mp-action]');
   if(!node)return;
   event.preventDefault();
@@ -754,12 +831,18 @@ async function handleClick(event){
     if(!group)return;
     state.currentCategory=group.id;
     state.cursor=group.products.findIndex(p=>String(p.id)===String(id));
-    state.pendingReviewMode=false;
+    state.pendingReviewMode=false;state.askingReviewMode=false;
     state.searchQuery='';
     state.page='review';state.message='';
     await persistPilotCursor();paint();
     shell.querySelector('#mpQuantity')?.focus();
     return;
+  }
+  if(action==='ask-jump'){
+    const product=state.products.find(x=>String(x.id)===node.dataset.mpId);
+    if(!product||findRow(product.id)?.decision!=='ASK'||!showAskedProduct(product))return;
+    state.searchQuery='';state.message='';
+    await persistPilotCursor();paint();shell.querySelector('#mpQuantity')?.focus();return;
   }
   if(action==='history-view'){
     const round=Number(node.dataset.mpRound);
@@ -788,7 +871,7 @@ async function handleClick(event){
       state.options={...closingOptions,round:closed.currentRound};
       state.local=await readMonitorReview(state.options);
       state.currentCategory=null;state.cursor=0;
-      state.pendingReviewMode=false;state.archiveDetail=null;state.searchQuery='';
+      state.pendingReviewMode=false;state.askingReviewMode=false;state.archiveDetail=null;state.searchQuery='';
       state.page='home';state.archives=[];
       state.message='Ciclo '+closed.closedRound+' archivado. Ya puedes revisar nuevamente los '+p.total+' productos.';
       state.error='';paint();
@@ -803,7 +886,9 @@ async function handleClick(event){
   }
   if(action==='sync'){
     try{await flushAllSelected();}catch(error){state.error=String(error.message||error);return;}
-    await pushAndRefresh();return;
+    await pushAndRefresh();
+    if(state.page==='lists')await loadPrintPreview();
+    return;
   }
   if(action==='page'){
     try{await flushAllSelected();}catch(error){
@@ -811,8 +896,9 @@ async function handleClick(event){
     }
     clearSelectedRecords();
     state.page=node.dataset.mpPage;
-    state.pendingReviewMode=false;
+    state.pendingReviewMode=false;state.askingReviewMode=false;
     state.message='';
+    if(supplierPanel?.hasPage(state.page)){await supplierPanel.load();paint();return;}
     if(state.page==='history'){
       try{
         const data=await listMonitorReviewArchives(state.options);
@@ -821,10 +907,11 @@ async function handleClick(event){
         state.message='El historial del servidor estará disponible cuando la VPN tenga conexión; no se borró ninguna lista.';
       }
     }
+    if(state.page==='lists'){await loadPrintPreview();return;}
     paint();return;
   }
   if(action==='category'){
-    state.pendingReviewMode=false;
+    state.pendingReviewMode=false;state.askingReviewMode=false;
     state.currentCategory=node.dataset.mpCategory;
     const group=groups().find(x=>x.id===state.currentCategory);
     state.cursor=Math.max(0,group?.products.findIndex(p=>!findRow(p.id))??0);
@@ -837,14 +924,23 @@ async function handleClick(event){
     const group=groups().find(x=>x.products.some(x=>x.id===id));
     state.currentCategory=group.id;
     state.cursor=group.products.findIndex(x=>x.id===id);
-    state.page='review';state.pendingReviewMode=true;
+    state.page='review';state.pendingReviewMode=true;state.askingReviewMode=false;
     state.message='';await persistPilotCursor();paint();return;
   }
   if(action==='back-pending'){
     state.page='pending';state.pendingReviewMode=false;state.message='';paint();return;
   }
+  if(action==='back-ask'){
+    state.page='ask';state.askingReviewMode=false;state.message='';paint();return;
+  }
   if(action==='monitor-print'){await pilotDirectPrint(node.dataset.mpKind);return;}
   if(action==='previous'||action==='next'){
+    if(state.askingReviewMode){
+      const group=groups().find(x=>x.id===state.currentCategory);
+      const current=group?.products[state.cursor];
+      if(current)advanceAskedReview(current.id,action==='previous'?-1:1);
+      await persistPilotCursor();paint();return;
+    }
     if(state.pendingReviewMode){
       const group=groups().find(x=>x.id===state.currentCategory);
       const current=group?.products[state.cursor];
@@ -870,13 +966,15 @@ async function handleClick(event){
       kind:'PRODUCT',itemId:p.id,decision:node.dataset.mpChoice,
       quantity,unit,notes
     });
-    if(state.pendingReviewMode)advancePendingReview(p.id);
+    if(state.askingReviewMode)advanceAskedReview(p.id);
+    else if(state.pendingReviewMode)advancePendingReview(p.id);
     else moveToNextUndecided();
     await persistPilotCursor();paint();return;
   }
   if(action==='print'){window.print();}
 }
 async function handleChange(event){
+  if(event.target.matches('[data-ms-assignment]')){await supplierPanel.handleChange(event);return;}
   if(event.target?.name==='mpReviewUnit'){
     const custom=shell.querySelector('#mpUnitOther');
     custom.hidden=event.target.value!=='__OTHER__';
@@ -884,7 +982,7 @@ async function handleChange(event){
     return;
   }
   if(event.target?.id==='mpWeekSelect'){
-    if(state.closing||state.switching){event.target.value=state.week;return;}
+    if(state.closing||state.switching||supplierPanel?.isBusy()){event.target.value=state.week;return;}
     try{await switchMonitorWeek(event.target.value);}
     catch(error){event.target.value=state.week;throw error;}
     return;
@@ -911,12 +1009,13 @@ async function handleChange(event){
   if(!picker)return;
   const chosen=groups().find(group=>group.id===picker.value);
   if(!chosen)return;
-  state.pendingReviewMode=false;
+  state.pendingReviewMode=false;state.askingReviewMode=false;
   state.currentCategory=chosen.id;
   state.cursor=Math.max(0,chosen.products.findIndex(product=>!findRow(product.id)));
   await persistPilotCursor();paint();
 }
 async function handleSubmit(event){
+  if(event.target.id==='mpSupplierForm'){await supplierPanel.handleSubmit(event);return;}
   if(event.target?.id!=='mpExtraForm')return;
   event.preventDefault();
   const data=new FormData(event.target);

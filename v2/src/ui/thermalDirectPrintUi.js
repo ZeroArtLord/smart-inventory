@@ -1,5 +1,6 @@
 import { listProcurementLists } from '../replenishment/procurementListService.js';
 import { printThermalProcurementList } from '../printing/thermalPrinterClient.js';
+import { reserveLetterOrderWindow, showLetterOrderPrint } from '../printing/letterOrderPrint.js';
 
 let printing = false;
 
@@ -30,10 +31,11 @@ async function printList(button) {
     throw new Error('No se pudo identificar la lista a imprimir');
   }
 
+  const letterTab=button.dataset.listKind==='ORDER'?reserveLetterOrderWindow():null;
   printing = true;
   button.disabled = true;
   const previous = button.textContent;
-  button.textContent = 'Enviando a comandera…';
+  button.textContent = letterTab?'Preparando carta…':'Enviando a comandera…';
 
   try {
     const lists = await listProcurementLists({
@@ -50,11 +52,18 @@ async function printList(button) {
       dateLabel: formatDate(list.createdAt)
     };
 
-    const result = await printThermalProcurementList(decorated);
-    toast(
-      `${result.copies} copia(s) enviadas · ` +
-      `${result.itemCount} renglón(es) · ${result.printer.name}`
-    );
+    if(decorated.kind==='ORDER'){
+      if(!letterTab)throw new Error('Abre nuevamente la vista de pedidos para imprimir');
+      showLetterOrderPrint(letterTab,decorated,localStorage.getItem('vigia.procurement.businessName'));
+      toast('Pedidos en carta listos. Selecciona la Epson en Windows.');
+    }else{
+      if(letterTab)letterTab.close();
+      const result = await printThermalProcurementList(decorated);
+      toast(`${result.copies} copia(s) enviadas · ${result.itemCount} renglón(es) · ${result.printer.name}`);
+    }
+  }catch(error){
+    if(letterTab&&!letterTab.closed)letterTab.close();
+    throw error;
   } finally {
     printing = false;
     button.disabled = false;
