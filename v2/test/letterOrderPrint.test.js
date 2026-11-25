@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { renderLetterOrderPrintHtml } from '../src/printing/letterOrderPrint.js';
 
 test('solo pedidos usa carta, agrupa por proveedor y conserva dos copias',()=>{
@@ -35,4 +36,10 @@ test('no inventa cantidad, conserva nombres completos y escapa contenido',()=>{
   assert.match(html,/El Establo &#39;Central&#39;/);
   assert.doesNotMatch(html,/<especial>/);
   assert.throws(()=>renderLetterOrderPrintHtml({kind:'PURCHASE',items:[]}),/solo a pedidos/);
+});
+
+test('el módulo de carta queda disponible en la caché sin conexión',async()=>{
+  const sw=await readFile(new URL('../sw.js',import.meta.url),'utf8');
+  assert.match(sw,/\.\/src\/printing\/letterOrderPrint\.js/);
+  assert.match(sw,/shell-79-monitor-letter-orders-1/);
 });

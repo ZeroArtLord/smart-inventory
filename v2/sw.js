@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-inventory-v2-shell-78-monitor-supplier-print-alignment-1';
+const CACHE_NAME = 'smart-inventory-v2-shell-79-monitor-letter-orders-1';
 // procurement-weekly-edit-hotfix-2026-10-07
 // procurement-cancelled-line-visibility-hotfix-2026-10-07
 
@@ -66,6 +66,7 @@ const APP_SHELL = [
   './src/ui/catalogCategoryFilterUi.js',
   './src/ui/saintSupplyReportUi.js',
   './src/printing/thermalPrinterClient.js',
+  './src/printing/letterOrderPrint.js',
   './src/printing/supplyThermalPayload.js',
   './src/auth/authProvider.js',
   './src/auth/firebaseClient.js',
